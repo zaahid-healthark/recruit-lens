@@ -1,0 +1,25 @@
+# Local PostgreSQL for the Interview Evaluator backend.
+# Start with:  docker compose up -d
+# The DATABASE_URL in server/.env.example matches these credentials.
+services:
+  db:
+    image: postgres:16-alpine
+    container_name: interview-evaluator-db
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+      POSTGRES_DB: interview_evaluator
+    ports:
+      # Host port 5433 avoids clashing with any natively installed PostgreSQL on 5432.
+      - "5433:5432"
+    volumes:
+      - db-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres -d interview_evaluator"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+volumes:
+  db-data:

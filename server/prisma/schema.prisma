@@ -1,0 +1,93 @@
+// Prisma schema for the Interview Evaluator backend.
+// Run `npm run migrate -w server` (after starting Postgres) to create the tables.
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum RecordingStatus {
+  UNEVALUATED
+  TRANSCRIBING
+  SCORING
+  EVALUATED
+  FAILED
+}
+
+model Recording {
+  id               String          @id @default(uuid())
+  originalFilename String
+  /// Opaque key understood by the active StorageAdapter (file name under STORAGE_DIR for LocalDiskStorage)
+  storagePath      String
+  mimeType         String
+  durationSeconds  Int?
+  importedAt       DateTime        @default(now())
+  candidateName    String?
+  notes            String?
+  status           RecordingStatus @default(UNEVALUATED)
+  errorMessage     String?
+  /// Google Drive mirror file IDs (null until mirrored / when mirror disabled)
+  driveAudioFileId      String?
+  driveTranscriptFileId String?
+
+  transcript Transcript?
+  evaluation Evaluation?
+
+  @@index([status])
+  @@index([importedAt])
+}
+
+model Transcript {
+  id          String    @id @default(uuid())
+  recordingId String    @unique
+  recording   Recording @relation(fields: [recordingId], references: [id], onDelete: Cascade)
+  text        String
+  model       String
+  language    String?
+  createdAt   DateTime  @default(now())
+}
+
+model Evaluation {
+  id                       String    @id @default(uuid())
+  recordingId              String    @unique
+  recording                Recording @relation(fields: [recordingId], references: [id], onDelete: Cascade)
+  roleDesignation          String
+  department               String
+  subCategory              String
+  classificationConfidence String
+  classificationRationale  String
+  overallScore             Int
+  overallSummary           String
+  /// Array of { name, score, summary, evidence, recommendation } for the 5 matrix categories
+  categoriesJson           Json
+  /// string[]
+  strengths                Json
+  /// string[]
+  areasForImprovement      Json
+  recommendation           String
+  model                    String
+  createdAt                DateTime  @default(now())
+
+  @@index([department, subCategory])
+}
+
+// Seedable mirror of /server/src/config/taxonomy.ts (kept for relational use/reporting;
+// the config file remains the single editable source of truth).
+model Department {
+  id            String        @id @default(uuid())
+  name          String        @unique
+  subCategories SubCategory[]
+}
+
+model SubCategory {
+  id           String     @id @default(uuid())
+  name         String
+  departmentId String
+  department   Department @relation(fields: [departmentId], references: [id], onDelete: Cascade)
+
+  @@unique([departmentId, name])
+}

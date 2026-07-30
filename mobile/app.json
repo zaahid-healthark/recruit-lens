@@ -1,0 +1,39 @@
+{
+  "expo": {
+    "name": "Interview Evaluator",
+    "slug": "interview-evaluator",
+    "version": "1.0.0",
+    "orientation": "portrait",
+    "scheme": "interviewevaluator",
+    "userInterfaceStyle": "light",
+    "platforms": ["android", "ios"],
+    "android": {
+      "package": "com.healthark.interviewevaluator"
+    },
+    "plugins": [
+      [
+        "expo-build-properties",
+        {
+          "android": {
+            "usesCleartextTraffic": true
+          }
+        }
+      ],
+      [
+        "expo-share-intent",
+        {
+          "androidIntentFilters": ["audio/*", "application/ogg", "video/3gpp"],
+          "androidMultiIntentFilters": ["audio/*"],
+          "androidMainActivityAttributes": {
+            "android:launchMode": "singleTask"
+          },
+          "disableIOS": true
+        }
+      ]
+    ],
+    "extra": {
+      "apiBaseUrl": "",
+      "apiKey": ""
+    }
+  }
+}
