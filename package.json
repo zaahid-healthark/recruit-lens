@@ -1,0 +1,36 @@
+{
+  "name": "interview-evaluator",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Interview recording manager & AI evaluator — Expo mobile app + Express/Prisma backend",
+  "workspaces": [
+    "shared",
+    "server",
+    "mobile"
+  ],
+  "scripts": {
+    "db:up": "docker compose up -d",
+    "db:down": "docker compose down",
+    "db:migrate": "npm run migrate -w server",
+    "db:seed": "npm run seed -w server",
+    "db:studio": "npm run studio -w server",
+    "dev:server": "npm run dev -w server",
+    "dev:mobile": "npm run start -w mobile",
+    "android": "npm run android -w mobile",
+    "prebuild:android": "npm run prebuild -w mobile",
+    "typecheck": "npm run typecheck -w shared && npm run typecheck -w server && npm run typecheck -w mobile",
+    "lint": "eslint .",
+    "format": "prettier --write \"**/*.{ts,tsx,js,json,md}\""
+  },
+  "devDependencies": {
+    "eslint": "^9.20.0",
+    "prettier": "^3.4.2",
+    "typescript-eslint": "^8.24.0"
+  },
+  "overrides": {
+    "expo-font": "~55.0.8"
+  },
+  "engines": {
+    "node": ">=20.19"
+  }
+}
