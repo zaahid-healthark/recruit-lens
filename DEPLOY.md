@@ -11,29 +11,30 @@ Everything the repo needs is already committed: [`render.yaml`](render.yaml) (th
 
 ## Part 1 — Backend on Render
 
-### 1.1 Push the repo to GitHub
+### 1.1 Push the branch to GitHub
 
-Render deploys from a Git repo, so the branch you want live must be pushed:
+This deploys from **`chore/deploy-render-eas`**, not `main` — main is left untouched on purpose (this is the test/staging setup):
 
 ```bash
-git push origin main
+git push origin chore/deploy-render-eas
 ```
 
 ### 1.2 Create the services from the blueprint
 
 1. Sign in at [dashboard.render.com](https://dashboard.render.com) (GitHub login is easiest — it also grants repo access).
 2. **New ▾ → Blueprint**.
-3. Pick the `recruit-lens` repository → Render finds `render.yaml` and previews two resources:
+3. Pick the `recruit-lens` repository. Render shows a **branch selector** — set it to **`chore/deploy-render-eas`** (not the default `main`), since that's the branch that actually contains `render.yaml`.
+4. Render finds `render.yaml` and previews two resources:
    - `recruitlens-db` — PostgreSQL 16, free plan, Singapore
    - `recruitlens-api` — Node web service, free plan, Singapore
-4. It prompts for the two secrets marked `sync: false` in the blueprint:
+5. It prompts for the two secrets marked `sync: false` in the blueprint:
 
    | Key | Value |
    |---|---|
    | `API_KEY` | the shared secret the app sends as `x-api-key`. Must match `EXPO_PUBLIC_API_KEY` in `mobile/eas.json`. |
    | `OPENAI_API_KEY` | your `sk-…` key. Never goes into the repo or the APK — server-side only. |
 
-5. **Apply**. First deploy takes ~4–6 min (npm install + `prisma migrate deploy`).
+6. **Apply**. First deploy takes ~4–6 min (npm install + `prisma migrate deploy`).
 
 `DATABASE_URL` is wired to the database automatically — do not set it by hand.
 

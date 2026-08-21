@@ -2,6 +2,10 @@
 # Create everything in one shot: Render Dashboard → New → Blueprint → pick this repo.
 # Render reads this file, creates the Postgres database + web service, and wires
 # DATABASE_URL automatically. See DEPLOY.md for the click-by-click walkthrough.
+#
+# Deploys from `chore/deploy-render-eas`, NOT main — this is the test/staging
+# setup and main is intentionally left untouched. Point the Blueprint wizard's
+# branch selector at the same branch when creating it.
 
 databases:
   - name: recruitlens-db
@@ -22,7 +26,7 @@ services:
     runtime: node
     plan: free # Free instances sleep after ~15 min idle; first request then takes ~50 s.
     region: singapore # must match the database's region for the internal connection
-    branch: main
+    branch: chore/deploy-render-eas
     healthCheckPath: /health
     # Install only the `shared` + `server` workspaces — pulling in the React Native
     # dependency tree would blow past the free tier's build memory for no reason.
