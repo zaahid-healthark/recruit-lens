@@ -2,16 +2,27 @@
 
 Two halves, in this order:
 
-1. **[Backend → Render](#part-1--backend-on-render)** (free web service + free Postgres). Gives you an `https://….onrender.com` URL.
+1. **[Backend → Render](#part-1--backend-on-render)** (free web service; database on Neon). Gives you an `https://….onrender.com` URL.
 2. **[APK → EAS Build](#part-2--apk-via-eas-build)** (free Expo cloud build). Produces a standalone APK you install on any Android phone — no Metro, no USB cable, no Android Studio.
 
 Everything the repo needs is already committed: [`render.yaml`](render.yaml) (the Render blueprint) and the `preview` profile in [`mobile/eas.json`](mobile/eas.json).
+
+**Why the database isn't on Render:** Render's free plan allows exactly **one** free Postgres per account, and this account's free slot is already used by a separate, live project. `render.yaml` deliberately has no `databases:` block — the database lives on [Neon](https://neon.tech) instead (also free, and unlike Render's it doesn't expire after 30 days), fully isolated from that other project.
 
 ---
 
 ## Part 1 — Backend on Render
 
-### 1.1 Push the branch to GitHub
+### 1.1 Create the free database on Neon
+
+1. Sign up at [neon.tech](https://neon.tech) (GitHub login works) → **Create a project**. Pick a region close to Render's — **Singapore / ap-southeast-1** if offered, otherwise the nearest one.
+2. Neon shows a connection string immediately, something like:
+   ```
+   postgresql://neondb_owner:AbC123@ep-cool-name-12345.ap-southeast-1.aws.neon.tech/neondb?sslmode=require
+   ```
+   Copy it — this is the whole `DATABASE_URL`, `?sslmode=require` and all. Nothing else to configure; the default `neondb` database it creates is fine to use as-is.
+
+### 1.2 Push the branch to GitHub
 
 This deploys from **`chore/deploy-render-eas`**, not `main` — main is left untouched on purpose (this is the test/staging setup):
 
@@ -19,26 +30,23 @@ This deploys from **`chore/deploy-render-eas`**, not `main` — main is left unt
 git push origin chore/deploy-render-eas
 ```
 
-### 1.2 Create the services from the blueprint
+### 1.3 Create the service from the blueprint
 
 1. Sign in at [dashboard.render.com](https://dashboard.render.com) (GitHub login is easiest — it also grants repo access).
-2. **New ▾ → Blueprint**.
+2. **New ▾ → Generate Blueprint** (Render's current name for what creates resources from a `render.yaml`).
 3. Pick the `recruit-lens` repository. Render shows a **branch selector** — set it to **`chore/deploy-render-eas`** (not the default `main`), since that's the branch that actually contains `render.yaml`.
-4. Render finds `render.yaml` and previews two resources:
-   - `recruitlens-db` — PostgreSQL 16, free plan, Singapore
-   - `recruitlens-api` — Node web service, free plan, Singapore
-5. It prompts for the two secrets marked `sync: false` in the blueprint:
+4. Render finds `render.yaml` and previews one resource: `recruitlens-api` — Node web service, free plan, Singapore. (No database in the preview — that's expected, see above.)
+5. It prompts for the three secrets marked `sync: false` in the blueprint:
 
    | Key | Value |
    |---|---|
+   | `DATABASE_URL` | the full connection string you copied from Neon in step 1.1. |
    | `API_KEY` | the shared secret the app sends as `x-api-key`. Must match `EXPO_PUBLIC_API_KEY` in `mobile/eas.json`. |
    | `OPENAI_API_KEY` | your `sk-…` key. Never goes into the repo or the APK — server-side only. |
 
-6. **Apply**. First deploy takes ~4–6 min (npm install + `prisma migrate deploy`).
+6. **Apply**. First deploy takes ~4–6 min (npm install + `prisma migrate deploy` against Neon).
 
-`DATABASE_URL` is wired to the database automatically — do not set it by hand.
-
-### 1.3 Verify
+### 1.4 Verify
 
 Copy the service URL from the top of the service page, then:
 
@@ -54,14 +62,15 @@ Auth check — this should return the taxonomy JSON, not a 401:
 curl -H "x-api-key: YOUR_API_KEY" https://YOUR-SERVICE.onrender.com/taxonomy
 ```
 
-### 1.4 What the free tier means in practice
+### 1.5 What the free tier means in practice
 
-- **Instances sleep after ~15 min idle.** The next request pays a ~50 s cold start. The app's request timeout was raised to 60 s so this shows up as "slow" rather than as an error. Pull-to-refresh once to wake it, then use it normally.
-- **No persistent disk.** Uploaded audio lives in `/tmp` and is lost on redeploy or after a sleep cycle. Transcripts, scores and dashboard data live in Postgres and persist. Practical rule: **evaluate a recording in the same session you import it.** If the audio is gone, re-evaluating a `FAILED` row still works (it reuses the stored transcript), but a fresh transcription does not — delete and re-import.
-- **Render deletes free Postgres databases 30 days after creation.** When that happens, create a new one and redeploy — the blueprint re-runs the migrations, and nothing in the code changes. To avoid it entirely later, point `DATABASE_URL` at a Neon or Supabase free database instead.
-- **512 MB RAM.** Fine for this workload. The build deliberately installs only the `shared` + `server` workspaces so the React Native dependency tree never enters the build.
+- **Render's instance sleeps after ~15 min idle.** The next request pays a ~50 s cold start. The app's request timeout was raised to 60 s so this shows up as "slow" rather than as an error. Pull-to-refresh once to wake it, then use it normally.
+- **Neon's compute scales to zero after ~5 min idle too** — a separate, much shorter cold start (typically well under a second) on the database side. Usually invisible underneath Render's own wake-up; not something to worry about separately.
+- **No persistent disk on Render.** Uploaded audio lives in `/tmp` and is lost on redeploy or after a sleep cycle. Transcripts, scores and dashboard data live in Postgres (on Neon) and persist normally. Practical rule: **evaluate a recording in the same session you import it.** If the audio is gone, re-evaluating a `FAILED` row still works (it reuses the stored transcript), but a fresh transcription does not — delete and re-import.
+- **Neon's free plan does not expire** (unlike Render's own free Postgres, which is deleted after 30 days) — one less thing to redo later. It does cap storage at 0.5 GB and 100 compute-hours/month, both far beyond what testing needs.
+- **512 MB RAM on Render.** Fine for this workload. The build deliberately installs only the `shared` + `server` workspaces so the React Native dependency tree never enters the build.
 
-### 1.5 Optional — keep it awake
+### 1.6 Optional — keep it awake
 
 A free cron pinger (e.g. [cron-job.org](https://cron-job.org)) hitting `/health` every 10 minutes keeps the instance warm through a testing day. Render's own cron jobs are a paid feature.
 
@@ -140,7 +149,7 @@ Open the build URL on the Android device (or scan the QR the CLI prints) → dow
 | App shows "Cannot reach the server at …" | URL typo in `eas.json` (needs `https://`, no trailing slash), or the Render service is failing — check **Logs** in the Render dashboard. |
 | Every request 401s | `EXPO_PUBLIC_API_KEY` in `eas.json` does not match `API_KEY` on Render. Fix and rebuild the APK. |
 | First request times out, later ones work | Normal cold start. Retry. |
-| Render build fails at `prisma migrate deploy` | Database not ready yet, or in a different region. Confirm `recruitlens-db` is **Available**, then **Manual Deploy → Deploy latest commit**. |
+| Render build fails at `prisma migrate deploy` | `DATABASE_URL` is wrong, missing `?sslmode=require`, or was mistyped when pasted into Render. Open the Neon project → copy the connection string again → update the env var on Render → **Manual Deploy → Deploy latest commit**. |
 | Evaluation lands in `FAILED` with an OpenAI error | Bad or absent `OPENAI_API_KEY`, no billing/quota, or no access to the configured model. Override `OPENAI_TRANSCRIBE_MODEL` / `OPENAI_EVAL_MODEL` on Render to models your account can use. Transcription fallbacks (`gpt-4o-transcribe`, then `whisper-1`) are automatic. |
 | Evaluation lands in `FAILED` with a missing-file error | The audio was lost to the ephemeral disk (see 1.4). Delete the row and re-import. |
 | App missing from the share sheet | An APK built before `expo-share-intent` was configured, or a dev-client build. Rebuild with `--profile preview`. |

@@ -1,31 +1,25 @@
 # Render Blueprint for the RecruitLens backend.
 # Create everything in one shot: Render Dashboard → New → Blueprint → pick this repo.
-# Render reads this file, creates the Postgres database + web service, and wires
-# DATABASE_URL automatically. See DEPLOY.md for the click-by-click walkthrough.
+# Render reads this file and creates the web service below. See DEPLOY.md for
+# the click-by-click walkthrough.
 #
 # Deploys from `chore/deploy-render-eas`, NOT main — this is the test/staging
 # setup and main is intentionally left untouched. Point the Blueprint wizard's
 # branch selector at the same branch when creating it.
-
-databases:
-  - name: recruitlens-db
-    databaseName: interview_evaluator
-    user: recruitlens
-    plan: free # NOTE: Render deletes free databases 30 days after creation.
-    region: singapore
-    postgresMajorVersion: "16"
-    # Uncomment to also allow connections from outside Render (e.g. Prisma Studio
-    # on your laptop). Migrations do NOT need this — they run in the build step.
-    # ipAllowList:
-    #   - source: 0.0.0.0/0
-    #     description: anywhere
+#
+# NOTE: the database is deliberately NOT defined here. Render's free plan
+# allows only one free Postgres per account, and this account's free slot is
+# already used by a separate, live project that must not be touched. So this
+# blueprint has no `databases:` block — DATABASE_URL is a plain secret you
+# paste in yourself, pointed at a free instance from Neon (or Supabase/any
+# other Postgres host) instead. See DEPLOY.md Part 1 for the Neon steps.
 
 services:
   - type: web
     name: recruitlens-api
     runtime: node
     plan: free # Free instances sleep after ~15 min idle; first request then takes ~50 s.
-    region: singapore # must match the database's region for the internal connection
+    region: singapore
     branch: chore/deploy-render-eas
     healthCheckPath: /health
     # Install only the `shared` + `server` workspaces — pulling in the React Native
@@ -36,11 +30,11 @@ services:
     envVars:
       - key: NODE_VERSION
         value: "22.14.0"
+      # ── Set these three yourself in the Render dashboard (never committed) ──
+      # DATABASE_URL: the connection string from Neon (or wherever the DB lives).
+      # Must include ?sslmode=require (Neon's copy-paste string already has it).
       - key: DATABASE_URL
-        fromDatabase:
-          name: recruitlens-db
-          property: connectionString
-      # ── Set these two yourself in the Render dashboard (never committed) ──
+        sync: false
       # API_KEY: the shared secret; the same string goes into mobile/eas.json.
       - key: API_KEY
         sync: false
