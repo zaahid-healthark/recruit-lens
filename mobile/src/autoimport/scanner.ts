@@ -1,0 +1,315 @@
+import * as FileSystem from "expo-file-system/legacy";
+import { api, ApiRequestError } from "../api/client";
+import {
+  buildCandidateFilename,
+  extensionOf,
+  fileNameFromSafUri,
+  filenameMatchesNumber,
+  isAudioFilename,
+  mimeFromExtension,
+  timestampFromFilename,
+} from "./naming";
+import { AutoImportState, FileProbe, PendingCall } from "./store";
+
+/**
+ * One pass of the watched-folder scanner:
+ *   list folder → keep audio files that have finished being written →
+ *   upload each to POST /recordings → optionally rename on disk.
+ *
+ * A file that matches a pending call (started from the Dialer tab) is uploaded
+ * as "<Candidate> <date>.<ext>" with candidateName attached; everything else
+ * keeps its original filename. Transient upload failures are NOT recorded, so
+ * they retry on the next scan.
+ */
+
+export interface ScanOutcome {
+  ok: boolean;
+  /** Files uploaded this pass. */
+  imported: number;
+  /** How many of those were matched to a pending Dialer call. */
+  matchedCalls: number;
+  /** Files skipped because they are still being written (call in progress). */
+  settling: number;
+  /** Files renamed inside the recorder's folder. */
+  renamed: number;
+  discovered: number;
+  error: string | null;
+}
+
+/**
+ * A file whose size has not changed for this long is treated as finished.
+ * Call recorders write continuously for the whole call (15-30+ min), so this
+ * is what stops a partial recording from being uploaded mid-call.
+ */
+export const SETTLE_MS = 25_000;
+
+/** Time-based matching only trusts pending calls younger than this. */
+const CALL_MATCH_WINDOW_MS = 12 * 60 * 60 * 1000;
+/** Allow small clock skew between "Call" tap and the recorder's file stamp. */
+const CLOCK_SKEW_MS = 2 * 60 * 1000;
+
+/**
+ * Cap for the on-disk rename. SAF has no rename operation, so it is emulated
+ * by copying the bytes through JS as base64 — fine for the compact formats
+ * call recorders use (30 min of AMR is ~2 MB), but a large file would risk an
+ * out-of-memory crash, so those keep their original name instead.
+ */
+const MAX_RENAME_BYTES = 16 * 1024 * 1024;
+
+/** Uploading a long interview over mobile data needs more than the default. */
+const UPLOAD_TIMEOUT_MS = 5 * 60 * 1000;
+
+/** SAF document URIs of all audio files currently in the folder. */
+export async function listAudioFiles(folderUri: string): Promise<string[]> {
+  const entries = await FileSystem.StorageAccessFramework.readDirectoryAsync(folderUri);
+  return entries.filter((uri) => isAudioFilename(fileNameFromSafUri(uri)));
+}
+
+/** Current byte size of a SAF document, or null when it cannot be read. */
+async function sizeOf(uri: string): Promise<number | null> {
+  try {
+    const info = await FileSystem.getInfoAsync(uri);
+    return info.exists && typeof info.size === "number" ? info.size : null;
+  } catch {
+    return null;
+  }
+}
+
+/** Best-effort recording time: filename stamp, else the matched call, else now. */
+function recordedAtFor(filename: string, call: PendingCall | null): Date {
+  const fromName = timestampFromFilename(filename);
+  if (fromName) return fromName;
+  if (call) {
+    const started = Date.parse(call.startedAt);
+    if (Number.isFinite(started)) return new Date(started);
+  }
+  return new Date();
+}
+
+function matchPendingCall(
+  filename: string,
+  calls: PendingCall[],
+  recordedAt: Date | null
+): PendingCall | null {
+  // 1) Primary: the recorder embeds the dialed number in the filename.
+  const byNumber = calls.find((c) => filenameMatchesNumber(filename, c.digits));
+  if (byNumber) return byNumber;
+  // 2) Fallback: exactly one live pending call and the file was recorded after it started.
+  const live = calls.filter((c) => Date.now() - Date.parse(c.startedAt) < CALL_MATCH_WINDOW_MS);
+  if (
+    live.length === 1 &&
+    recordedAt !== null &&
+    recordedAt.getTime() >= Date.parse(live[0].startedAt) - CLOCK_SKEW_MS
+  ) {
+    return live[0];
+  }
+  return null;
+}
+
+/**
+ * A 4xx (other than timeout/rate-limit) means this file will never be
+ * accepted — record it and move on instead of blocking every later file.
+ * Anything else (network error, 5xx) means "try again later".
+ */
+function isPermanentRejection(err: unknown): boolean {
+  const status = err instanceof ApiRequestError ? err.status : undefined;
+  return (
+    typeof status === "number" && status >= 400 && status < 500 && status !== 408 && status !== 429
+  );
+}
+
+/**
+ * Rename a document inside the watched folder. SAF exposes no rename, so this
+ * creates a new document with the target name, copies the bytes, verifies the
+ * copy, and only then deletes the original. Returns the new URI, or null when
+ * the rename was skipped/failed (in which case the original is untouched).
+ */
+async function renameInFolder(
+  folderUri: string,
+  fileUri: string,
+  currentName: string,
+  newName: string,
+  size: number
+): Promise<string | null> {
+  if (newName === currentName) return null;
+  if (size <= 0 || size > MAX_RENAME_BYTES) return null;
+
+  let newUri: string | null = null;
+  try {
+    const base64 = await FileSystem.readAsStringAsync(fileUri, {
+      encoding: FileSystem.EncodingType.Base64,
+    });
+    newUri = await FileSystem.StorageAccessFramework.createFileAsync(
+      folderUri,
+      newName,
+      mimeFromExtension(extensionOf(newName))
+    );
+    await FileSystem.writeAsStringAsync(newUri, base64, {
+      encoding: FileSystem.EncodingType.Base64,
+    });
+    // Never delete the original until the copy is provably complete.
+    const written = await sizeOf(newUri);
+    if (written !== size) throw new Error(`copy size mismatch (${written} vs ${size})`);
+    await FileSystem.StorageAccessFramework.deleteAsync(fileUri);
+    return newUri;
+  } catch {
+    if (newUri) {
+      // Roll back the half-written copy so the folder is left clean.
+      await FileSystem.StorageAccessFramework.deleteAsync(newUri).catch(() => undefined);
+    }
+    return null;
+  }
+}
+
+export async function runScan(
+  state: AutoImportState
+): Promise<{ state: AutoImportState; outcome: ScanOutcome }> {
+  const outcome: ScanOutcome = {
+    ok: true,
+    imported: 0,
+    matchedCalls: 0,
+    settling: 0,
+    renamed: 0,
+    discovered: 0,
+    error: null,
+  };
+  const folderUri = state.folderUri;
+  if (!folderUri) {
+    return { state, outcome: { ...outcome, ok: false, error: "No folder selected." } };
+  }
+
+  let audioUris: string[];
+  try {
+    audioUris = await listAudioFiles(folderUri);
+  } catch {
+    return {
+      state: {
+        ...state,
+        lastScanAt: new Date().toISOString(),
+        lastScanSummary: "Folder unreadable",
+      },
+      outcome: {
+        ...outcome,
+        ok: false,
+        error:
+          "The watched folder could not be read — access may have been revoked. Choose it again.",
+      },
+    };
+  }
+
+  const next: AutoImportState = {
+    ...state,
+    importedUris: { ...state.importedUris },
+    probes: { ...state.probes },
+    rejected: { ...state.rejected },
+    pendingCalls: [...state.pendingCalls],
+  };
+
+  // Forget bookkeeping for files that no longer exist (keeps the state small).
+  const present = new Set(audioUris);
+  for (const map of [next.importedUris, next.probes, next.rejected] as Record<string, unknown>[]) {
+    for (const key of Object.keys(map)) {
+      if (!present.has(key)) delete map[key];
+    }
+  }
+
+  const fresh = audioUris
+    .filter((uri) => !next.importedUris[uri] && !next.rejected[uri])
+    .map((uri) => ({ uri, name: fileNameFromSafUri(uri) }))
+    // Recorder filenames embed timestamps, so lexicographic ≈ chronological.
+    .sort((a, b) => a.name.localeCompare(b.name));
+  outcome.discovered = fresh.length;
+
+  const nowMs = Date.now();
+  for (const file of fresh) {
+    // ── Settling check: never upload a file that is still being written ──
+    const size = await sizeOf(file.uri);
+    if (size === null || size === 0) {
+      outcome.settling += 1;
+      next.probes[file.uri] = { size: size ?? 0, seenAt: new Date(nowMs).toISOString() };
+      continue;
+    }
+    const probe: FileProbe | undefined = next.probes[file.uri];
+    const seenAt = probe ? Date.parse(probe.seenAt) : NaN;
+    const stable =
+      probe !== undefined &&
+      probe.size === size &&
+      Number.isFinite(seenAt) &&
+      nowMs - seenAt >= SETTLE_MS;
+    if (!stable) {
+      // Size changed (or first sighting) — re-arm the timer and check again next scan.
+      if (!probe || probe.size !== size) {
+        next.probes[file.uri] = { size, seenAt: new Date(nowMs).toISOString() };
+      }
+      outcome.settling += 1;
+      continue;
+    }
+
+    // ── Match to a pending call, then upload ──
+    const recordedAt = recordedAtFor(file.name, null);
+    const match = matchPendingCall(file.name, next.pendingCalls, recordedAt);
+    const when = recordedAtFor(file.name, match);
+    const ext = extensionOf(file.name);
+    const uploadName = match ? buildCandidateFilename(match.candidateName, when, ext) : file.name;
+    const notes = match
+      ? `Auto-imported from watched folder • Called ${match.phoneNumber} • Original file: ${file.name}`
+      : "Auto-imported from watched folder";
+
+    try {
+      await api.uploadRecording(
+        { uri: file.uri, name: uploadName, mimeType: mimeFromExtension(ext) },
+        match?.candidateName,
+        notes,
+        UPLOAD_TIMEOUT_MS
+      );
+    } catch (err) {
+      const message = err instanceof Error ? err.message : String(err);
+      if (isPermanentRejection(err)) {
+        // Unsupported/rejected file — skip it so it can't block the queue.
+        next.rejected[file.uri] = message.slice(0, 200);
+        continue;
+      }
+      // Server unreachable / server error — stop and retry everything next scan.
+      outcome.ok = false;
+      outcome.error = message;
+      break;
+    }
+
+    // Upload succeeded: the recording is safe on the server before we touch
+    // anything on disk.
+    next.importedUris[file.uri] = true;
+    delete next.probes[file.uri];
+    next.totalImported += 1;
+    outcome.imported += 1;
+    if (match) {
+      next.pendingCalls = next.pendingCalls.filter((c) => c.id !== match.id);
+      outcome.matchedCalls += 1;
+    }
+
+    // ── Optional: rename the file in the recorder's folder to match ──
+    if (match && next.renameOnDisk) {
+      const renamedUri = await renameInFolder(folderUri, file.uri, file.name, uploadName, size);
+      if (renamedUri) {
+        delete next.importedUris[file.uri]; // that URI no longer exists
+        next.importedUris[renamedUri] = true;
+        outcome.renamed += 1;
+      }
+    }
+  }
+
+  next.lastScanAt = new Date().toISOString();
+  next.lastScanSummary = summarize(outcome);
+  return { state: next, outcome };
+}
+
+function summarize(outcome: ScanOutcome): string {
+  const parts: string[] = [];
+  if (outcome.imported > 0) {
+    parts.push(`imported ${outcome.imported}`);
+    if (outcome.matchedCalls > 0) parts.push(`${outcome.matchedCalls} matched to a call`);
+    if (outcome.renamed > 0) parts.push(`${outcome.renamed} renamed`);
+  }
+  if (outcome.settling > 0) parts.push(`${outcome.settling} still recording`);
+  if (outcome.error) parts.push(`failed: ${outcome.error.slice(0, 100)}`);
+  return parts.length > 0 ? parts.join(", ") : "no new files";
+}

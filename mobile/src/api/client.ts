@@ -107,7 +107,10 @@ export const api = {
   uploadRecording: (
     file: UploadFileInput,
     candidateName?: string,
-    notes?: string
+    notes?: string,
+    // Long interview recordings on mobile data need more than the default;
+    // the auto-import scanner passes a larger value.
+    timeoutMs = 120000
   ): Promise<RecordingListItemDto> => {
     const form = new FormData();
     // React Native FormData accepts { uri, name, type } file descriptors.
@@ -115,6 +118,6 @@ export const api = {
     if (candidateName) form.append("candidateName", candidateName);
     if (notes) form.append("notes", notes);
     // Don't set Content-Type manually — fetch adds the multipart boundary itself.
-    return request<RecordingListItemDto>("/recordings", { method: "POST", body: form }, 120000);
+    return request<RecordingListItemDto>("/recordings", { method: "POST", body: form }, timeoutMs);
   },
 };

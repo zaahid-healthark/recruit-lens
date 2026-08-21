@@ -5,6 +5,7 @@ import React, { useEffect, useMemo, useState } from "react";
 import { Alert } from "react-native";
 import { SafeAreaProvider } from "react-native-safe-area-context";
 import type { UploadFileInput } from "./src/api/client";
+import { AutoImportProvider } from "./src/autoimport/AutoImportContext";
 import { ImportModal } from "./src/components/ImportModal";
 import { RefreshProvider, useRefresh } from "./src/context/RefreshContext";
 import { RootNavigator } from "./src/navigation/RootNavigator";
@@ -34,7 +35,8 @@ function ShareIntentGate(): React.JSX.Element {
       (shareIntent?.files ?? []).map((f, i) => {
         const path = f.path ?? "";
         return {
-          uri: path.startsWith("file://") || path.startsWith("content://") ? path : `file://${path}`,
+          uri:
+            path.startsWith("file://") || path.startsWith("content://") ? path : `file://${path}`,
           name: f.fileName || `recording-${i + 1}${extensionFromMime(f.mimeType)}`,
           mimeType: f.mimeType || "audio/mpeg",
         };
@@ -66,11 +68,13 @@ export default function App(): React.JSX.Element {
     <ShareIntentProvider>
       <SafeAreaProvider>
         <RefreshProvider>
-          <NavigationContainer>
-            <StatusBar style="dark" />
-            <RootNavigator />
-            <ShareIntentGate />
-          </NavigationContainer>
+          <AutoImportProvider>
+            <NavigationContainer>
+              <StatusBar style="dark" />
+              <RootNavigator />
+              <ShareIntentGate />
+            </NavigationContainer>
+          </AutoImportProvider>
         </RefreshProvider>
       </SafeAreaProvider>
     </ShareIntentProvider>

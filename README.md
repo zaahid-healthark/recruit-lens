@@ -1,6 +1,6 @@
 # RecruitLens — Interview Evaluator
 
-Recruiters record interview calls with their phone's normal recorder, then **share the audio file into this app** via the Android share sheet (or upload it in-app). The app manages recordings in a structured library, transcribes and **evaluates them with AI** against a fixed scoring matrix, detects the **role/designation**, and classifies each interview into a **department › sub-category**. A dashboard summarizes everything. A Dialer tab is stubbed for a future release.
+Recruiters record interview calls with their phone's normal recorder, then **share the audio file into this app** via the Android share sheet (or upload it in-app). The app manages recordings in a structured library, transcribes and **evaluates them with AI** against a fixed scoring matrix, detects the **role/designation**, and classifies each interview into a **department › sub-category**. A dashboard summarizes everything. The Dialer tab starts candidate calls via the phone dialer and, together with a watched recordings folder (e.g. Cube ACR), auto-imports call recordings named after the candidate.
 
 ## Monorepo layout
 
@@ -28,13 +28,13 @@ The steps below take a clean machine to a working app on an Android emulator. Co
 
 ## Step 0 — Prerequisites
 
-| Tool | Needed for | Check |
-|---|---|---|
-| Node.js ≥ 20.19 | everything | `node -v` |
-| Docker Desktop | PostgreSQL | `docker --version` |
-| Android Studio | emulator + dev build | step 6 installs it |
-| ~20 GB free disk | Android SDK/emulator/Gradle | |
-| OpenAI API key | real AI mode only | **not** needed for MOCK_AI |
+| Tool             | Needed for                  | Check                      |
+| ---------------- | --------------------------- | -------------------------- |
+| Node.js ≥ 20.19  | everything                  | `node -v`                  |
+| Docker Desktop   | PostgreSQL                  | `docker --version`         |
+| Android Studio   | emulator + dev build        | step 6 installs it         |
+| ~20 GB free disk | Android SDK/emulator/Gradle |                            |
+| OpenAI API key   | real AI mode only           | **not** needed for MOCK_AI |
 
 ## Step 1 — Install dependencies
 
@@ -95,7 +95,7 @@ curl http://localhost:4000/health     # → {"ok":true,"mockAi":true}
    ```
 
    **Close and reopen every terminal** (and VS Code), then verify: `adb --version` works and `java -version` reports OpenJDK 17+ (not 1.8).
-   *macOS/Linux:* export `ANDROID_HOME=$HOME/Library/Android/sdk` (or `$HOME/Android/Sdk`) and add `platform-tools`/`emulator` to `PATH` in your shell profile.
+   _macOS/Linux:_ export `ANDROID_HOME=$HOME/Library/Android/sdk` (or `$HOME/Android/Sdk`) and add `platform-tools`/`emulator` to `PATH` in your shell profile.
 
 3. **Windows only, if you also run Docker Desktop / Hyper-V:** the emulator needs the Windows Hypervisor Platform to coexist with it. In an **admin** PowerShell, then reboot:
 
@@ -103,7 +103,7 @@ curl http://localhost:4000/health     # → {"ok":true,"mockAi":true}
    Enable-WindowsOptionalFeature -Online -FeatureName HypervisorPlatform -All
    ```
 
-4. **Create an emulator:** Android Studio → **Virtual Device Manager** → *Create Virtual Device* → **Pixel 8** → download the recommended system image (API 35/36, x86_64) → Finish → press **▶** to boot it. Verify `adb devices` lists it.
+4. **Create an emulator:** Android Studio → **Virtual Device Manager** → _Create Virtual Device_ → **Pixel 8** → download the recommended system image (API 35/36, x86_64) → Finish → press **▶** to boot it. Verify `adb devices` lists it.
 
 ## Step 7 — Configure the mobile app
 
@@ -126,7 +126,7 @@ npx expo prebuild --platform android     # generates the android/ project
 npx expo run:android                     # Gradle build → installs on the emulator → starts Metro
 ```
 
-When it finishes, the **Interview Evaluator** app opens showing a *Development Build* launcher screen — **tap the `http://10.0.2.2:8081` server row** to load the app UI. That launcher is normal; you'll see it every time you open the dev build.
+When it finishes, the **Interview Evaluator** app opens showing a _Development Build_ launcher screen — **tap the `http://10.0.2.2:8081` server row** to load the app UI. That launcher is normal; you'll see it every time you open the dev build.
 
 No local Android setup? Build in the cloud instead: `npx eas build --profile development --platform android`, install the produced APK on a device, then `npm run start`.
 
@@ -144,7 +144,7 @@ npm run dev:mobile     # terminal 2 — Metro; then open the app on the emulator
 1. **Recordings → Evaluated tab** already shows the seeded samples (proves app ↔ server connectivity).
 2. **Import via share sheet:** drag any audio file onto the emulator window (lands in Downloads) → open the **Files** app → Downloads → long-press the file → **Share** → **Interview Evaluator** → add a candidate name → **Import**.
 3. **Or import in-app:** tap the **upload icon** (top-right) or **"Upload a recording from this device"** and pick a file.
-4. On the **Unevaluated** tab tap **Evaluate** (or **Evaluate all**) — the row goes *Transcribing → Scoring → Evaluated* (~2 s in mock mode).
+4. On the **Unevaluated** tab tap **Evaluate** (or **Evaluate all**) — the row goes _Transcribing → Scoring → Evaluated_ (~2 s in mock mode).
 5. Tap the evaluated row: score, role, department › sub-category, the 5-category matrix with evidence, strengths/improvements, collapsible transcript.
 6. Check the **Dashboard** tab; long-press any row to delete it.
 
@@ -170,6 +170,25 @@ Restart the server; the log switches to `Mode: real AI`. One OpenAI key powers b
 
 Test with a **real speech recording** — the seeded samples are silent placeholders, and already-evaluated rows reuse their existing (mock) transcripts on retry; delete + re-import for a clean real run.
 
+## Auto-import from a watched folder + Dialer
+
+The **Dialer** tab (mobile) adds two connected features.
+
+**1. Watched folder.** Pick the folder where your call recorder saves audio (for Cube ACR: `CubeCallRecorder/All`) via Android's system folder picker — the grant is scoped to that one folder and persists across restarts. New audio files are uploaded to `POST /recordings` automatically. Scans run on launch, whenever the app returns to the foreground, on a timer while the app is open, and as a **daily sweep** at a configurable time (default 5 PM). An on-device ledger prevents duplicates.
+
+- **Settling check** — a recorder writes its file for the entire call (15-30+ min), so a file is only uploaded once its **size has stopped changing for 25 s**. This is what stops a partial recording being uploaded mid-call. While files are still growing the scan interval tightens to ~12 s so they land promptly once the call ends; the UI shows "N files still being recorded".
+- **Failure handling** — a permanently rejected file (4xx, e.g. unsupported type) is recorded and skipped so it can't block the queue; network/5xx failures stop the pass and retry on the next scan. The daily sweep clears the rejected list so everything gets one fresh attempt per day.
+
+**2. Call a candidate.** Enter name + number → the phone's native dialer opens pre-filled (no `CALL_PHONE` permission needed) and a _pending call_ is registered. When that call's recording appears in the watched folder — matched by the phone number embedded in the filename, e.g. `Sai_98682_24211_20260820_125753.amr` — it is uploaded as **`Sai Kumar 2026-08-20 12-57.amr`** with the candidate name attached. Unmatched files import under their original names. Pending calls expire after 24 h.
+
+**Renaming the file in the recorder's folder** (toggle, on by default) — after a _successful_ upload, the local file is also renamed to match. SAF exposes no rename operation (`File.rename()` throws on `content://` URIs), so it is emulated: create a new document with the target name → copy the bytes → **verify the byte count** → only then delete the original. Consequences worth knowing:
+
+- Upload happens **before** the local rename, so the recording is safe on the server before anything on disk is touched. A failed rename leaves the original untouched.
+- The copy passes through JS as base64, so files over **16 MB** keep their original name instead of risking an out-of-memory crash. 30 min of AMR is ~2 MB; a 30-min 128 kbps M4A would exceed the cap.
+- Cube ACR keeps its own database of recordings. Because the rename is really create+delete, Cube's in-app list may show the old entry as missing. Turn the toggle off if that bothers you — the server-side name is unaffected either way.
+
+**Scope:** all of this runs in-process, so it needs the app to be open. A phone sitting with the app closed at 5 PM sweeps as soon as the app is next opened (catch-up), not at 5 PM sharp. True app-closed scheduling needs `expo-background-task` (WorkManager, 15-min minimum interval) plus a native rebuild — the seam is `maybeSweep()` in `mobile/src/autoimport/AutoImportContext.tsx`. Everything else here is pure JS on existing native modules, so no rebuild is required.
+
 ## Google Drive mirror (optional)
 
 Postgres stays the app's engine, but the server can mirror **everything** into a shared Google Drive folder: audio files into `Recordings/`, transcripts into `Transcripts/`, and one row per recording (all matrix scores, classification, links) in an auto-created **Evaluations** Google Sheet. Rows update live as recordings are imported, evaluated, or fail; deleting a recording also removes its Drive files and sheet row.
@@ -190,33 +209,33 @@ One file: **`server/src/config/taxonomy.ts`** (departments → sub-categories). 
 
 ## API reference (all JSON; header `x-api-key: <API_KEY>` required except `/health`)
 
-| Method | Path | Description |
-|---|---|---|
-| GET | `/health` | liveness + mode (no auth) |
-| POST | `/recordings` | multipart import: `file` + optional `candidateName`, `notes` |
-| GET | `/recordings?status=&department=&subCategory=` | list, newest first |
-| GET | `/recordings/:id` | detail incl. transcript + evaluation |
-| POST | `/recordings/:id/evaluate` | run pipeline (async, 202) — also retry/re-evaluate |
-| POST | `/evaluate/bulk` | evaluate all UNEVALUATED (resumable, re-trigger safe) |
-| GET | `/evaluate/bulk/status` | bulk progress for polling |
-| DELETE | `/recordings/:id` | delete recording + transcript + evaluation + file |
-| GET | `/dashboard/stats` | aggregates for the dashboard |
-| GET | `/taxonomy` | current departments/sub-categories |
+| Method | Path                                           | Description                                                  |
+| ------ | ---------------------------------------------- | ------------------------------------------------------------ |
+| GET    | `/health`                                      | liveness + mode (no auth)                                    |
+| POST   | `/recordings`                                  | multipart import: `file` + optional `candidateName`, `notes` |
+| GET    | `/recordings?status=&department=&subCategory=` | list, newest first                                           |
+| GET    | `/recordings/:id`                              | detail incl. transcript + evaluation                         |
+| POST   | `/recordings/:id/evaluate`                     | run pipeline (async, 202) — also retry/re-evaluate           |
+| POST   | `/evaluate/bulk`                               | evaluate all UNEVALUATED (resumable, re-trigger safe)        |
+| GET    | `/evaluate/bulk/status`                        | bulk progress for polling                                    |
+| DELETE | `/recordings/:id`                              | delete recording + transcript + evaluation + file            |
+| GET    | `/dashboard/stats`                             | aggregates for the dashboard                                 |
+| GET    | `/taxonomy`                                    | current departments/sub-categories                           |
 
 Pipeline statuses: `UNEVALUATED → TRANSCRIBING → SCORING → EVALUATED | FAILED` (with `errorMessage`). Recordings interrupted by a restart are auto-reset to `UNEVALUATED` on boot — nothing gets stuck.
 
 ## Scripts
 
-| Command (repo root) | What it does |
-|---|---|
-| `npm run db:up` / `db:down` | start/stop Postgres |
+| Command (repo root)                            | What it does                         |
+| ---------------------------------------------- | ------------------------------------ |
+| `npm run db:up` / `db:down`                    | start/stop Postgres                  |
 | `npm run db:migrate` / `db:seed` / `db:studio` | Prisma migrate / seed / data browser |
-| `npm run dev:server` | backend with hot reload (tsx watch) |
-| `npm run dev:mobile` | Metro for the dev client |
-| `npm run android` | build + run the Android dev build |
-| `npm run drive:sync -w server` | backfill the Google Drive mirror |
-| `npm run typecheck` | strict TS across all packages |
-| `npm run lint` / `format` | ESLint (server+shared) / Prettier |
+| `npm run dev:server`                           | backend with hot reload (tsx watch)  |
+| `npm run dev:mobile`                           | Metro for the dev client             |
+| `npm run android`                              | build + run the Android dev build    |
+| `npm run drive:sync -w server`                 | backfill the Google Drive mirror     |
+| `npm run typecheck`                            | strict TS across all packages        |
+| `npm run lint` / `format`                      | ESLint (server+shared) / Prettier    |
 
 ## Troubleshooting
 
@@ -228,7 +247,7 @@ Pipeline statuses: `UNEVALUATED → TRANSCRIBING → SCORING → EVALUATED | FAI
   The dev build already allows plain `http://` via `expo-build-properties`.
 - **Emulator:** `http://10.0.2.2:4000` is the host machine — don't use `localhost`.
 - **Changed `mobile/.env` but nothing happened:** `EXPO_PUBLIC_*` vars are inlined at bundle time — restart Metro.
-- **QR code does nothing in Expo Go:** this app can't run in Expo Go (custom native modules). Use the dev build from step 8; scan the QR with the phone's *camera* app instead once the dev build is installed.
+- **QR code does nothing in Expo Go:** this app can't run in Expo Go (custom native modules). Use the dev build from step 8; scan the QR with the phone's _camera_ app instead once the dev build is installed.
 - **App missing from the share sheet:** old build — re-run `npx expo prebuild --platform android && npx expo run:android` after any `app.json` plugin change.
 - **Dependency version drift** (Expo warnings on start): `cd mobile && npx expo install --fix`. Note: `expo-font` is deliberately pinned via an npm `override` in the root `package.json` — keep it matching the Expo SDK.
 - **Build fails with "Error while dexing" / unreadable jar in `.gradle\caches`:** a corrupted Gradle cache (often after an interrupted build). Fix: `cd mobile\android; .\gradlew --stop` then delete `%USERPROFILE%\.gradle\caches\<gradle-version>\transforms` and rebuild.
@@ -237,6 +256,6 @@ Pipeline statuses: `UNEVALUATED → TRANSCRIBING → SCORING → EVALUATED | FAI
 
 ## Stubbed for later (seams are built)
 
-- **Dialer tab** — placeholder UI; integration plan documented in `mobile/src/screens/DialerScreen.tsx` (CPaaS click-to-call → auto-import of call recordings).
-- **GoogleDriveStorage** — `server/src/storage/GoogleDriveStorage.ts` implements the `StorageAdapter` interface as a documented stub (the Drive *mirror* above is separate and already live); swap it in via `server/src/storage/index.ts`.
+- **In-app calling (CPaaS)** — the Dialer tab currently opens the phone's native dialer and relies on the watched-folder auto-import; true click-to-call (Exotel/Plivo → webhook import) is documented as the next step in `mobile/src/screens/DialerScreen.tsx`.
+- **GoogleDriveStorage** — `server/src/storage/GoogleDriveStorage.ts` implements the `StorageAdapter` interface as a documented stub (the Drive _mirror_ above is separate and already live); swap it in via `server/src/storage/index.ts`.
 - **Real auth** — replace the API-key middleware (`server/src/middleware/apiKey.ts`) with recruiter accounts; the TODO marks the seam.
