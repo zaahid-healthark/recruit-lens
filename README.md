@@ -14,6 +14,12 @@ Recruiters record interview calls with their phone's normal recorder, then **sha
 - **All OpenAI calls happen on the server.** The mobile app talks only to the backend (authenticated with a shared `x-api-key`).
 - **MOCK_AI mode** (default) exercises the entire flow — import → evaluate → dashboard — with canned results and **zero OpenAI cost**.
 
+## Testing on a real phone (deployed backend + installable APK)
+
+The walkthrough below runs everything locally against an Android emulator. To instead put the app on a
+physical phone with a hosted backend — free Render web service + Postgres, and a standalone APK from
+Expo's cloud builder — follow **[DEPLOY.md](DEPLOY.md)**. No Android Studio or local SDK needed.
+
 ---
 
 # Run it from a fresh clone — every step

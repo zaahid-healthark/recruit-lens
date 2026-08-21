@@ -26,7 +26,19 @@ export class ApiRequestError extends Error {
   }
 }
 
-async function request<T>(path: string, init: RequestInit = {}, timeoutMs = 20000): Promise<T> {
+/**
+ * Default timeout is generous on purpose: free hosting tiers (Render, Fly, …)
+ * suspend idle instances, and the first request after a sleep pays a cold-start
+ * cost that routinely runs 30-60s. A tighter timeout just turns a slow wake-up
+ * into a spurious "server unreachable" error.
+ */
+const DEFAULT_TIMEOUT_MS = 60000;
+
+async function request<T>(
+  path: string,
+  init: RequestInit = {},
+  timeoutMs = DEFAULT_TIMEOUT_MS
+): Promise<T> {
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), timeoutMs);
   let response: Response;
@@ -38,10 +50,12 @@ async function request<T>(path: string, init: RequestInit = {}, timeoutMs = 2000
     });
   } catch (err) {
     if ((err as Error)?.name === "AbortError") {
-      throw new ApiRequestError("Request timed out — is the server reachable from this device?");
+      throw new ApiRequestError(
+        "Request timed out. If the backend is on a free hosting plan it may be waking up from sleep — try again in a few seconds."
+      );
     }
     throw new ApiRequestError(
-      `Cannot reach the server at ${API_BASE_URL}. Check that it is running and that the phone can reach your PC (LAN IP / firewall).`
+      `Cannot reach the server at ${API_BASE_URL}. Check the URL and that the phone has network access (for a server on your PC: LAN IP, same Wi-Fi, firewall open).`
     );
   } finally {
     clearTimeout(timer);

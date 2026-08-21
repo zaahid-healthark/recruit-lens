@@ -1,0 +1,57 @@
+# Render Blueprint for the RecruitLens backend.
+# Create everything in one shot: Render Dashboard → New → Blueprint → pick this repo.
+# Render reads this file, creates the Postgres database + web service, and wires
+# DATABASE_URL automatically. See DEPLOY.md for the click-by-click walkthrough.
+
+databases:
+  - name: recruitlens-db
+    databaseName: interview_evaluator
+    user: recruitlens
+    plan: free # NOTE: Render deletes free databases 30 days after creation.
+    region: singapore
+    postgresMajorVersion: "16"
+    # Uncomment to also allow connections from outside Render (e.g. Prisma Studio
+    # on your laptop). Migrations do NOT need this — they run in the build step.
+    # ipAllowList:
+    #   - source: 0.0.0.0/0
+    #     description: anywhere
+
+services:
+  - type: web
+    name: recruitlens-api
+    runtime: node
+    plan: free # Free instances sleep after ~15 min idle; first request then takes ~50 s.
+    region: singapore # must match the database's region for the internal connection
+    branch: main
+    healthCheckPath: /health
+    # Install only the `shared` + `server` workspaces — pulling in the React Native
+    # dependency tree would blow past the free tier's build memory for no reason.
+    # `postinstall` in server/package.json runs `prisma generate`.
+    buildCommand: npm install --include-workspace-root -w shared -w server && npm run migrate:deploy -w server
+    startCommand: npm run start -w server
+    envVars:
+      - key: NODE_VERSION
+        value: "22.14.0"
+      - key: DATABASE_URL
+        fromDatabase:
+          name: recruitlens-db
+          property: connectionString
+      # ── Set these two yourself in the Render dashboard (never committed) ──
+      # API_KEY: the shared secret; the same string goes into mobile/eas.json.
+      - key: API_KEY
+        sync: false
+      - key: OPENAI_API_KEY
+        sync: false
+      # ── AI pipeline ──
+      - key: MOCK_AI
+        value: "false"
+      - key: OPENAI_TRANSCRIBE_MODEL
+        value: gpt-4o-transcribe-diarize
+      - key: OPENAI_EVAL_MODEL
+        value: gpt-5.4
+      - key: BULK_CONCURRENCY
+        value: "1"
+      # Uploaded audio. The free tier has no persistent disk, so this is scratch
+      # space either way — /tmp just makes it independent of the working directory.
+      - key: STORAGE_DIR
+        value: /tmp/recruitlens-uploads

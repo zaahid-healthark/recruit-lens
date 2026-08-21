@@ -8,7 +8,8 @@
     "userInterfaceStyle": "light",
     "platforms": ["android", "ios"],
     "android": {
-      "package": "com.healthark.interviewevaluator"
+      "package": "com.healthark.interviewevaluator",
+      "versionCode": 1
     },
     "plugins": [
       [

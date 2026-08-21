@@ -29,6 +29,8 @@
     "googleapis": "^173.0.0",
     "multer": "^2.0.1",
     "openai": "^4.104.0",
+    "prisma": "^5.22.0",
+    "tsx": "^4.19.2",
     "zod": "^3.24.1"
   },
   "devDependencies": {
@@ -36,8 +38,6 @@
     "@types/express": "^4.17.21",
     "@types/multer": "^1.4.12",
     "@types/node": "^20.17.16",
-    "prisma": "^5.22.0",
-    "tsx": "^4.19.2",
     "typescript": "~5.9.2"
   },
   "engines": {
