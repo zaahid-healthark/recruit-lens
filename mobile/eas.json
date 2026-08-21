@@ -12,23 +12,21 @@
       }
     },
     "preview": {
-      "//": "Standalone release APK for testing — self-contained, no Metro needed.",
       "distribution": "internal",
       "android": {
         "buildType": "apk"
       },
       "env": {
-        "EXPO_PUBLIC_API_BASE_URL": "https://REPLACE-ME.onrender.com",
+        "EXPO_PUBLIC_API_BASE_URL": "https://recruitlens-api-23zm.onrender.com",
         "EXPO_PUBLIC_API_KEY": "WHAqFj_8MqlqhlKANlvCx7tLFZ_5lqlU"
       }
     },
     "production": {
-      "//": "Play Store bundle. Same env as preview — keep the two in sync.",
       "android": {
         "buildType": "app-bundle"
       },
       "env": {
-        "EXPO_PUBLIC_API_BASE_URL": "https://REPLACE-ME.onrender.com",
+        "EXPO_PUBLIC_API_BASE_URL": "https://recruitlens-api-23zm.onrender.com",
         "EXPO_PUBLIC_API_KEY": "WHAqFj_8MqlqhlKANlvCx7tLFZ_5lqlU"
       }
     }

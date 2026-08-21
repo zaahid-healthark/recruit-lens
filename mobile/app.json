@@ -6,7 +6,10 @@
     "orientation": "portrait",
     "scheme": "interviewevaluator",
     "userInterfaceStyle": "light",
-    "platforms": ["android", "ios"],
+    "platforms": [
+      "android",
+      "ios"
+    ],
     "android": {
       "package": "com.healthark.interviewevaluator",
       "versionCode": 1
@@ -23,8 +26,14 @@
       [
         "expo-share-intent",
         {
-          "androidIntentFilters": ["audio/*", "application/ogg", "video/3gpp"],
-          "androidMultiIntentFilters": ["audio/*"],
+          "androidIntentFilters": [
+            "audio/*",
+            "application/ogg",
+            "video/3gpp"
+          ],
+          "androidMultiIntentFilters": [
+            "audio/*"
+          ],
           "androidMainActivityAttributes": {
             "android:launchMode": "singleTask"
           },
@@ -34,7 +43,11 @@
     ],
     "extra": {
       "apiBaseUrl": "",
-      "apiKey": ""
-    }
+      "apiKey": "",
+      "eas": {
+        "projectId": "5a49ac51-ca8d-4487-b862-e3a47f424acb"
+      }
+    },
+    "owner": "mihir.r_com"
   }
 }
