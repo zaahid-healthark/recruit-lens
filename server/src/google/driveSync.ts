@@ -1,5 +1,5 @@
 import { MATRIX_CATEGORIES } from "@interview-evaluator/shared";
-import type { Evaluation, Recording, Transcript } from "@prisma/client";
+import type { Evaluation, Job, Recording, Transcript } from "@prisma/client";
 import fs from "fs";
 import path from "path";
 import { env } from "../config/env";
@@ -47,10 +47,32 @@ const HEADERS = [
   "Transcript (Drive)",
   "Error",
   "Notes",
+  // JD matching. Appended at the end on purpose: inserting mid-row would shift
+  // every column in a sheet created by an earlier version, since the header row
+  // is only written when the spreadsheet is first created.
+  "Job",
+  "JD Fit Score",
+  "JD Verdict",
+  "JD Requirements",
 ] as const;
 
-/** Column letter of the last column (A..Z is enough for our 24 columns). */
-const LAST_COL = String.fromCharCode("A".charCodeAt(0) + HEADERS.length - 1);
+/**
+ * A1-style column name for a 1-based index (1→A, 26→Z, 27→AA). The JD columns
+ * push the sheet past Z, where a plain charCode offset yields punctuation and
+ * silently corrupts every range it is spliced into.
+ */
+function columnName(index: number): string {
+  let n = index;
+  let name = "";
+  while (n > 0) {
+    const rem = (n - 1) % 26;
+    name = String.fromCharCode("A".charCodeAt(0) + rem) + name;
+    n = Math.floor((n - 1) / 26);
+  }
+  return name;
+}
+
+const LAST_COL = columnName(HEADERS.length);
 
 interface DriveStructure {
   recordingsFolderId: string;
@@ -131,7 +153,11 @@ function ensureStructure(): Promise<DriveStructure> {
   return structurePromise;
 }
 
-type FullRecording = Recording & { transcript: Transcript | null; evaluation: Evaluation | null };
+type FullRecording = Recording & {
+  transcript: Transcript | null;
+  evaluation: Evaluation | null;
+  job: Job | null;
+};
 
 async function uploadAudioIfNeeded(recording: FullRecording, structure: DriveStructure): Promise<string | null> {
   if (recording.driveAudioFileId) return recording.driveAudioFileId;
@@ -196,6 +222,43 @@ function driveLink(fileId: string | null): string {
   return fileId ? `https://drive.google.com/file/d/${fileId}/view` : "";
 }
 
+/** Shape stored in Evaluation.jdMatchJson (see services/pipeline.ts). */
+interface StoredJdMatch {
+  fitScore?: unknown;
+  verdictSummary?: unknown;
+  requirements?: unknown;
+}
+
+function storedJdMatch(e: Evaluation | null): StoredJdMatch | null {
+  const raw = e?.jdMatchJson;
+  return typeof raw === "object" && raw !== null ? (raw as StoredJdMatch) : null;
+}
+
+function jdFitScore(e: Evaluation | null): string | number {
+  const jd = storedJdMatch(e);
+  return typeof jd?.fitScore === "number" ? jd.fitScore : "";
+}
+
+function jdVerdict(e: Evaluation | null): string {
+  const jd = storedJdMatch(e);
+  return typeof jd?.verdictSummary === "string" ? jd.verdictSummary : "";
+}
+
+/** One "requirement — verdict" per line, so the cell stays readable in Sheets. */
+function jdRequirements(e: Evaluation | null): string {
+  const jd = storedJdMatch(e);
+  if (!Array.isArray(jd?.requirements)) return "";
+  return jd.requirements
+    .filter((r): r is Record<string, unknown> => typeof r === "object" && r !== null)
+    .map((r) => {
+      const name = typeof r.requirement === "string" ? r.requirement : "";
+      const verdict = typeof r.verdict === "string" ? r.verdict : "";
+      return name ? name + " — " + verdict : "";
+    })
+    .filter(Boolean)
+    .join(String.fromCharCode(10));
+}
+
 function buildRow(rec: FullRecording, audioId: string | null, transcriptId: string | null): (string | number)[] {
   const e = rec.evaluation;
   return [
@@ -219,6 +282,10 @@ function buildRow(rec: FullRecording, audioId: string | null, transcriptId: stri
     driveLink(transcriptId),
     rec.errorMessage ?? "",
     rec.notes ?? "",
+    rec.job?.title ?? "",
+    jdFitScore(e),
+    jdVerdict(e),
+    jdRequirements(e),
   ];
 }
 
@@ -268,7 +335,7 @@ export function syncRecordingToDrive(recordingId: string): void {
     try {
       const recording = await prisma.recording.findUnique({
         where: { id: recordingId },
-        include: { transcript: true, evaluation: true },
+        include: { transcript: true, evaluation: true, job: true },
       });
       if (!recording) return;
       const structure = await ensureStructure();

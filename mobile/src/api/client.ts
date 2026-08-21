@@ -1,6 +1,7 @@
 import type {
   BulkStatusDto,
   DashboardStatsDto,
+  JobDto,
   RecordingDetailDto,
   RecordingListItemDto,
   TaxonomyDto,
@@ -110,14 +111,58 @@ export const api = {
     notes?: string,
     // Long interview recordings on mobile data need more than the default;
     // the auto-import scanner passes a larger value.
-    timeoutMs = 120000
+    timeoutMs = 120000,
+    jobId?: string | null
   ): Promise<RecordingListItemDto> => {
     const form = new FormData();
     // React Native FormData accepts { uri, name, type } file descriptors.
     form.append("file", { uri: file.uri, name: file.name, type: file.mimeType } as unknown as Blob);
     if (candidateName) form.append("candidateName", candidateName);
     if (notes) form.append("notes", notes);
+    if (jobId) form.append("jobId", jobId);
     // Don't set Content-Type manually — fetch adds the multipart boundary itself.
     return request<RecordingListItemDto>("/recordings", { method: "POST", body: form }, timeoutMs);
   },
+
+  /** Attach (or detach, with null) the job this recording is screened against. */
+  setRecordingJob: (id: string, jobId: string | null): Promise<RecordingDetailDto> =>
+    request<RecordingDetailDto>(`/recordings/${id}`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ jobId }),
+    }),
+
+  listJobs: (includeArchived = false): Promise<JobDto[]> =>
+    request<JobDto[]>(`/jobs${includeArchived ? "?includeArchived=true" : ""}`),
+
+  createJob: (input: {
+    title: string;
+    jdText: string;
+    department?: string | null;
+    subCategory?: string | null;
+  }): Promise<JobDto> =>
+    request<JobDto>("/jobs", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(input),
+    }),
+
+  updateJob: (
+    id: string,
+    input: {
+      title?: string;
+      jdText?: string;
+      department?: string | null;
+      subCategory?: string | null;
+      archived?: boolean;
+    }
+  ): Promise<JobDto> =>
+    request<JobDto>(`/jobs/${id}`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(input),
+    }),
+
+  deleteJob: (id: string): Promise<void> =>
+    request<void>(`/jobs/${id}`, { method: "DELETE" }),
 };

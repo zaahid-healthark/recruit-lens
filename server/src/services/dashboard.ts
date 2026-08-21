@@ -85,6 +85,33 @@ export async function getDashboardStats(): Promise<DashboardStatsDto> {
       .length,
   }));
 
+  // Candidate volume + mean score per job. Counts every linked recording
+  // (so a job in progress still shows up) but averages only EVALUATED ones.
+  const jobs = await prisma.job.findMany({
+    select: {
+      id: true,
+      title: true,
+      recordings: { select: { evaluation: { select: { overallScore: true } } } },
+    },
+  });
+  const byJob = jobs
+    .map((j) => {
+      const scores = j.recordings
+        .map((r) => r.evaluation?.overallScore)
+        .filter((s): s is number => typeof s === "number");
+      return {
+        id: j.id,
+        title: j.title,
+        count: j.recordings.length,
+        averageOverallScore: scores.length
+          ? Math.round(scores.reduce((s, v) => s + v, 0) / scores.length)
+          : null,
+      };
+    })
+    .filter((j) => j.count > 0)
+    .sort((a, b) => b.count - a.count || a.title.localeCompare(b.title))
+    .slice(0, TOP_N);
+
   return {
     totals,
     averageOverallScore,
@@ -92,6 +119,7 @@ export async function getDashboardStats(): Promise<DashboardStatsDto> {
     byDepartment,
     bySubCategory,
     byRole,
+    byJob,
     scoreHistogram,
   };
 }

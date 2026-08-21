@@ -18,18 +18,40 @@ enum RecordingStatus {
   FAILED
 }
 
+/// A job opening. Its description is fed to the scoring model so the candidate
+/// is measured against real requirements rather than a generic role prior.
+model Job {
+  id          String   @id @default(uuid())
+  title       String
+  jdText      String
+  /// Optional taxonomy hint passed to the classifier as context.
+  department  String?
+  subCategory String?
+  /// Hidden from the import picker without losing it or its recordings.
+  archived    Boolean  @default(false)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  recordings Recording[]
+
+  @@index([archived, createdAt])
+}
+
 model Recording {
-  id               String          @id @default(uuid())
-  originalFilename String
+  id                    String          @id @default(uuid())
+  originalFilename      String
   /// Opaque key understood by the active StorageAdapter (file name under STORAGE_DIR for LocalDiskStorage)
-  storagePath      String
-  mimeType         String
-  durationSeconds  Int?
-  importedAt       DateTime        @default(now())
-  candidateName    String?
-  notes            String?
-  status           RecordingStatus @default(UNEVALUATED)
-  errorMessage     String?
+  storagePath           String
+  mimeType              String
+  durationSeconds       Int?
+  importedAt            DateTime        @default(now())
+  candidateName         String?
+  notes                 String?
+  /// Job being screened for. SetNull so deleting a job never destroys recordings.
+  jobId                 String?
+  job                   Job?            @relation(fields: [jobId], references: [id], onDelete: SetNull)
+  status                RecordingStatus @default(UNEVALUATED)
+  errorMessage          String?
   /// Google Drive mirror file IDs (null until mirrored / when mirror disabled)
   driveAudioFileId      String?
   driveTranscriptFileId String?
@@ -39,6 +61,7 @@ model Recording {
 
   @@index([status])
   @@index([importedAt])
+  @@index([jobId])
 }
 
 model Transcript {
@@ -68,6 +91,9 @@ model Evaluation {
   strengths                Json
   /// string[]
   areasForImprovement      Json
+  /// { fitScore, verdictSummary, requirements: [{ requirement, verdict, evidence }] }
+  /// — null when evaluated without a job attached.
+  jdMatchJson              Json?
   recommendation           String
   model                    String
   createdAt                DateTime  @default(now())

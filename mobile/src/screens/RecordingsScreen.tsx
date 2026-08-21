@@ -279,6 +279,14 @@ export function RecordingsScreen(): React.JSX.Element {
             <Text style={styles.classificationText} numberOfLines={1}>
               {summary ? `${summary.department} › ${summary.subCategory}` : ""}
             </Text>
+            {item.job ? (
+              <View style={styles.jobTag}>
+                <Ionicons name="briefcase" size={10} color={colors.primary} />
+                <Text style={styles.jobTagLabel} numberOfLines={1}>
+                  {item.job.title}
+                </Text>
+              </View>
+            ) : null}
             <Text style={styles.meta} numberOfLines={1}>
               {item.candidateName ? `${item.candidateName} • ` : ""}
               {middleTruncate(item.originalFilename, 24)} • {formatDate(item.importedAt)}
@@ -510,6 +518,24 @@ const styles = StyleSheet.create({
     fontSize: 14,
     fontWeight: "700",
     color: colors.text,
+  },
+  jobTag: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 4,
+    alignSelf: "flex-start",
+    backgroundColor: colors.primarySoft,
+    borderRadius: 5,
+    paddingHorizontal: 6,
+    paddingVertical: 2,
+    marginTop: 4,
+    maxWidth: "100%",
+  },
+  jobTagLabel: {
+    flexShrink: 1,
+    fontSize: 10.5,
+    fontWeight: "700",
+    color: colors.primary,
   },
   classificationText: {
     fontSize: 12,

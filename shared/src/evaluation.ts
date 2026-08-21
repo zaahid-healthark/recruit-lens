@@ -32,6 +32,38 @@ export const SCORE_BANDS: ScoreBand[] = [
   { min: 81, max: 100, label: "81-100", descriptor: "Excellent — consistently strong, hire-caliber signals" },
 ];
 
+/**
+ * Job-description matching. Only produced when the recording is linked to a
+ * Job — a JD-less evaluation leaves `jd_match` null, so scores from the two
+ * modes stay distinguishable rather than silently comparable.
+ */
+export const JD_REQUIREMENT_VERDICTS = ["met", "partial", "missing", "not_discussed"] as const;
+
+export type JdRequirementVerdict = (typeof JD_REQUIREMENT_VERDICTS)[number];
+
+/** Human-readable labels + intent for each verdict (drives prompt and UI). */
+export const JD_VERDICT_LABELS: Record<JdRequirementVerdict, string> = {
+  met: "Met",
+  partial: "Partially met",
+  missing: "Not met",
+  /** The interview never covered it — an interviewer gap, not a candidate gap. */
+  not_discussed: "Not discussed",
+};
+
+/** One requirement extracted from the JD, with the candidate's evidence against it. */
+export interface LlmJdRequirementResult {
+  requirement: string;
+  verdict: JdRequirementVerdict;
+  evidence: string;
+}
+
+export interface LlmJdMatchResult {
+  /** 0-100 fit against the JD specifically — distinct from overall_score. */
+  fit_score: number;
+  verdict_summary: string;
+  requirements: LlmJdRequirementResult[];
+}
+
 /** One scored category as returned by the LLM. */
 export interface LlmCategoryResult {
   name: string;
@@ -54,4 +86,6 @@ export interface LlmEvaluationResult {
   strengths: string[];
   areas_for_improvement: string[];
   recommendation: string;
+  /** null when the recording had no Job attached at evaluation time. */
+  jd_match: LlmJdMatchResult | null;
 }

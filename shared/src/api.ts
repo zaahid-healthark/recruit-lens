@@ -2,6 +2,8 @@
  * REST API DTOs (camelCase, dates as ISO strings) shared by server and mobile.
  */
 
+import type { JdRequirementVerdict } from "./evaluation";
+
 export const RECORDING_STATUSES = [
   "UNEVALUATED",
   "TRANSCRIBING",
@@ -11,6 +13,45 @@ export const RECORDING_STATUSES = [
 ] as const;
 
 export type RecordingStatus = (typeof RECORDING_STATUSES)[number];
+
+/**
+ * A job opening with its description. Recordings link to one so the AI can
+ * score the candidate against real requirements instead of a generic prior.
+ */
+export interface JobDto {
+  id: string;
+  title: string;
+  jdText: string;
+  department: string | null;
+  subCategory: string | null;
+  /** Hidden from the import picker without deleting it or its history. */
+  archived: boolean;
+  createdAt: string;
+  updatedAt: string;
+  /** Recordings linked to this job (all statuses). */
+  recordingCount: number;
+  /** Mean overall score of this job's EVALUATED recordings; null if none yet. */
+  averageOverallScore: number | null;
+}
+
+/** Compact job reference embedded in recording rows. */
+export interface JobRefDto {
+  id: string;
+  title: string;
+}
+
+export interface JdRequirementDto {
+  requirement: string;
+  verdict: JdRequirementVerdict;
+  evidence: string;
+}
+
+/** JD-match block; null when the recording was evaluated without a job. */
+export interface JdMatchDto {
+  fitScore: number;
+  verdictSummary: string;
+  requirements: JdRequirementDto[];
+}
 
 export interface EvaluationCategoryDto {
   name: string;
@@ -36,6 +77,8 @@ export interface EvaluationDto extends EvaluationSummaryDto {
   categories: EvaluationCategoryDto[];
   strengths: string[];
   areasForImprovement: string[];
+  /** null when this evaluation ran without a job attached. */
+  jdMatch: JdMatchDto | null;
   model: string;
   createdAt: string;
 }
@@ -55,6 +98,8 @@ export interface RecordingListItemDto {
   importedAt: string;
   candidateName: string | null;
   notes: string | null;
+  /** The job this candidate is being screened for, if any. */
+  job: JobRefDto | null;
   status: RecordingStatus;
   errorMessage: string | null;
   evaluationSummary: EvaluationSummaryDto | null;
@@ -89,6 +134,8 @@ export interface DashboardStatsDto {
   byDepartment: { name: string; count: number }[];
   bySubCategory: { name: string; department: string; count: number }[];
   byRole: { name: string; count: number }[];
+  /** Candidate volume + mean score per job, for cross-candidate comparison. */
+  byJob: { id: string; title: string; count: number; averageOverallScore: number | null }[];
   scoreHistogram: { band: string; count: number }[];
 }
 

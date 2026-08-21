@@ -1,4 +1,4 @@
-import type { RecordingDetailDto } from "@interview-evaluator/shared";
+import type { JobDto, RecordingDetailDto } from "@interview-evaluator/shared";
 import { Ionicons } from "@expo/vector-icons";
 import { RouteProp, useNavigation, useRoute } from "@react-navigation/native";
 import type { NativeStackNavigationProp } from "@react-navigation/native-stack";
@@ -14,6 +14,8 @@ import {
   View,
 } from "react-native";
 import { api } from "../api/client";
+import { JdMatchCard } from "../components/JdMatchCard";
+import { JobPicker } from "../components/JobPicker";
 import { ScoreBadge } from "../components/ScoreBadge";
 import { StatusPill } from "../components/StatusPill";
 import { useRefresh } from "../context/RefreshContext";
@@ -40,6 +42,8 @@ export function RecordingDetailScreen(): React.JSX.Element {
   const [recording, setRecording] = useState<RecordingDetailDto | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [transcriptOpen, setTranscriptOpen] = useState(false);
+  const [pickerOpen, setPickerOpen] = useState(false);
+  const [linkingJob, setLinkingJob] = useState(false);
 
   const load = useCallback(async (): Promise<void> => {
     try {
@@ -63,6 +67,29 @@ export function RecordingDetailScreen(): React.JSX.Element {
       setRecording((prev) => (prev ? { ...prev, status: "TRANSCRIBING" } : prev));
     } catch (err) {
       Alert.alert("Could not start evaluation", err instanceof Error ? err.message : String(err));
+    }
+  };
+
+  /**
+   * Attaching a job does not re-score on its own — the user re-evaluates, which
+   * reuses the stored transcript and so only pays for the scoring call.
+   */
+  const handleSelectJob = async (job: JobDto | null): Promise<void> => {
+    setLinkingJob(true);
+    try {
+      const updated = await api.setRecordingJob(id, job?.id ?? null);
+      setRecording(updated);
+      bump();
+      if (job && updated.evaluation) {
+        Alert.alert(
+          "Job attached",
+          `Re-evaluate to score this candidate against "${job.title}". The transcript is reused, so it only re-runs the scoring step.`
+        );
+      }
+    } catch (err) {
+      Alert.alert("Could not attach job", err instanceof Error ? err.message : String(err));
+    } finally {
+      setLinkingJob(false);
     }
   };
 
@@ -120,6 +147,39 @@ export function RecordingDetailScreen(): React.JSX.Element {
         <View style={{ marginTop: 8 }}>
           <StatusPill status={recording.status} />
         </View>
+
+        {/* Job link — settable before or after evaluation; re-evaluate to apply. */}
+        <Pressable
+          style={styles.jobRow}
+          onPress={() => setPickerOpen(true)}
+          disabled={linkingJob || busy}
+        >
+          <Ionicons
+            name={recording.job ? "briefcase" : "briefcase-outline"}
+            size={16}
+            color={recording.job ? colors.primary : colors.subtext}
+          />
+          <View style={{ flex: 1 }}>
+            <Text
+              style={[styles.jobLabel, !recording.job && styles.jobLabelEmpty]}
+              numberOfLines={1}
+            >
+              {recording.job ? recording.job.title : "No job description attached"}
+            </Text>
+            <Text style={styles.jobHint}>
+              {recording.job
+                ? evaluation && !evaluation.jdMatch
+                  ? "Re-evaluate to score against this JD"
+                  : "Scored against this JD"
+                : "Attach one to score against real requirements"}
+            </Text>
+          </View>
+          {linkingJob ? (
+            <ActivityIndicator size="small" color={colors.primary} />
+          ) : (
+            <Ionicons name="chevron-forward" size={16} color={colors.subtext} />
+          )}
+        </Pressable>
       </View>
 
       {/* ── Not evaluated yet: status + action ── */}
@@ -163,6 +223,11 @@ export function RecordingDetailScreen(): React.JSX.Element {
             <Text style={styles.recommendation}>{evaluation.recommendation}</Text>
             <Text style={styles.overallSummary}>{evaluation.overallSummary}</Text>
           </View>
+
+          {/* ── JD match (only when evaluated with a job attached) ── */}
+          {evaluation.jdMatch ? (
+            <JdMatchCard jdMatch={evaluation.jdMatch} jobTitle={recording.job?.title ?? null} />
+          ) : null}
 
           {/* ── Classification ── */}
           <View style={styles.card}>
@@ -270,11 +335,41 @@ export function RecordingDetailScreen(): React.JSX.Element {
         <Ionicons name="trash-outline" size={15} color={colors.danger} />
         <Text style={styles.deleteLabel}>Delete recording</Text>
       </Pressable>
+
+      <JobPicker
+        visible={pickerOpen}
+        selectedJobId={recording.job?.id ?? null}
+        onClose={() => setPickerOpen(false)}
+        onSelect={(job) => void handleSelectJob(job)}
+      />
     </ScrollView>
   );
 }
 
 const styles = StyleSheet.create({
+  jobRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 9,
+    marginTop: 12,
+    paddingTop: 11,
+    borderTopWidth: StyleSheet.hairlineWidth,
+    borderTopColor: colors.border,
+  },
+  jobLabel: {
+    fontSize: 13,
+    fontWeight: "700",
+    color: colors.text,
+  },
+  jobLabelEmpty: {
+    fontWeight: "600",
+    color: colors.subtext,
+  },
+  jobHint: {
+    fontSize: 11.5,
+    color: colors.subtext,
+    marginTop: 2,
+  },
   container: {
     flex: 1,
     backgroundColor: colors.background,

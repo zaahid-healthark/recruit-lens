@@ -51,12 +51,21 @@ const upload = multer({
 const importBodySchema = z.object({
   candidateName: z.string().trim().max(200).optional(),
   notes: z.string().trim().max(2000).optional(),
+  /** Job to screen this candidate against; its JD drives the scoring. */
+  jobId: z.string().uuid().optional(),
+});
+
+/** PATCH body — currently only the job link is mutable after import. */
+const updateBodySchema = z.object({
+  /** null detaches the job (reverting to generic, JD-less scoring). */
+  jobId: z.string().uuid().nullable(),
 });
 
 const listQuerySchema = z.object({
   status: z.enum(RECORDING_STATUSES).optional(),
   department: z.string().optional(),
   subCategory: z.string().optional(),
+  jobId: z.string().uuid().optional(),
 });
 
 export const recordingsRouter = Router();
@@ -72,6 +81,12 @@ recordingsRouter.post(
     const body = importBodySchema.parse(req.body ?? {});
     // Multer decodes originalname as latin1 — recover UTF-8 for non-ASCII filenames.
     const originalFilename = Buffer.from(req.file.originalname, "latin1").toString("utf8");
+    // Reject an unknown jobId before the file is stored, so a bad request
+    // cannot leave an orphaned upload behind.
+    if (body.jobId) {
+      const job = await prisma.job.findUnique({ where: { id: body.jobId }, select: { id: true } });
+      if (!job) throw badRequest("Unknown jobId — the job may have been deleted.");
+    }
     const storagePath = await storage.saveFromFile(req.file.path, originalFilename);
     const recording = await prisma.recording.create({
       data: {
@@ -80,8 +95,9 @@ recordingsRouter.post(
         mimeType: req.file.mimetype,
         candidateName: body.candidateName || null,
         notes: body.notes || null,
+        jobId: body.jobId || null,
       },
-      include: { evaluation: true },
+      include: { evaluation: true, job: true },
     });
     res.status(201).json(toRecordingListItemDto(recording));
     syncRecordingToDrive(recording.id); // best-effort Drive mirror (no-op when unconfigured)
@@ -116,8 +132,12 @@ recordingsRouter.get(
           }
         : {};
     const recordings = await prisma.recording.findMany({
-      where: { ...(q.status ? { status: q.status } : {}), ...evaluationFilter },
-      include: { evaluation: true },
+      where: {
+        ...(q.status ? { status: q.status } : {}),
+        ...(q.jobId ? { jobId: q.jobId } : {}),
+        ...evaluationFilter,
+      },
+      include: { evaluation: true, job: true },
       orderBy: { importedAt: "desc" },
     });
     res.json(recordings.map(toRecordingListItemDto));
@@ -130,10 +150,48 @@ recordingsRouter.get(
   asyncHandler(async (req, res) => {
     const recording = await prisma.recording.findUnique({
       where: { id: req.params.id },
-      include: { evaluation: true, transcript: true },
+      include: { evaluation: true, transcript: true, job: true },
     });
     if (!recording) throw notFound("Recording not found");
     res.json(toRecordingDetailDto(recording));
+  })
+);
+
+// PATCH /recordings/:id — attach/detach the job to screen against.
+// Existing scores are NOT recomputed: the caller re-evaluates explicitly, which
+// reuses the stored transcript and so costs only the scoring call.
+recordingsRouter.patch(
+  "/:id",
+  asyncHandler(async (req, res) => {
+    const body = updateBodySchema.parse(req.body ?? {});
+    const recording = await prisma.recording.findUnique({
+      where: { id: req.params.id },
+      select: { id: true, status: true },
+    });
+    if (!recording) throw notFound("Recording not found");
+    if (
+      isEvaluationInFlight(recording.id) ||
+      recording.status === "TRANSCRIBING" ||
+      recording.status === "SCORING"
+    ) {
+      // Swapping the JD mid-pipeline would produce a jd_match for a job the
+      // recording is no longer linked to.
+      throw conflict("An evaluation is running for this recording — wait for it to finish");
+    }
+    if (body.jobId) {
+      const job = await prisma.job.findUnique({
+        where: { id: body.jobId },
+        select: { id: true },
+      });
+      if (!job) throw badRequest("Unknown jobId — the job may have been deleted.");
+    }
+    const updated = await prisma.recording.update({
+      where: { id: recording.id },
+      data: { jobId: body.jobId },
+      include: { evaluation: true, transcript: true, job: true },
+    });
+    res.json(toRecordingDetailDto(updated));
+    syncRecordingToDrive(updated.id); // reflect the new job in the sheet row
   })
 );
 

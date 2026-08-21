@@ -4,6 +4,7 @@ import { createNativeStackNavigator } from "@react-navigation/native-stack";
 import React from "react";
 import { DashboardScreen } from "../screens/DashboardScreen";
 import { DialerScreen } from "../screens/DialerScreen";
+import { JobsScreen } from "../screens/JobsScreen";
 import { RecordingDetailScreen } from "../screens/RecordingDetailScreen";
 import { RecordingsScreen } from "../screens/RecordingsScreen";
 import { colors } from "../theme";
@@ -15,6 +16,7 @@ export type RecordingsStackParamList = {
 
 export type RootTabParamList = {
   RecordingsTab: undefined;
+  Jobs: undefined;
   Dashboard: undefined;
   Dialer: undefined;
 };
@@ -64,6 +66,16 @@ export function RootNavigator(): React.JSX.Element {
           title: "Recordings",
           headerShown: false,
           tabBarIcon: ({ color, size }) => <Ionicons name="mic" color={color} size={size} />,
+        }}
+      />
+      <Tab.Screen
+        name="Jobs"
+        component={JobsScreen}
+        options={{
+          title: "Jobs",
+          tabBarIcon: ({ color, size }) => (
+            <Ionicons name="briefcase" color={color} size={size} />
+          ),
         }}
       />
       <Tab.Screen

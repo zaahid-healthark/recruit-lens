@@ -1,5 +1,6 @@
 import {
   CLASSIFICATION_CONFIDENCE_LEVELS,
+  JD_REQUIREMENT_VERDICTS,
   MATRIX_CATEGORIES,
   OTHER_VALUE,
 } from "@interview-evaluator/shared";
@@ -20,10 +21,31 @@ const categorySchema = z.object({
   recommendation: z.string().min(1),
 });
 
+const jdRequirementSchema = z.object({
+  requirement: z.string().min(1),
+  verdict: z.preprocess(
+    (v) => (typeof v === "string" ? v.trim().toLowerCase().replace(/[\s-]+/g, "_") : v),
+    z.enum(JD_REQUIREMENT_VERDICTS)
+  ),
+  evidence: z.string().min(1),
+});
+
+const jdMatchSchema = z.object({
+  fit_score: score,
+  verdict_summary: z.string().min(1),
+  // A JD with zero extractable requirements means the paste was junk — reject
+  // rather than store an empty match that reads like "nothing required".
+  requirements: z.array(jdRequirementSchema).min(1),
+});
+
 /**
  * Strict validation of the LLM's JSON (spec: validate with zod, one repair
  * retry on failure, then FAILED). Taxonomy membership is enforced dynamically
  * from the config so editing the taxonomy never requires touching this file.
+ *
+ * `jd_match` is required exactly when a job description was supplied: a model
+ * that silently drops it would otherwise produce an evaluation that looks
+ * JD-scored in the UI but isn't, so the repair retry gets a chance to fix it.
  */
 export const llmEvaluationSchema = z
   .object({
@@ -41,6 +63,7 @@ export const llmEvaluationSchema = z
     strengths: z.array(z.string()).default([]),
     areas_for_improvement: z.array(z.string()).default([]),
     recommendation: z.string().min(1),
+    jd_match: jdMatchSchema.nullish().default(null),
   })
   .superRefine((val, ctx) => {
     if (val.department !== OTHER_VALUE && !DEPARTMENT_NAMES.includes(val.department)) {
@@ -70,6 +93,31 @@ export const llmEvaluationSchema = z
   });
 
 export type ParsedLlmEvaluation = z.infer<typeof llmEvaluationSchema>;
+
+/**
+ * Whether a JD was in play is known by the caller, not the payload, so the
+ * jd_match presence rule is layered on top of the base schema rather than
+ * baked into it.
+ */
+export function llmEvaluationSchemaFor(hasJob: boolean) {
+  return llmEvaluationSchema.superRefine((val, ctx) => {
+    if (hasJob && !val.jd_match) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ["jd_match"],
+        message:
+          "a job description was supplied, so jd_match is required (fit_score, verdict_summary, requirements[])",
+      });
+    }
+    if (!hasJob && val.jd_match) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ["jd_match"],
+        message: "no job description was supplied, so jd_match must be null",
+      });
+    }
+  });
+}
 
 /**
  * Tolerant cleanup applied BEFORE zod: models sometimes change casing
@@ -102,6 +150,20 @@ export function normalizeLlmResult(raw: unknown): unknown {
       cat.name = canonicalize(cat.name, MATRIX_CATEGORIES);
       return cat;
     });
+  }
+  // Models write verdicts as "Not Discussed" / "not-discussed" / "NOT_DISCUSSED";
+  // the enum's own preprocess handles casing, but an empty requirements array or
+  // a JD block wrapped in a stray key is worth normalizing away here.
+  if (typeof obj.jd_match === "object" && obj.jd_match !== null) {
+    const jd: Record<string, unknown> = { ...(obj.jd_match as Record<string, unknown>) };
+    if (Array.isArray(jd.requirements)) {
+      jd.requirements = jd.requirements.filter(
+        (r) => typeof r === "object" && r !== null && typeof (r as { requirement?: unknown }).requirement === "string"
+      );
+    }
+    obj.jd_match = jd;
+  } else if (obj.jd_match === undefined) {
+    obj.jd_match = null;
   }
   return obj;
 }

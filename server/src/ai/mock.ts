@@ -1,4 +1,10 @@
-import { LlmEvaluationResult, MATRIX_CATEGORIES } from "@interview-evaluator/shared";
+import {
+  JD_REQUIREMENT_VERDICTS,
+  JdRequirementVerdict,
+  LlmEvaluationResult,
+  LlmJdMatchResult,
+  MATRIX_CATEGORIES,
+} from "@interview-evaluator/shared";
 import { DEPARTMENT_NAMES, TAXONOMY } from "../config/taxonomy";
 
 /**
@@ -68,6 +74,66 @@ export interface MockOverrides {
   department?: string;
   subCategory?: string;
   roleDesignation?: string;
+  /** When present, the mock returns a jd_match block derived from it. */
+  job?: { title: string; jdText: string } | null;
+}
+
+/**
+ * Pull plausible "requirements" straight out of the pasted JD so mock mode
+ * reflects the actual text the user typed — bullet lines first, else sentences.
+ * Keeps MOCK_AI useful for eyeballing the JD-match UI without an API call.
+ */
+function extractMockRequirements(jdText: string): string[] {
+  const bullets = jdText
+    .split(/\r?\n/)
+    .map((line) => line.replace(/^\s*[-*•·▪]+\s*/, "").trim())
+    .filter((line) => line.length >= 12 && line.length <= 160);
+  const source =
+    bullets.length >= 3
+      ? bullets
+      : jdText
+          .split(/[.;\n]/)
+          .map((t) => t.trim())
+          .filter((t) => t.length >= 12 && t.length <= 160);
+  const picked = source.slice(0, 7);
+  return picked.length > 0 ? picked : ["Relevant hands-on experience for the role"];
+}
+
+const MOCK_EVIDENCE: Record<JdRequirementVerdict, string> = {
+  met: `"I have spent the last four years working in this space, most recently leading two delivery projects end to end." (mock quote)`,
+  partial: `"The standard stack for this role, plus some automation I built myself." — adjacent, but shallower than the JD asks for. (mock quote)`,
+  missing: "No supporting evidence in the transcript despite the topic being discussed. (mock)",
+  not_discussed: "This never came up in the interview — the interviewer did not probe it. (mock)",
+};
+
+function mockJdMatch(jobTitle: string, jdText: string, h: number, base: number): LlmJdMatchResult {
+  const requirements = extractMockRequirements(jdText).map((requirement, i) => {
+    const verdict: JdRequirementVerdict =
+      JD_REQUIREMENT_VERDICTS[(h >> (i * 2)) % JD_REQUIREMENT_VERDICTS.length];
+    return { requirement, verdict, evidence: MOCK_EVIDENCE[verdict] };
+  });
+  const scored = requirements.filter((r) => r.verdict !== "not_discussed");
+  const weight: Record<JdRequirementVerdict, number> = {
+    met: 100,
+    partial: 55,
+    missing: 10,
+    not_discussed: 0,
+  };
+  // "not_discussed" is excluded from the mean rather than counted as a failure,
+  // mirroring what the real prompt instructs the model to do.
+  const fitScore =
+    scored.length > 0
+      ? Math.round(scored.reduce((sum, r) => sum + weight[r.verdict], 0) / scored.length)
+      : base;
+  const blindSpots = requirements.length - scored.length;
+  return {
+    fit_score: fitScore,
+    verdict_summary:
+      `Against the "${jobTitle}" description the candidate matches ${scored.filter((r) => r.verdict === "met").length} of ${requirements.length} requirements outright` +
+      `${blindSpots > 0 ? `, and ${blindSpots} were never discussed in the interview` : ""}. ` +
+      "Depth on the core stack is adequate; the gaps are coachable. (mock evaluation)",
+    requirements,
+  };
 }
 
 export function mockTranscript(filename: string, role: string): string {
@@ -142,5 +208,8 @@ export function mockEvaluation(filename: string, overrides: MockOverrides = {}):
     strengths: pick(STRENGTH_POOL, 1),
     areas_for_improvement: pick(IMPROVEMENT_POOL, 2),
     recommendation,
+    jd_match: overrides.job
+      ? mockJdMatch(overrides.job.title, overrides.job.jdText, h, base)
+      : null,
   };
 }

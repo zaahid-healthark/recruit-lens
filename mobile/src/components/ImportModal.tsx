@@ -12,9 +12,11 @@ import {
   TextInput,
   View,
 } from "react-native";
+import type { JobDto } from "@interview-evaluator/shared";
 import { api, ApiRequestError, UploadFileInput } from "../api/client";
 import { colors } from "../theme";
 import { middleTruncate } from "../utils/format";
+import { JobPicker } from "./JobPicker";
 
 interface Props {
   visible: boolean;
@@ -33,12 +35,15 @@ export function ImportModal({ visible, files, onClose, onImported }: Props): Rea
   const [notes, setNotes] = useState("");
   const [uploading, setUploading] = useState(false);
   const [progress, setProgress] = useState("");
+  const [job, setJob] = useState<JobDto | null>(null);
+  const [pickerOpen, setPickerOpen] = useState(false);
 
   const reset = (): void => {
     setCandidateName("");
     setNotes("");
     setUploading(false);
     setProgress("");
+    setJob(null);
   };
 
   const handleImport = async (): Promise<void> => {
@@ -47,7 +52,13 @@ export function ImportModal({ visible, files, onClose, onImported }: Props): Rea
     try {
       for (const file of files) {
         setProgress(files.length > 1 ? `Uploading ${uploaded + 1} of ${files.length}…` : "Uploading…");
-        await api.uploadRecording(file, candidateName.trim() || undefined, notes.trim() || undefined);
+        await api.uploadRecording(
+          file,
+          candidateName.trim() || undefined,
+          notes.trim() || undefined,
+          undefined,
+          job?.id ?? null
+        );
         uploaded += 1;
       }
       reset();
@@ -116,6 +127,30 @@ export function ImportModal({ visible, files, onClose, onImported }: Props): Rea
             editable={!uploading}
           />
 
+          {/* Attaching a job makes the AI score against its JD requirement-by-requirement. */}
+          <Pressable
+            style={styles.jobRow}
+            onPress={() => setPickerOpen(true)}
+            disabled={uploading}
+          >
+            <Ionicons
+              name={job ? "briefcase" : "briefcase-outline"}
+              size={17}
+              color={job ? colors.primary : colors.subtext}
+            />
+            <View style={{ flex: 1 }}>
+              <Text style={[styles.jobLabel, !job && styles.jobLabelEmpty]} numberOfLines={1}>
+                {job ? job.title : "Screen against a job description"}
+              </Text>
+              <Text style={styles.jobHint}>
+                {job
+                  ? "Scored requirement-by-requirement against this JD"
+                  : "Optional — without one, scoring is generic"}
+              </Text>
+            </View>
+            <Ionicons name="chevron-forward" size={17} color={colors.subtext} />
+          </Pressable>
+
           <View style={styles.buttonRow}>
             <Pressable
               style={[styles.button, styles.cancelButton]}
@@ -141,6 +176,13 @@ export function ImportModal({ visible, files, onClose, onImported }: Props): Rea
           </View>
         </View>
       </KeyboardAvoidingView>
+
+      <JobPicker
+        visible={pickerOpen}
+        selectedJobId={job?.id ?? null}
+        onClose={() => setPickerOpen(false)}
+        onSelect={setJob}
+      />
     </Modal>
   );
 }
@@ -217,6 +259,32 @@ const styles = StyleSheet.create({
   notesInput: {
     minHeight: 64,
     textAlignVertical: "top",
+  },
+  jobRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 10,
+    borderWidth: 1,
+    borderColor: colors.border,
+    borderRadius: 10,
+    paddingHorizontal: 12,
+    paddingVertical: 11,
+    backgroundColor: colors.background,
+    marginTop: 10,
+  },
+  jobLabel: {
+    fontSize: 13.5,
+    fontWeight: "700",
+    color: colors.text,
+  },
+  jobLabelEmpty: {
+    fontWeight: "600",
+    color: colors.subtext,
+  },
+  jobHint: {
+    fontSize: 11.5,
+    color: colors.subtext,
+    marginTop: 2,
   },
   buttonRow: {
     flexDirection: "row",

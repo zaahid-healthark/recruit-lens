@@ -33,12 +33,25 @@ export async function evaluateRecording(recordingId: string): Promise<void> {
   try {
     const recording = await prisma.recording.findUnique({
       where: { id: recordingId },
-      include: { transcript: true },
+      include: { transcript: true, job: true },
     });
     if (!recording) {
       log.warn(`evaluateRecording: recording ${recordingId} no longer exists — skipping.`);
       return;
     }
+
+    // A job with an empty JD is treated as no job at all: there would be
+    // nothing to match against, and a jd_match block built from whitespace
+    // would read as "no requirements" rather than "not scored against a JD".
+    const job =
+      recording.job && recording.job.jdText.trim().length > 0
+        ? {
+            title: recording.job.title,
+            jdText: recording.job.jdText,
+            department: recording.job.department,
+            subCategory: recording.job.subCategory,
+          }
+        : null;
 
     // ── Step A: transcription ────────────────────────────────────────────
     let transcriptText: string;
@@ -55,7 +68,7 @@ export async function evaluateRecording(recordingId: string): Promise<void> {
       });
       if (env.mockAi) {
         await sleep(800); // let the UI show the TRANSCRIBING state
-        const mockRef = mockEvaluation(recording.originalFilename);
+        const mockRef = mockEvaluation(recording.originalFilename, { job });
         transcriptText = mockTranscript(recording.originalFilename, mockRef.role_designation);
         await prisma.transcript.create({
           data: {
@@ -81,10 +94,10 @@ export async function evaluateRecording(recordingId: string): Promise<void> {
     let model: string;
     if (env.mockAi) {
       await sleep(800);
-      result = mockEvaluation(recording.originalFilename);
+      result = mockEvaluation(recording.originalFilename, { job });
       model = "mock-evaluator";
     } else {
-      const outcome = await scoreTranscript(transcriptText);
+      const outcome = await scoreTranscript(transcriptText, job);
       result = outcome.result;
       model = outcome.model;
     }
@@ -101,6 +114,15 @@ export async function evaluateRecording(recordingId: string): Promise<void> {
       strengths: result.strengths,
       areasForImprovement: result.areas_for_improvement,
       recommendation: result.recommendation,
+      // Prisma requires DbNull (SQL NULL) rather than `null` for optional Json
+      // columns — plain null is reserved for "JSON null" and is rejected here.
+      jdMatchJson: result.jd_match
+        ? ({
+            fitScore: result.jd_match.fit_score,
+            verdictSummary: result.jd_match.verdict_summary,
+            requirements: result.jd_match.requirements,
+          } as unknown as Prisma.InputJsonValue)
+        : Prisma.DbNull,
       model,
     };
     await prisma.evaluation.upsert({
@@ -115,7 +137,8 @@ export async function evaluateRecording(recordingId: string): Promise<void> {
     syncRecordingToDrive(recordingId); // mirror transcript + scores to Drive (best-effort)
     log.info(
       `Recording ${recordingId} evaluated: ${result.department} › ${result.sub_category}, ` +
-        `role "${result.role_designation}", score ${result.overall_score}.`
+        `role "${result.role_designation}", score ${result.overall_score}` +
+        `${result.jd_match ? `, JD fit ${result.jd_match.fit_score} vs "${job?.title}"` : ""}.`
     );
   } catch (err) {
     const message = (err instanceof Error ? err.message : String(err)).slice(0, 800);

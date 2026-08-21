@@ -179,6 +179,22 @@ export function DashboardScreen(): React.JSX.Element {
               }))}
             />
           </Section>
+
+          {/* Only meaningful once jobs exist; hidden entirely otherwise. */}
+          {stats.byJob.length > 0 ? (
+            <Section title="Candidates per job">
+              <HorizontalBars
+                data={stats.byJob.map((j, i) => ({
+                  label:
+                    j.averageOverallScore !== null
+                      ? `${j.title} (avg ${j.averageOverallScore})`
+                      : j.title,
+                  value: j.count,
+                  color: palette[i % palette.length],
+                }))}
+              />
+            </Section>
+          ) : null}
         </>
       )}
     </ScrollView>

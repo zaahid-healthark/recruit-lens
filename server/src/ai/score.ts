@@ -1,12 +1,12 @@
 import { env } from "../config/env";
 import { log } from "../lib/logger";
 import {
-  llmEvaluationSchema,
+  llmEvaluationSchemaFor,
   normalizeLlmResult,
   ParsedLlmEvaluation,
 } from "../schemas/evaluationSchema";
 import { getOpenAI } from "./openaiClient";
-import { buildScoringSystemPrompt, buildScoringUserPrompt } from "./prompts";
+import { buildScoringSystemPrompt, buildScoringUserPrompt, JobContext } from "./prompts";
 
 export interface ScoringOutcome {
   result: ParsedLlmEvaluation;
@@ -61,26 +61,30 @@ async function callChat(messages: ChatMessage[]): Promise<string> {
   }
 }
 
-function parseAndValidate(content: string): ParsedLlmEvaluation {
+function parseAndValidate(content: string, hasJob: boolean): ParsedLlmEvaluation {
   const json = JSON.parse(stripJsonFences(content)) as unknown;
-  return llmEvaluationSchema.parse(normalizeLlmResult(json));
+  return llmEvaluationSchemaFor(hasJob).parse(normalizeLlmResult(json));
 }
 
 /**
  * Step B of the pipeline: transcript → validated scoring + classification.
+ * When `job` is supplied the model also scores JD fit requirement-by-requirement.
  * On invalid JSON the model gets exactly ONE repair retry (with the validation
  * errors echoed back); after that the error propagates and the recording is
  * marked FAILED by the pipeline.
  */
-export async function scoreTranscript(transcript: string): Promise<ScoringOutcome> {
+export async function scoreTranscript(
+  transcript: string,
+  job: JobContext | null = null
+): Promise<ScoringOutcome> {
   const messages: ChatMessage[] = [
-    { role: "system", content: buildScoringSystemPrompt() },
-    { role: "user", content: buildScoringUserPrompt(transcript) },
+    { role: "system", content: buildScoringSystemPrompt(job) },
+    { role: "user", content: buildScoringUserPrompt(transcript, job) },
   ];
 
   const first = await callChat(messages);
   try {
-    return { result: parseAndValidate(first), model: env.evalModel };
+    return { result: parseAndValidate(first, job !== null), model: env.evalModel };
   } catch (err) {
     const issues = err instanceof Error ? err.message : String(err);
     log.warn("Evaluation JSON failed validation — one repair retry.", issues.slice(0, 300));
@@ -92,6 +96,6 @@ export async function scoreTranscript(transcript: string): Promise<ScoringOutcom
         content: `Your previous response was not valid. Validation errors:\n${issues.slice(0, 2000)}\n\nRespond again with ONLY the corrected JSON object.`,
       },
     ]);
-    return { result: parseAndValidate(repaired), model: env.evalModel };
+    return { result: parseAndValidate(repaired, job !== null), model: env.evalModel };
   }
 }
