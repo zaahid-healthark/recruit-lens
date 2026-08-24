@@ -14,6 +14,28 @@ export interface PendingCall {
   /** Normalized digits of phoneNumber, used to match recorder filenames. */
   digits: string;
   startedAt: string; // ISO
+  /** Job chosen when dialling; its JD drives scoring once uploaded. */
+  jobId: string | null;
+  /** Denormalised for display — the job may be renamed or deleted later. */
+  jobTitle: string | null;
+}
+
+/** Why a file in the watched folder was not uploaded. */
+export const SKIP_REASONS = ["unmatched", "too_short"] as const;
+export type SkipReason = (typeof SKIP_REASONS)[number];
+
+/**
+ * A file the scanner deliberately did NOT upload, kept so the user can see
+ * what was held back and override it. This is the "log" of skipped calls:
+ * nothing reaches the server, but nothing disappears silently either.
+ */
+export interface SkippedFile {
+  name: string;
+  reason: SkipReason;
+  /** null when the probe could not read it. */
+  durationSeconds: number | null;
+  sizeBytes: number;
+  seenAt: string; // ISO
 }
 
 /**
@@ -43,6 +65,13 @@ export interface AutoImportState {
   /** Files the server permanently rejected (4xx) — retried by the daily sweep. */
   rejected: Record<string, string>;
   pendingCalls: PendingCall[];
+  /** Files held back from upload, keyed by SAF document URI. */
+  skipped: Record<string, SkippedFile>;
+  /**
+   * Recordings shorter than this are treated as hang-ups, not interviews, and
+   * are never uploaded. 0 disables the check.
+   */
+  minDurationSeconds: number;
   /** Local hour/minute of the daily "upload everything" sweep. */
   dailySweepHour: number;
   dailySweepMinute: number;
@@ -62,6 +91,8 @@ export const DEFAULT_STATE: AutoImportState = {
   probes: {},
   rejected: {},
   pendingCalls: [],
+  skipped: {},
+  minDurationSeconds: 20,
   dailySweepHour: 17, // 5 PM
   dailySweepMinute: 0,
   lastSweepDay: null,
@@ -109,6 +140,13 @@ export function formatSweepTime(hour: number, minute: number): string {
   return `${h12}:${String(minute).padStart(2, "0")} ${suffix}`;
 }
 
+/** Clamp to a sane range so a hand-edited state file cannot skip everything. */
+function sanitizeMinDuration(value: unknown, fallback: number): number {
+  return typeof value === "number" && Number.isFinite(value) && value >= 0 && value <= 600
+    ? Math.round(value)
+    : fallback;
+}
+
 function sanitizeHour(value: unknown, fallback: number): number {
   return typeof value === "number" && Number.isInteger(value) && value >= 0 && value <= 23
     ? value
@@ -134,6 +172,11 @@ export async function loadState(): Promise<AutoImportState> {
       probes: parsed.probes ?? {},
       rejected: parsed.rejected ?? {},
       pendingCalls: prunePendingCalls(parsed.pendingCalls ?? []),
+      skipped: parsed.skipped ?? {},
+      minDurationSeconds: sanitizeMinDuration(
+        parsed.minDurationSeconds,
+        DEFAULT_STATE.minDurationSeconds
+      ),
       // Guard against a hand-edited / older state file putting the sweep
       // schedule out of range (setHours would silently roll over).
       dailySweepHour: sanitizeHour(parsed.dailySweepHour, DEFAULT_STATE.dailySweepHour),

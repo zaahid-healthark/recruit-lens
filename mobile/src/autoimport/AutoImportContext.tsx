@@ -13,11 +13,18 @@ import { Alert, AppState, Platform } from "react-native";
 import { useRefresh } from "../context/RefreshContext";
 import { useInterval } from "../hooks/useInterval";
 import { digitsOf, folderLabelFromTreeUri } from "./naming";
-import { listAudioFiles, runScan, SETTLE_MS } from "./scanner";
+import {
+  deleteSkippedFile,
+  importSkippedFile,
+  listAudioFiles,
+  runScan,
+  SETTLE_MS,
+} from "./scanner";
 import {
   AutoImportState,
   DEFAULT_STATE,
   PendingCall,
+  SkippedFile,
   dayKey,
   isSweepDue,
   loadState,
@@ -53,6 +60,9 @@ interface AutoImportContextValue {
   renameOnDisk: boolean;
   scanning: boolean;
   pendingCalls: PendingCall[];
+  /** Files held back from upload, newest first, with the reason why. */
+  skipped: (SkippedFile & { uri: string })[];
+  minDurationSeconds: number;
   lastScanAt: string | null;
   lastScanSummary: string | null;
   totalImported: number;
@@ -65,10 +75,19 @@ interface AutoImportContextValue {
   setEnabled: (value: boolean) => void;
   setRenameOnDisk: (value: boolean) => void;
   setDailySweepTime: (hour: number, minute: number) => void;
+  setMinDurationSeconds: (seconds: number) => void;
   scanNow: () => Promise<void>;
   /** Register a pending call and open the phone's native dialer. */
-  startCall: (candidateName: string, phoneNumber: string) => Promise<boolean>;
+  startCall: (
+    candidateName: string,
+    phoneNumber: string,
+    job: { id: string; title: string } | null
+  ) => Promise<boolean>;
   removePendingCall: (id: string) => void;
+  /** Upload a held-back file anyway (e.g. a candidate who called in). */
+  importSkipped: (uri: string, candidateName: string, jobId: string | null) => Promise<void>;
+  /** Permanently delete a held-back file from the recorder's folder. */
+  deleteSkipped: (uri: string) => Promise<void>;
 }
 
 const AutoImportContext = createContext<AutoImportContextValue | null>(null);
@@ -233,12 +252,41 @@ export function AutoImportProvider({ children }: { children: React.ReactNode }):
     [commit]
   );
 
+  const setMinDurationSeconds = useCallback(
+    (seconds: number): void => {
+      commit({ ...stateRef.current, minDurationSeconds: seconds });
+    },
+    [commit]
+  );
+
   const scanNow = useCallback(async (): Promise<void> => {
     await scan(true);
   }, [scan]);
 
+  const importSkipped = useCallback(
+    async (uri: string, candidateName: string, jobId: string | null): Promise<void> => {
+      // Throws on failure so the caller can surface it — importing is an
+      // explicit user action and must not fail silently.
+      const next = await importSkippedFile(stateRef.current, uri, candidateName, jobId);
+      commit(next);
+      bump();
+    },
+    [commit, bump]
+  );
+
+  const deleteSkipped = useCallback(
+    async (uri: string): Promise<void> => {
+      commit(await deleteSkippedFile(stateRef.current, uri));
+    },
+    [commit]
+  );
+
   const startCall = useCallback(
-    async (candidateName: string, phoneNumber: string): Promise<boolean> => {
+    async (
+      candidateName: string,
+      phoneNumber: string,
+      job: { id: string; title: string } | null
+    ): Promise<boolean> => {
       const name = candidateName.trim();
       const number = phoneNumber.trim();
       const digits = digitsOf(number);
@@ -256,6 +304,8 @@ export function AutoImportProvider({ children }: { children: React.ReactNode }):
         phoneNumber: number,
         digits,
         startedAt: new Date().toISOString(),
+        jobId: job?.id ?? null,
+        jobTitle: job?.title ?? null,
       };
       commit({
         ...stateRef.current,
@@ -288,6 +338,15 @@ export function AutoImportProvider({ children }: { children: React.ReactNode }):
     [commit]
   );
 
+  // Newest first: the call that just happened is the one being looked for.
+  const skippedList = useMemo(
+    () =>
+      Object.entries(state.skipped)
+        .map(([uri, entry]) => ({ ...entry, uri }))
+        .sort((a, b) => b.seenAt.localeCompare(a.seenAt)),
+    [state.skipped]
+  );
+
   const value = useMemo<AutoImportContextValue>(
     () => ({
       ready,
@@ -297,6 +356,8 @@ export function AutoImportProvider({ children }: { children: React.ReactNode }):
       renameOnDisk: state.renameOnDisk,
       scanning,
       pendingCalls: state.pendingCalls,
+      skipped: skippedList,
+      minDurationSeconds: state.minDurationSeconds,
       lastScanAt: state.lastScanAt,
       lastScanSummary: state.lastScanSummary,
       totalImported: state.totalImported,
@@ -308,9 +369,12 @@ export function AutoImportProvider({ children }: { children: React.ReactNode }):
       setEnabled,
       setRenameOnDisk,
       setDailySweepTime,
+      setMinDurationSeconds,
       scanNow,
       startCall,
       removePendingCall,
+      importSkipped,
+      deleteSkipped,
     }),
     [
       ready,
@@ -321,9 +385,13 @@ export function AutoImportProvider({ children }: { children: React.ReactNode }):
       setEnabled,
       setRenameOnDisk,
       setDailySweepTime,
+      setMinDurationSeconds,
       scanNow,
       startCall,
       removePendingCall,
+      importSkipped,
+      deleteSkipped,
+      skippedList,
     ]
   );
 

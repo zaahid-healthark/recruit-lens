@@ -9,17 +9,23 @@ import {
   mimeFromExtension,
   timestampFromFilename,
 } from "./naming";
-import { AutoImportState, FileProbe, PendingCall } from "./store";
+import { probeDurationSeconds } from "./duration";
+import { AutoImportState, FileProbe, PendingCall, SkippedFile } from "./store";
 
 /**
  * One pass of the watched-folder scanner:
  *   list folder → keep audio files that have finished being written →
- *   upload each to POST /recordings → optionally rename on disk.
+ *   decide whether each one is a real interview → upload → rename on disk.
  *
- * A file that matches a pending call (started from the Dialer tab) is uploaded
- * as "<Candidate> <date>.<ext>" with candidateName attached; everything else
- * keeps its original filename. Transient upload failures are NOT recorded, so
- * they retry on the next scan.
+ * ONLY recordings matching a pending call (i.e. dialled from the Dialer tab)
+ * are uploaded. A call recorder captures every call including personal ones,
+ * and those must never reach the server. Files held back are recorded in
+ * state.skipped with a reason so the user can see and override them — held
+ * back is not the same as thrown away.
+ *
+ * A matched file is uploaded as "<Candidate> <date>.<ext>" with candidateName
+ * and the dialled job's JD attached. Transient upload failures are NOT
+ * recorded, so they retry on the next scan.
  */
 
 export interface ScanOutcome {
@@ -30,6 +36,10 @@ export interface ScanOutcome {
   matchedCalls: number;
   /** Files skipped because they are still being written (call in progress). */
   settling: number;
+  /** Files held back this pass because no pending call matched them. */
+  unmatched: number;
+  /** Files held back this pass for being shorter than the minimum. */
+  tooShort: number;
   /** Files renamed inside the recorder's folder. */
   renamed: number;
   discovered: number;
@@ -169,6 +179,8 @@ export async function runScan(
     imported: 0,
     matchedCalls: 0,
     settling: 0,
+    unmatched: 0,
+    tooShort: 0,
     renamed: 0,
     discovered: 0,
     error: null,
@@ -202,19 +214,25 @@ export async function runScan(
     importedUris: { ...state.importedUris },
     probes: { ...state.probes },
     rejected: { ...state.rejected },
+    skipped: { ...state.skipped },
     pendingCalls: [...state.pendingCalls],
   };
 
   // Forget bookkeeping for files that no longer exist (keeps the state small).
   const present = new Set(audioUris);
-  for (const map of [next.importedUris, next.probes, next.rejected] as Record<string, unknown>[]) {
+  for (const map of [next.importedUris, next.probes, next.rejected, next.skipped] as Record<
+    string,
+    unknown
+  >[]) {
     for (const key of Object.keys(map)) {
       if (!present.has(key)) delete map[key];
     }
   }
 
   const fresh = audioUris
-    .filter((uri) => !next.importedUris[uri] && !next.rejected[uri])
+    // Skipped files stay skipped until the user acts on them, otherwise every
+    // scan would re-probe the same personal calls forever.
+    .filter((uri) => !next.importedUris[uri] && !next.rejected[uri] && !next.skipped[uri])
     .map((uri) => ({ uri, name: fileNameFromSafUri(uri) }))
     // Recorder filenames embed timestamps, so lexicographic ≈ chronological.
     .sort((a, b) => a.name.localeCompare(b.name));
@@ -245,22 +263,56 @@ export async function runScan(
       continue;
     }
 
-    // ── Match to a pending call, then upload ──
+    // ── Decide whether this is an interview at all ──
     const recordedAt = recordedAtFor(file.name, null);
     const match = matchPendingCall(file.name, next.pendingCalls, recordedAt);
+
+    // Probed once per file and remembered on the skip entry, so the list can
+    // show a duration and a re-scan never re-probes the same file.
+    const durationSeconds = await probeDurationSeconds(file.uri);
+    const skip = (reason: SkippedFile["reason"]): void => {
+      next.skipped[file.uri] = {
+        name: file.name,
+        reason,
+        durationSeconds,
+        sizeBytes: size,
+        seenAt: new Date(nowMs).toISOString(),
+      };
+      delete next.probes[file.uri];
+    };
+
+    // A call recorder records everything, including personal calls. Only calls
+    // placed from the Dialer tab are ours to upload.
+    if (!match) {
+      skip("unmatched");
+      outcome.unmatched += 1;
+      continue;
+    }
+    // A hang-up is not an interview. A null duration means "could not read",
+    // never "zero" — those are uploaded rather than silently discarded.
+    if (
+      next.minDurationSeconds > 0 &&
+      durationSeconds !== null &&
+      durationSeconds < next.minDurationSeconds
+    ) {
+      skip("too_short");
+      outcome.tooShort += 1;
+      continue;
+    }
+
+    // ── Upload ──
     const when = recordedAtFor(file.name, match);
     const ext = extensionOf(file.name);
-    const uploadName = match ? buildCandidateFilename(match.candidateName, when, ext) : file.name;
-    const notes = match
-      ? `Auto-imported from watched folder • Called ${match.phoneNumber} • Original file: ${file.name}`
-      : "Auto-imported from watched folder";
+    const uploadName = buildCandidateFilename(match.candidateName, when, ext);
+    const notes = `Auto-imported from watched folder • Called ${match.phoneNumber} • Original file: ${file.name}`;
 
     try {
       await api.uploadRecording(
         { uri: file.uri, name: uploadName, mimeType: mimeFromExtension(ext) },
-        match?.candidateName,
+        match.candidateName,
         notes,
-        UPLOAD_TIMEOUT_MS
+        UPLOAD_TIMEOUT_MS,
+        match.jobId
       );
     } catch (err) {
       const message = err instanceof Error ? err.message : String(err);
@@ -281,13 +333,11 @@ export async function runScan(
     delete next.probes[file.uri];
     next.totalImported += 1;
     outcome.imported += 1;
-    if (match) {
-      next.pendingCalls = next.pendingCalls.filter((c) => c.id !== match.id);
-      outcome.matchedCalls += 1;
-    }
+    next.pendingCalls = next.pendingCalls.filter((c) => c.id !== match.id);
+    outcome.matchedCalls += 1;
 
     // ── Optional: rename the file in the recorder's folder to match ──
-    if (match && next.renameOnDisk) {
+    if (next.renameOnDisk) {
       const renamedUri = await renameInFolder(folderUri, file.uri, file.name, uploadName, size);
       if (renamedUri) {
         delete next.importedUris[file.uri]; // that URI no longer exists
@@ -302,6 +352,59 @@ export async function runScan(
   return { state: next, outcome };
 }
 
+/**
+ * Upload a file the scanner deliberately held back (an inbound call from a
+ * candidate, or a short recording that is genuinely worth keeping). Takes the
+ * candidate name and job from the caller since there is no pending call to
+ * infer them from. Returns the state with the file moved out of `skipped`.
+ */
+export async function importSkippedFile(
+  state: AutoImportState,
+  uri: string,
+  candidateName: string,
+  jobId: string | null
+): Promise<AutoImportState> {
+  const entry = state.skipped[uri];
+  if (!entry) throw new Error("That file is no longer in the skipped list.");
+
+  const ext = extensionOf(entry.name);
+  const when = timestampFromFilename(entry.name) ?? new Date(entry.seenAt);
+  const name = candidateName.trim()
+    ? buildCandidateFilename(candidateName.trim(), when, ext)
+    : entry.name;
+
+  await api.uploadRecording(
+    { uri, name, mimeType: mimeFromExtension(ext) },
+    candidateName.trim() || undefined,
+    `Imported manually from the watched folder • Original file: ${entry.name}`,
+    UPLOAD_TIMEOUT_MS,
+    jobId
+  );
+
+  const skipped = { ...state.skipped };
+  delete skipped[uri];
+  return {
+    ...state,
+    skipped,
+    importedUris: { ...state.importedUris, [uri]: true },
+    totalImported: state.totalImported + 1,
+  };
+}
+
+/**
+ * Delete a held-back file from the recorder's folder for good. Only ever
+ * called on explicit user action — the scanner itself never deletes anything.
+ */
+export async function deleteSkippedFile(
+  state: AutoImportState,
+  uri: string
+): Promise<AutoImportState> {
+  await FileSystem.StorageAccessFramework.deleteAsync(uri);
+  const skipped = { ...state.skipped };
+  delete skipped[uri];
+  return { ...state, skipped };
+}
+
 function summarize(outcome: ScanOutcome): string {
   const parts: string[] = [];
   if (outcome.imported > 0) {
@@ -310,6 +413,8 @@ function summarize(outcome: ScanOutcome): string {
     if (outcome.renamed > 0) parts.push(`${outcome.renamed} renamed`);
   }
   if (outcome.settling > 0) parts.push(`${outcome.settling} still recording`);
+  if (outcome.unmatched > 0) parts.push(`${outcome.unmatched} not from a dialled call`);
+  if (outcome.tooShort > 0) parts.push(`${outcome.tooShort} too short`);
   if (outcome.error) parts.push(`failed: ${outcome.error.slice(0, 100)}`);
   return parts.length > 0 ? parts.join(", ") : "no new files";
 }

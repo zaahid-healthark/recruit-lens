@@ -11,9 +11,11 @@ import {
   ScrollView,
   StyleSheet,
   Text,
+  TextInput,
   View,
 } from "react-native";
 import { api } from "../api/client";
+import { AudioPlayerBar } from "../components/AudioPlayerBar";
 import { JdMatchCard } from "../components/JdMatchCard";
 import { JobPicker } from "../components/JobPicker";
 import { ScoreBadge } from "../components/ScoreBadge";
@@ -43,6 +45,11 @@ export function RecordingDetailScreen(): React.JSX.Element {
   const [error, setError] = useState<string | null>(null);
   const [transcriptOpen, setTranscriptOpen] = useState(false);
   const [pickerOpen, setPickerOpen] = useState(false);
+  const [editing, setEditing] = useState(false);
+  const [draftName, setDraftName] = useState("");
+  const [draftCandidate, setDraftCandidate] = useState("");
+  const [draftNotes, setDraftNotes] = useState("");
+  const [savingEdit, setSavingEdit] = useState(false);
   const [linkingJob, setLinkingJob] = useState(false);
 
   const load = useCallback(async (): Promise<void> => {
@@ -67,6 +74,38 @@ export function RecordingDetailScreen(): React.JSX.Element {
       setRecording((prev) => (prev ? { ...prev, status: "TRANSCRIBING" } : prev));
     } catch (err) {
       Alert.alert("Could not start evaluation", err instanceof Error ? err.message : String(err));
+    }
+  };
+
+  const openEditor = (): void => {
+    setDraftName(recording?.originalFilename ?? "");
+    setDraftCandidate(recording?.candidateName ?? "");
+    setDraftNotes(recording?.notes ?? "");
+    setEditing(true);
+  };
+
+  const saveEdits = async (): Promise<void> => {
+    const name = draftName.trim();
+    if (!name) {
+      Alert.alert("Name required", "The recording needs a filename.");
+      return;
+    }
+    setSavingEdit(true);
+    try {
+      // These three fields are what this editor owns; the server patches only
+      // the keys it receives, so the job link is untouched.
+      const updated = await api.updateRecording(id, {
+        originalFilename: name,
+        candidateName: draftCandidate.trim() || null,
+        notes: draftNotes.trim() || null,
+      });
+      setRecording(updated);
+      setEditing(false);
+      bump(); // the list row shows the name too
+    } catch (err) {
+      Alert.alert("Could not save", err instanceof Error ? err.message : String(err));
+    } finally {
+      setSavingEdit(false);
     }
   };
 
@@ -138,14 +177,84 @@ export function RecordingDetailScreen(): React.JSX.Element {
     <ScrollView style={styles.container} contentContainerStyle={styles.content}>
       {/* ── File header ── */}
       <View style={styles.card}>
-        <Text style={styles.fileName}>{recording.originalFilename}</Text>
-        <Text style={styles.meta}>
-          {recording.candidateName ? `${recording.candidateName} • ` : ""}
-          {formatDate(recording.importedAt)} • {formatDuration(recording.durationSeconds)}
-        </Text>
-        {recording.notes ? <Text style={styles.notes}>“{recording.notes}”</Text> : null}
-        <View style={{ marginTop: 8 }}>
-          <StatusPill status={recording.status} />
+        {editing ? (
+          <View>
+            <Text style={styles.editLabel}>Filename</Text>
+            <TextInput
+              style={styles.input}
+              value={draftName}
+              onChangeText={setDraftName}
+              placeholder="Filename"
+              placeholderTextColor={colors.subtext}
+              editable={!savingEdit}
+            />
+            <Text style={styles.editLabel}>Candidate name</Text>
+            <TextInput
+              style={styles.input}
+              value={draftCandidate}
+              onChangeText={setDraftCandidate}
+              placeholder="Candidate name (optional)"
+              placeholderTextColor={colors.subtext}
+              autoCapitalize="words"
+              editable={!savingEdit}
+            />
+            <Text style={styles.editLabel}>Notes</Text>
+            <TextInput
+              style={[styles.input, styles.notesInput]}
+              value={draftNotes}
+              onChangeText={setDraftNotes}
+              placeholder="Notes (optional)"
+              placeholderTextColor={colors.subtext}
+              multiline
+              editable={!savingEdit}
+            />
+            <View style={styles.editButtons}>
+              <Pressable
+                style={styles.secondaryButton}
+                onPress={() => setEditing(false)}
+                disabled={savingEdit}
+              >
+                <Text style={styles.secondaryButtonLabel}>Cancel</Text>
+              </Pressable>
+              <Pressable
+                style={styles.editSaveButton}
+                onPress={() => void saveEdits()}
+                disabled={savingEdit}
+              >
+                {savingEdit ? (
+                  <ActivityIndicator size="small" color="#FFFFFF" />
+                ) : (
+                  <Text style={styles.editSaveLabel}>Save</Text>
+                )}
+              </Pressable>
+            </View>
+          </View>
+        ) : (
+          <View>
+            <View style={styles.titleRow}>
+              <Text style={[styles.fileName, { flex: 1 }]}>{recording.originalFilename}</Text>
+              <Pressable hitSlop={8} onPress={openEditor} accessibilityLabel="Rename">
+                <Ionicons name="create-outline" size={19} color={colors.primary} />
+              </Pressable>
+            </View>
+            <Text style={styles.meta}>
+              {recording.candidateName ? `${recording.candidateName} • ` : ""}
+              {formatDate(recording.importedAt)} • {formatDuration(recording.durationSeconds)}
+            </Text>
+            {recording.notes ? <Text style={styles.notes}>“{recording.notes}”</Text> : null}
+            <View style={{ marginTop: 8 }}>
+              <StatusPill status={recording.status} />
+            </View>
+          </View>
+        )}
+
+        {/* Playback streams from the server; on free hosting the audio can be
+            gone while scores remain, which the bar reports as unavailable. */}
+        <View style={styles.playerWrap}>
+          <AudioPlayerBar
+            source={api.recordingAudioSource(recording.id)}
+            fallbackDurationSeconds={recording.durationSeconds}
+          />
         </View>
 
         {/* Job link — settable before or after evaluation; re-evaluate to apply. */}
@@ -347,6 +456,72 @@ export function RecordingDetailScreen(): React.JSX.Element {
 }
 
 const styles = StyleSheet.create({
+  titleRow: {
+    flexDirection: "row",
+    alignItems: "flex-start",
+    gap: 12,
+  },
+  playerWrap: {
+    marginTop: 12,
+    paddingTop: 10,
+    borderTopWidth: StyleSheet.hairlineWidth,
+    borderTopColor: colors.border,
+  },
+  editLabel: {
+    fontSize: 11.5,
+    fontWeight: "700",
+    color: colors.subtext,
+    marginTop: 8,
+    marginBottom: 4,
+    textTransform: "uppercase",
+    letterSpacing: 0.4,
+  },
+  input: {
+    borderWidth: 1,
+    borderColor: colors.border,
+    borderRadius: 10,
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+    fontSize: 14,
+    color: colors.text,
+    backgroundColor: colors.background,
+  },
+  notesInput: {
+    minHeight: 64,
+    textAlignVertical: "top",
+  },
+  editButtons: {
+    flexDirection: "row",
+    gap: 10,
+    marginTop: 14,
+  },
+  editSaveButton: {
+    flex: 1,
+    alignItems: "center",
+    justifyContent: "center",
+    backgroundColor: colors.primary,
+    borderRadius: 10,
+    paddingVertical: 11,
+  },
+  editSaveLabel: {
+    color: "#FFFFFF",
+    fontSize: 13.5,
+    fontWeight: "800",
+  },
+  secondaryButton: {
+    flex: 1,
+    alignItems: "center",
+    justifyContent: "center",
+    borderWidth: 1,
+    borderColor: colors.border,
+    borderRadius: 10,
+    paddingVertical: 11,
+  },
+  secondaryButtonLabel: {
+    color: colors.text,
+    fontSize: 13.5,
+    fontWeight: "700",
+  },
   jobRow: {
     flexDirection: "row",
     alignItems: "center",

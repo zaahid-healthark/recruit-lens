@@ -1,5 +1,7 @@
 import { RECORDING_STATUSES } from "@interview-evaluator/shared";
+import { Prisma } from "@prisma/client";
 import { Router } from "express";
+import fssync from "fs";
 import multer from "multer";
 import os from "os";
 import path from "path";
@@ -55,11 +57,22 @@ const importBodySchema = z.object({
   jobId: z.string().uuid().optional(),
 });
 
-/** PATCH body — currently only the job link is mutable after import. */
-const updateBodySchema = z.object({
-  /** null detaches the job (reverting to generic, JD-less scoring). */
-  jobId: z.string().uuid().nullable(),
-});
+/**
+ * PATCH body. Every field is optional — only what is sent gets changed, so a
+ * rename cannot accidentally clear the job link (and vice versa). Sending an
+ * explicit null clears a nullable field.
+ */
+const updateBodySchema = z
+  .object({
+    /** null detaches the job (reverting to generic, JD-less scoring). */
+    jobId: z.string().uuid().nullable().optional(),
+    /** null clears the name; the AI never sees it, it is a human label. */
+    candidateName: z.string().trim().max(200).nullable().optional(),
+    notes: z.string().trim().max(2000).nullable().optional(),
+    /** Display filename. The stored file's key is untouched — this is a label. */
+    originalFilename: z.string().trim().min(1).max(300).optional(),
+  })
+  .refine((v) => Object.keys(v).length > 0, { message: "No fields to update" });
 
 const listQuerySchema = z.object({
   status: z.enum(RECORDING_STATUSES).optional(),
@@ -157,7 +170,84 @@ recordingsRouter.get(
   })
 );
 
-// PATCH /recordings/:id — attach/detach the job to screen against.
+/** Extension → MIME, for when the stored mimeType is a useless octet-stream. */
+const MIME_BY_EXT: Record<string, string> = {
+  ".mp3": "audio/mpeg",
+  ".m4a": "audio/mp4",
+  ".aac": "audio/aac",
+  ".amr": "audio/amr",
+  ".awb": "audio/amr-wb",
+  ".wav": "audio/wav",
+  ".ogg": "audio/ogg",
+  ".oga": "audio/ogg",
+  ".opus": "audio/opus",
+  ".3gp": "video/3gpp",
+  ".3gpp": "video/3gpp",
+  ".flac": "audio/flac",
+  ".wma": "audio/x-ms-wma",
+  ".mp4": "video/mp4",
+  ".caf": "audio/x-caf",
+  ".aiff": "audio/aiff",
+};
+
+// GET /recordings/:id/audio — stream the stored audio for in-app playback.
+// Supports Range requests so the player can seek instead of buffering the
+// whole file. NOTE: on hosts without a persistent disk (Render's free tier)
+// the file can legitimately be gone while the DB row survives — that is a 404,
+// not a server error, and the app tells the user the audio expired.
+recordingsRouter.get(
+  "/:id/audio",
+  asyncHandler(async (req, res) => {
+    const recording = await prisma.recording.findUnique({
+      where: { id: req.params.id },
+      select: { storagePath: true, mimeType: true, originalFilename: true },
+    });
+    if (!recording) throw notFound("Recording not found");
+
+    const localPath = await storage.getLocalPath(recording.storagePath);
+    let size: number;
+    try {
+      size = fssync.statSync(localPath).size;
+    } catch {
+      throw notFound(
+        "The audio file is no longer stored on the server. Transcript and scores are unaffected."
+      );
+    }
+
+    const ext = path.extname(recording.originalFilename).toLowerCase();
+    const contentType =
+      recording.mimeType && recording.mimeType !== "application/octet-stream"
+        ? recording.mimeType
+        : (MIME_BY_EXT[ext] ?? "application/octet-stream");
+
+    res.setHeader("Content-Type", contentType);
+    res.setHeader("Accept-Ranges", "bytes");
+    res.setHeader("Cache-Control", "private, max-age=3600");
+
+    // "bytes=START-END", either end optional.
+    const range = /^bytes=(d*)-(d*)$/.exec(req.headers.range ?? "");
+    if (range) {
+      const start = range[1] ? parseInt(range[1], 10) : 0;
+      const end = range[2] ? parseInt(range[2], 10) : size - 1;
+      if (Number.isNaN(start) || Number.isNaN(end) || start > end || start >= size) {
+        res.setHeader("Content-Range", `bytes */${size}`);
+        res.status(416).end();
+        return;
+      }
+      res.status(206);
+      res.setHeader("Content-Range", `bytes ${start}-${end}/${size}`);
+      res.setHeader("Content-Length", String(end - start + 1));
+      fssync.createReadStream(localPath, { start, end }).pipe(res);
+      return;
+    }
+
+    res.setHeader("Content-Length", String(size));
+    fssync.createReadStream(localPath).pipe(res);
+  })
+);
+
+// PATCH /recordings/:id — edit the human-facing labels (candidate name, notes,
+// display filename) and/or attach/detach the job to screen against.
 // Existing scores are NOT recomputed: the caller re-evaluates explicitly, which
 // reuses the stored transcript and so costs only the scoring call.
 recordingsRouter.patch(
@@ -169,13 +259,17 @@ recordingsRouter.patch(
       select: { id: true, status: true },
     });
     if (!recording) throw notFound("Recording not found");
+
+    // Only the job link is pipeline-sensitive: swapping the JD mid-run would
+    // produce a jd_match for a job the recording is no longer linked to.
+    // Renaming is inert, so it stays allowed while an evaluation is running.
+    const changesJob = body.jobId !== undefined;
     if (
-      isEvaluationInFlight(recording.id) ||
-      recording.status === "TRANSCRIBING" ||
-      recording.status === "SCORING"
+      changesJob &&
+      (isEvaluationInFlight(recording.id) ||
+        recording.status === "TRANSCRIBING" ||
+        recording.status === "SCORING")
     ) {
-      // Swapping the JD mid-pipeline would produce a jd_match for a job the
-      // recording is no longer linked to.
       throw conflict("An evaluation is running for this recording — wait for it to finish");
     }
     if (body.jobId) {
@@ -185,13 +279,24 @@ recordingsRouter.patch(
       });
       if (!job) throw badRequest("Unknown jobId — the job may have been deleted.");
     }
+
+    // Build the patch from present keys only, so omitting a field leaves it
+    // untouched while an explicit null clears it.
+    const data: Prisma.RecordingUpdateInput = {};
+    if (changesJob) {
+      data.job = body.jobId ? { connect: { id: body.jobId } } : { disconnect: true };
+    }
+    if (body.candidateName !== undefined) data.candidateName = body.candidateName || null;
+    if (body.notes !== undefined) data.notes = body.notes || null;
+    if (body.originalFilename !== undefined) data.originalFilename = body.originalFilename;
+
     const updated = await prisma.recording.update({
       where: { id: recording.id },
-      data: { jobId: body.jobId },
+      data,
       include: { evaluation: true, transcript: true, job: true },
     });
     res.json(toRecordingDetailDto(updated));
-    syncRecordingToDrive(updated.id); // reflect the new job in the sheet row
+    syncRecordingToDrive(updated.id); // reflect the new labels/job in the sheet row
   })
 );
 

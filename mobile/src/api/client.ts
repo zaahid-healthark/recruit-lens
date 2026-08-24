@@ -124,13 +124,40 @@ export const api = {
     return request<RecordingListItemDto>("/recordings", { method: "POST", body: form }, timeoutMs);
   },
 
-  /** Attach (or detach, with null) the job this recording is screened against. */
-  setRecordingJob: (id: string, jobId: string | null): Promise<RecordingDetailDto> =>
+  /**
+   * Partial update. Only the keys present are changed, so renaming cannot
+   * clear the job link; pass an explicit null to clear a nullable field.
+   */
+  updateRecording: (
+    id: string,
+    patch: {
+      jobId?: string | null;
+      candidateName?: string | null;
+      notes?: string | null;
+      originalFilename?: string;
+    }
+  ): Promise<RecordingDetailDto> =>
     request<RecordingDetailDto>(`/recordings/${id}`, {
       method: "PATCH",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ jobId }),
+      body: JSON.stringify(patch),
     }),
+
+  /** Attach (or detach, with null) the job this recording is screened against. */
+  setRecordingJob: (id: string, jobId: string | null): Promise<RecordingDetailDto> =>
+    api.updateRecording(id, { jobId }),
+
+  /**
+   * Playable source for the stored audio, for expo-audio.
+   *
+   * The key travels as a header rather than a query parameter: query strings
+   * end up in server logs and caches, and expo-audio can set headers on a
+   * remote source, so there is no reason to leak it into the URL.
+   */
+  recordingAudioSource: (id: string): { uri: string; headers: Record<string, string> } => ({
+    uri: `${API_BASE_URL}/recordings/${id}/audio`,
+    headers: { "x-api-key": API_KEY },
+  }),
 
   listJobs: (includeArchived = false): Promise<JobDto[]> =>
     request<JobDto[]>(`/jobs${includeArchived ? "?includeArchived=true" : ""}`),

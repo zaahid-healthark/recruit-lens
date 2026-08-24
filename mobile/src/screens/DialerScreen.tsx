@@ -11,10 +11,14 @@ import {
   TextInput,
   View,
 } from "react-native";
+import type { JobDto } from "@interview-evaluator/shared";
+import { api } from "../api/client";
 import { useAutoImport } from "../autoimport/AutoImportContext";
+import { AudioPlayerBar } from "../components/AudioPlayerBar";
+import { JobPicker } from "../components/JobPicker";
 import { formatSweepTime } from "../autoimport/store";
 import { colors, shadow } from "../theme";
-import { formatDate } from "../utils/format";
+import { formatDate, formatDuration } from "../utils/format";
 
 /**
  * ── DIALER + AUTO-IMPORT ─────────────────────────────────────────────────────
@@ -60,16 +64,31 @@ export function DialerScreen(): React.JSX.Element {
     scanNow,
     startCall,
     removePendingCall,
+    skipped,
+    minDurationSeconds,
+    setMinDurationSeconds,
+    importSkipped,
+    deleteSkipped,
   } = useAutoImport();
 
   const [candidateName, setCandidateName] = useState("");
   const [phoneNumber, setPhoneNumber] = useState("");
+  const [job, setJob] = useState<JobDto | null>(null);
+  const [pickerOpen, setPickerOpen] = useState(false);
+  /** URI currently being imported/deleted, so its row can show progress. */
+  const [busyUri, setBusyUri] = useState<string | null>(null);
 
   const handleCall = async (): Promise<void> => {
-    const ok = await startCall(candidateName, phoneNumber);
+    const ok = await startCall(
+      candidateName,
+      phoneNumber,
+      job ? { id: job.id, title: job.title } : null
+    );
     if (ok) {
       setCandidateName("");
       setPhoneNumber("");
+      // The job deliberately persists — screening several candidates for one
+      // role back-to-back is the common case.
       if (!folderUri) {
         Alert.alert(
           "Reminder",
@@ -77,6 +96,60 @@ export function DialerScreen(): React.JSX.Element {
         );
       }
     }
+  };
+
+  const handleImportSkipped = (uri: string, name: string): void => {
+    Alert.prompt
+      ? Alert.prompt(
+          "Import this recording",
+          "Candidate name (optional) — leave blank to keep the original filename.",
+          [
+            { text: "Cancel", style: "cancel" },
+            {
+              text: "Import",
+              onPress: (value?: string) => void runImport(uri, value ?? ""),
+            },
+          ],
+          "plain-text"
+        )
+      : // Alert.prompt is iOS-only; on Android import under the existing name.
+        Alert.alert("Import this recording", `Upload "${name}" for evaluation?`, [
+          { text: "Cancel", style: "cancel" },
+          { text: "Import", onPress: () => void runImport(uri, "") },
+        ]);
+  };
+
+  const runImport = async (uri: string, name: string): Promise<void> => {
+    setBusyUri(uri);
+    try {
+      await importSkipped(uri, name, job?.id ?? null);
+    } catch (err) {
+      Alert.alert("Import failed", err instanceof Error ? err.message : String(err));
+    } finally {
+      setBusyUri(null);
+    }
+  };
+
+  const handleDeleteSkipped = (uri: string, name: string): void => {
+    Alert.alert("Delete recording", `Permanently delete "${name}" from the folder?`, [
+      { text: "Cancel", style: "cancel" },
+      {
+        text: "Delete",
+        style: "destructive",
+        onPress: () => {
+          void (async () => {
+            setBusyUri(uri);
+            try {
+              await deleteSkipped(uri);
+            } catch (err) {
+              Alert.alert("Delete failed", err instanceof Error ? err.message : String(err));
+            } finally {
+              setBusyUri(null);
+            }
+          })();
+        },
+      },
+    ]);
   };
 
   const handleRemovePending = (id: string, name: string): void => {
@@ -120,6 +193,18 @@ export function DialerScreen(): React.JSX.Element {
           onChangeText={setPhoneNumber}
           keyboardType="phone-pad"
         />
+        <Pressable style={styles.jobRow} onPress={() => setPickerOpen(true)}>
+          <Ionicons
+            name={job ? "briefcase" : "briefcase-outline"}
+            size={15}
+            color={job ? colors.primary : colors.subtext}
+          />
+          <Text style={[styles.jobLabel, !job && styles.jobLabelEmpty]} numberOfLines={1}>
+            {job ? job.title : "Screen against a job description (optional)"}
+          </Text>
+          <Ionicons name="chevron-forward" size={15} color={colors.subtext} />
+        </Pressable>
+
         <Pressable style={styles.callButton} onPress={() => void handleCall()}>
           <Ionicons name="call" size={16} color="#FFFFFF" />
           <Text style={styles.callButtonLabel}>Open dialer &amp; call</Text>
@@ -146,6 +231,12 @@ export function DialerScreen(): React.JSX.Element {
                 <Text style={styles.pendingMeta}>
                   {call.phoneNumber} • called {formatDate(call.startedAt)}
                 </Text>
+                {call.jobTitle ? (
+                  <Text style={styles.pendingJob} numberOfLines={1}>
+                    <Ionicons name="briefcase" size={11} color={colors.primary} />{" "}
+                    {call.jobTitle}
+                  </Text>
+                ) : null}
               </View>
               <Pressable
                 hitSlop={8}
@@ -153,6 +244,63 @@ export function DialerScreen(): React.JSX.Element {
               >
                 <Ionicons name="close-circle-outline" size={20} color={colors.subtext} />
               </Pressable>
+            </View>
+          ))}
+        </View>
+      ) : null}
+
+      {/* ── Held back: recorded but deliberately not uploaded ── */}
+      {skipped.length > 0 ? (
+        <View style={styles.card}>
+          <View style={styles.cardHeader}>
+            <View style={styles.cardIcon}>
+              <Ionicons name="filter-outline" size={18} color={colors.subtext} />
+            </View>
+            <Text style={styles.cardTitle}>Not uploaded ({skipped.length})</Text>
+          </View>
+          <Text style={styles.cardHint}>
+            Recordings in the folder that were kept off the server — calls you did not dial
+            from this app, and anything shorter than {minDurationSeconds}s. Play them to
+            check, then import or delete.
+          </Text>
+          {skipped.map((file) => (
+            <View key={file.uri} style={styles.skippedRow}>
+              <View style={styles.skippedHeader}>
+                <View style={{ flex: 1 }}>
+                  <Text style={styles.skippedName} numberOfLines={1}>
+                    {file.name}
+                  </Text>
+                  <Text style={styles.skippedMeta}>
+                    {file.reason === "unmatched" ? "Not a dialled call" : "Too short"} •{" "}
+                    {formatDuration(file.durationSeconds)} • {formatDate(file.seenAt)}
+                  </Text>
+                </View>
+                {busyUri === file.uri ? (
+                  <ActivityIndicator size="small" color={colors.primary} />
+                ) : (
+                  <View style={styles.skippedActions}>
+                    <Pressable
+                      hitSlop={6}
+                      onPress={() => handleImportSkipped(file.uri, file.name)}
+                      accessibilityLabel="Import this recording"
+                    >
+                      <Ionicons name="cloud-upload-outline" size={19} color={colors.primary} />
+                    </Pressable>
+                    <Pressable
+                      hitSlop={6}
+                      onPress={() => handleDeleteSkipped(file.uri, file.name)}
+                      accessibilityLabel="Delete this recording"
+                    >
+                      <Ionicons name="trash-outline" size={19} color={colors.danger} />
+                    </Pressable>
+                  </View>
+                )}
+              </View>
+              <AudioPlayerBar
+                source={file.uri}
+                fallbackDurationSeconds={file.durationSeconds}
+                compact
+              />
             </View>
           ))}
         </View>
@@ -273,6 +421,16 @@ export function DialerScreen(): React.JSX.Element {
       <Text style={styles.footnote}>
         In-app calling (without the phone dialer) is planned for a future release.
       </Text>
+
+      <JobPicker
+        visible={pickerOpen}
+        selectedJobId={job?.id ?? null}
+        onClose={() => setPickerOpen(false)}
+        onSelect={(next) => {
+          setJob(next);
+          setPickerOpen(false);
+        }}
+      />
     </ScrollView>
   );
 }
@@ -330,6 +488,33 @@ const styles = StyleSheet.create({
     backgroundColor: colors.background,
     marginBottom: 10,
   },
+  jobRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 8,
+    borderWidth: 1,
+    borderColor: colors.border,
+    borderRadius: 10,
+    paddingHorizontal: 12,
+    paddingVertical: 11,
+    marginBottom: 10,
+  },
+  jobLabel: {
+    flex: 1,
+    fontSize: 13.5,
+    fontWeight: "600",
+    color: colors.text,
+  },
+  jobLabelEmpty: {
+    fontWeight: "400",
+    color: colors.subtext,
+  },
+  pendingJob: {
+    fontSize: 11.5,
+    color: colors.primary,
+    fontWeight: "600",
+    marginTop: 3,
+  },
   callButton: {
     flexDirection: "row",
     alignItems: "center",
@@ -344,6 +529,32 @@ const styles = StyleSheet.create({
     color: "#FFFFFF",
     fontSize: 14,
     fontWeight: "800",
+  },
+  skippedRow: {
+    paddingVertical: 10,
+    borderTopWidth: StyleSheet.hairlineWidth,
+    borderTopColor: colors.border,
+  },
+  skippedHeader: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 10,
+    marginBottom: 4,
+  },
+  skippedName: {
+    fontSize: 13,
+    fontWeight: "700",
+    color: colors.text,
+  },
+  skippedMeta: {
+    fontSize: 11.5,
+    color: colors.subtext,
+    marginTop: 2,
+  },
+  skippedActions: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 16,
   },
   pendingRow: {
     flexDirection: "row",
