@@ -2,19 +2,30 @@ import { Ionicons } from "@expo/vector-icons";
 import type { AudioSource } from "expo-audio";
 import { useAudioPlayer, useAudioPlayerStatus } from "expo-audio";
 import React from "react";
-import { Pressable, StyleSheet, Text, View } from "react-native";
+import { LayoutChangeEvent, PanResponder, Pressable, StyleSheet, Text, View } from "react-native";
 import { colors } from "../theme";
 import { formatDuration } from "../utils/format";
 
 /**
- * Play/pause bar with a scrub-free progress line.
+ * Playback controls for one recording: play/pause, skip, and a draggable
+ * position bar.
  *
- * Works for both a remote recording (server URL + auth header) and a local
- * file still sitting in the recorder's folder (SAF content:// URI), since
- * expo-audio takes either as an AudioSource.
+ * Seeking matters here more than in a typical player — interview recordings
+ * open with dead air and small talk, so getting to the substance means
+ * skipping ahead rather than listening through. The bar is scrubbable by drag
+ * and by tap, and the skip buttons jump in fixed steps.
+ *
+ * Takes either a remote recording (server URL plus auth header) or a local
+ * file still in the recorder's folder (SAF content:// URI) — expo-audio
+ * accepts both as an AudioSource.
  */
+
+/** How far the skip buttons jump. */
+const SKIP_SECONDS = 15;
 /** How long to wait for the source to load before calling it unavailable. */
 const LOAD_TIMEOUT_MS = 12000;
+
+const clamp01 = (n: number): number => (n < 0 ? 0 : n > 1 ? 1 : n);
 
 export function AudioPlayerBar({
   source,
@@ -29,9 +40,11 @@ export function AudioPlayerBar({
   const player = useAudioPlayer(source);
   const status = useAudioPlayerStatus(player);
 
+  const [trackWidth, setTrackWidth] = React.useState(0);
+  /** Non-null only while a drag is in progress; overrides the live position. */
+  const [scrubFraction, setScrubFraction] = React.useState<number | null>(null);
+
   const duration = status.duration > 0 ? status.duration : (fallbackDurationSeconds ?? 0);
-  const position = Math.min(status.currentTime, duration || status.currentTime);
-  const progress = duration > 0 ? Math.min(1, position / duration) : 0;
 
   // A remote clip can legitimately 404 — free hosting has no persistent disk,
   // so the row survives while the audio does not. The player surfaces no error
@@ -46,8 +59,53 @@ export function AudioPlayerBar({
     return () => clearTimeout(t);
   }, [status.isLoaded]);
   const unavailable = timedOut && !status.isLoaded;
+  const seekable = status.isLoaded && duration > 0;
 
-  const toggle = (): void => {
+  // Refs, because the PanResponder is created once and would otherwise close
+  // over the first render's values forever.
+  const trackWidthRef = React.useRef(0);
+  const durationRef = React.useRef(0);
+  const seekableRef = React.useRef(false);
+  trackWidthRef.current = trackWidth;
+  durationRef.current = duration;
+  seekableRef.current = seekable;
+
+  const seekToFraction = React.useCallback(
+    (fraction: number): void => {
+      if (!seekableRef.current) return;
+      void player.seekTo(clamp01(fraction) * durationRef.current);
+    },
+    [player]
+  );
+
+  const panResponder = React.useMemo(
+    () =>
+      PanResponder.create({
+        onStartShouldSetPanResponder: () => seekableRef.current,
+        onMoveShouldSetPanResponder: () => seekableRef.current,
+        onPanResponderGrant: (e) => {
+          if (trackWidthRef.current <= 0) return;
+          setScrubFraction(clamp01(e.nativeEvent.locationX / trackWidthRef.current));
+        },
+        onPanResponderMove: (e) => {
+          if (trackWidthRef.current <= 0) return;
+          setScrubFraction(clamp01(e.nativeEvent.locationX / trackWidthRef.current));
+        },
+        onPanResponderRelease: (e) => {
+          const width = trackWidthRef.current;
+          if (width > 0) seekToFraction(e.nativeEvent.locationX / width);
+          setScrubFraction(null);
+        },
+        onPanResponderTerminate: () => setScrubFraction(null),
+      }),
+    [seekToFraction]
+  );
+
+  const livePosition = Math.min(status.currentTime, duration || status.currentTime);
+  const position = scrubFraction !== null ? scrubFraction * duration : livePosition;
+  const progress = duration > 0 ? clamp01(position / duration) : 0;
+
+  const togglePlay = (): void => {
     if (status.playing) {
       player.pause();
       return;
@@ -58,74 +116,133 @@ export function AudioPlayerBar({
     player.play();
   };
 
+  const skip = (delta: number): void => {
+    if (!seekable) return;
+    const target = Math.min(Math.max(status.currentTime + delta, 0), duration);
+    void player.seekTo(target);
+  };
+
+  const onTrackLayout = (e: LayoutChangeEvent): void => setTrackWidth(e.nativeEvent.layout.width);
+
+  const iconSize = compact ? 14 : 17;
+
   return (
-    <View style={[styles.row, compact && styles.rowCompact]}>
-      <Pressable
-        onPress={toggle}
-        hitSlop={8}
-        disabled={unavailable}
-        style={[
-          styles.button,
-          compact && styles.buttonCompact,
-          unavailable && styles.buttonDisabled,
-        ]}
-        accessibilityLabel={status.playing ? "Pause" : "Play"}
-      >
-        <Ionicons
-          name={status.playing ? "pause" : "play"}
-          size={compact ? 14 : 17}
-          color="#FFFFFF"
-          // The play glyph is visually left-heavy; nudge it into the circle.
-          style={status.playing ? undefined : { marginLeft: 2 }}
-        />
-      </Pressable>
-      <View style={styles.trackWrap}>
-        <View style={styles.track}>
+    <View style={styles.wrap}>
+      <View style={styles.controls}>
+        <Pressable
+          onPress={() => skip(-SKIP_SECONDS)}
+          hitSlop={8}
+          disabled={!seekable}
+          accessibilityLabel={`Back ${SKIP_SECONDS} seconds`}
+          style={styles.skipButton}
+        >
+          <Ionicons
+            name="play-back"
+            size={iconSize}
+            color={seekable ? colors.subtext : colors.border}
+          />
+        </Pressable>
+
+        <Pressable
+          onPress={togglePlay}
+          hitSlop={8}
+          disabled={unavailable}
+          style={[styles.button, compact && styles.buttonCompact, unavailable && styles.disabled]}
+          accessibilityLabel={status.playing ? "Pause" : "Play"}
+        >
+          <Ionicons
+            name={status.playing ? "pause" : "play"}
+            size={compact ? 15 : 18}
+            color="#FFFFFF"
+            // The play glyph is visually left-heavy; nudge it into the circle.
+            style={status.playing ? undefined : { marginLeft: 2 }}
+          />
+        </Pressable>
+
+        <Pressable
+          onPress={() => skip(SKIP_SECONDS)}
+          hitSlop={8}
+          disabled={!seekable}
+          accessibilityLabel={`Forward ${SKIP_SECONDS} seconds`}
+          style={styles.skipButton}
+        >
+          <Ionicons
+            name="play-forward"
+            size={iconSize}
+            color={seekable ? colors.subtext : colors.border}
+          />
+        </Pressable>
+
+        <Text style={styles.time}>
+          {unavailable
+            ? "unavailable"
+            : !status.isLoaded
+              ? "loading…"
+              : `${formatDuration(Math.round(position))}${
+                  duration > 0 ? ` / ${formatDuration(Math.round(duration))}` : ""
+                }`}
+        </Text>
+      </View>
+
+      {/* Padded hit area — a 4px bar is far too thin to grab reliably. */}
+      <View style={styles.trackHitArea} {...panResponder.panHandlers}>
+        <View style={styles.track} onLayout={onTrackLayout}>
           <View style={[styles.trackFill, { width: `${progress * 100}%` }]} />
         </View>
+        {seekable ? (
+          <View
+            pointerEvents="none"
+            style={[
+              styles.knob,
+              scrubFraction !== null && styles.knobActive,
+              { left: Math.max(0, progress * trackWidth - (scrubFraction !== null ? 9 : 6)) },
+            ]}
+          />
+        ) : null}
       </View>
-      <Text style={styles.time}>
-        {unavailable
-          ? "unavailable"
-          : !status.isLoaded
-            ? "loading…"
-            : `${formatDuration(Math.round(position))}${
-                duration > 0 ? ` / ${formatDuration(Math.round(duration))}` : ""
-              }`}
-      </Text>
     </View>
   );
 }
 
 const styles = StyleSheet.create({
-  row: {
+  wrap: {
+    paddingVertical: 2,
+  },
+  controls: {
     flexDirection: "row",
     alignItems: "center",
-    gap: 10,
+    gap: 12,
+  },
+  skipButton: {
     paddingVertical: 4,
   },
-  rowCompact: {
-    gap: 8,
-  },
   button: {
-    width: 34,
-    height: 34,
-    borderRadius: 17,
+    width: 36,
+    height: 36,
+    borderRadius: 18,
     backgroundColor: colors.primary,
     alignItems: "center",
     justifyContent: "center",
   },
   buttonCompact: {
-    width: 27,
-    height: 27,
-    borderRadius: 14,
+    width: 30,
+    height: 30,
+    borderRadius: 15,
   },
-  buttonDisabled: {
+  disabled: {
     backgroundColor: colors.border,
   },
-  trackWrap: {
+  time: {
     flex: 1,
+    fontSize: 11.5,
+    color: colors.subtext,
+    fontVariant: ["tabular-nums"],
+    textAlign: "right",
+  },
+  trackHitArea: {
     justifyContent: "center",
+    paddingVertical: 12,
+    marginTop: 2,
   },
   track: {
     height: 4,
@@ -138,11 +255,18 @@ const styles = StyleSheet.create({
     borderRadius: 2,
     backgroundColor: colors.primary,
   },
-  time: {
-    fontSize: 11.5,
-    color: colors.subtext,
-    fontVariant: ["tabular-nums"],
-    minWidth: 74,
-    textAlign: "right",
+  knob: {
+    position: "absolute",
+    width: 12,
+    height: 12,
+    borderRadius: 6,
+    backgroundColor: colors.primary,
+  },
+  knobActive: {
+    width: 18,
+    height: 18,
+    borderRadius: 9,
+    borderWidth: 3,
+    borderColor: "#FFFFFF",
   },
 });

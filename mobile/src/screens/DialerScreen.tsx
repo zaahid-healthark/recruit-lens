@@ -36,6 +36,18 @@ import { formatDate, formatDuration } from "../utils/format";
  * ─────────────────────────────────────────────────────────────────────────────
  */
 /** Preset times for the daily upload sweep. */
+/**
+ * Minimum call length worth uploading. A recruiter screening call that ends in
+ * seconds is a hang-up or a wrong number, not an interview. "Off" uploads
+ * everything, for when the threshold is getting in the way.
+ */
+const MIN_DURATIONS: { label: string; seconds: number }[] = [
+  { label: "Off", seconds: 0 },
+  { label: "10s", seconds: 10 },
+  { label: "20s", seconds: 20 },
+  { label: "60s", seconds: 60 },
+];
+
 const SWEEP_TIMES: { label: string; hour: number }[] = [
   { label: "9 AM", hour: 9 },
   { label: "1 PM", hour: 13 },
@@ -371,6 +383,31 @@ export function DialerScreen(): React.JSX.Element {
                   >
                     <Text style={[styles.chipLabel, active && styles.chipLabelActive]}>
                       {t.label}
+                    </Text>
+                  </Pressable>
+                );
+              })}
+            </View>
+
+            <View style={styles.optionRow}>
+              <Ionicons name="cut-outline" size={16} color={colors.subtext} />
+              <Text style={styles.optionLabel}>
+                {minDurationSeconds > 0
+                  ? `Skip calls under ${minDurationSeconds}s`
+                  : "Upload calls of any length"}
+              </Text>
+            </View>
+            <View style={styles.chipRow}>
+              {MIN_DURATIONS.map((d) => {
+                const active = minDurationSeconds === d.seconds;
+                return (
+                  <Pressable
+                    key={d.seconds}
+                    style={[styles.chip, active && styles.chipActive]}
+                    onPress={() => setMinDurationSeconds(d.seconds)}
+                  >
+                    <Text style={[styles.chipLabel, active && styles.chipLabelActive]}>
+                      {d.label}
                     </Text>
                   </Pressable>
                 );
