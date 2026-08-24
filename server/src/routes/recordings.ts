@@ -1,7 +1,9 @@
 import { RECORDING_STATUSES } from "@interview-evaluator/shared";
 import { Prisma } from "@prisma/client";
+import { env } from "../config/env";
 import { Router } from "express";
 import fssync from "fs";
+import fs from "fs/promises";
 import multer from "multer";
 import os from "os";
 import path from "path";
@@ -9,10 +11,16 @@ import { z } from "zod";
 import { removeRecordingFromDrive, syncRecordingToDrive } from "../google/driveSync";
 import { asyncHandler } from "../lib/asyncHandler";
 import { toRecordingDetailDto, toRecordingListItemDto } from "../lib/dto";
-import { badRequest, conflict, notFound, unsupportedMedia } from "../lib/errors";
+import {
+  badRequest,
+  conflict,
+  noAudibleContent,
+  notFound,
+  unsupportedMedia,
+} from "../lib/errors";
 import { log } from "../lib/logger";
 import { prisma } from "../lib/prisma";
-import { getDurationSeconds } from "../services/audio";
+import { analyzeAudio } from "../services/audio";
 import { evaluateRecording, isEvaluationInFlight } from "../services/pipeline";
 import { storage } from "../storage";
 
@@ -100,12 +108,31 @@ recordingsRouter.post(
       const job = await prisma.job.findUnique({ where: { id: body.jobId }, select: { id: true } });
       if (!job) throw badRequest("Unknown jobId — the job may have been deleted.");
     }
+    // Decode BEFORE storing: a recorder that lost its permission mid-session
+    // still writes a full-length file containing no audio, and nothing but a
+    // decode can tell that from a real interview. Rejecting here means such a
+    // file never becomes a row, never reaches the evaluation queue, and never
+    // costs an OpenAI call. This also yields the duration, so the old
+    // background probe is no longer needed.
+    const analysis = await analyzeAudio(req.file.path, env.silenceThresholdDb);
+    if (env.rejectSilentUploads && analysis.isSilent) {
+      await fs.unlink(req.file.path).catch(() => undefined);
+      log.info(
+        `Rejected "${originalFilename}": no audible content ` +
+          `(peak ${analysis.maxVolumeDb} dB < ${env.silenceThresholdDb} dB).`
+      );
+      throw noAudibleContent(
+        "This recording contains no audible sound — the recorder captured an empty file."
+      );
+    }
+
     const storagePath = await storage.saveFromFile(req.file.path, originalFilename);
     const recording = await prisma.recording.create({
       data: {
         originalFilename,
         storagePath,
         mimeType: req.file.mimetype,
+        durationSeconds: analysis.durationSeconds,
         candidateName: body.candidateName || null,
         notes: body.notes || null,
         jobId: body.jobId || null,
@@ -114,17 +141,6 @@ recordingsRouter.post(
     });
     res.status(201).json(toRecordingListItemDto(recording));
     syncRecordingToDrive(recording.id); // best-effort Drive mirror (no-op when unconfigured)
-
-    // Duration probe runs in the background — metadata nicety, never blocks the import.
-    void storage
-      .getLocalPath(storagePath)
-      .then((p) => getDurationSeconds(p))
-      .then(async (durationSeconds) => {
-        if (durationSeconds == null) return;
-        await prisma.recording.update({ where: { id: recording.id }, data: { durationSeconds } });
-        syncRecordingToDrive(recording.id); // refresh the sheet row with the duration
-      })
-      .catch((err) => log.warn("Duration probe failed:", err));
   })
 );
 

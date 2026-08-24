@@ -21,7 +21,7 @@ export interface PendingCall {
 }
 
 /** Why a file in the watched folder was not uploaded. */
-export const SKIP_REASONS = ["unmatched", "too_short"] as const;
+export const SKIP_REASONS = ["unmatched", "too_short", "no_audio"] as const;
 export type SkipReason = (typeof SKIP_REASONS)[number];
 
 /**

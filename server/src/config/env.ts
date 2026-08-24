@@ -7,6 +7,11 @@ function boolEnv(value: string | undefined, fallback: boolean): boolean {
   return ["1", "true", "yes", "on"].includes(value.trim().toLowerCase());
 }
 
+function floatEnv(value: string | undefined, fallback: number): number {
+  const n = value ? parseFloat(value) : NaN;
+  return Number.isFinite(n) ? n : fallback;
+}
+
 function intEnv(value: string | undefined, fallback: number): number {
   const n = value ? parseInt(value, 10) : NaN;
   return Number.isFinite(n) ? n : fallback;
@@ -38,6 +43,13 @@ export const env = {
     process.env.GOOGLE_APPLICATION_CREDENTIALS ?? "./google-credentials.json"
   ),
   googleDriveFolderId: process.env.GOOGLE_DRIVE_FOLDER_ID ?? "",
+  /**
+   * Uploads whose peak volume is below this (dBFS) are rejected as having no
+   * audible content. Speech peaks far higher; digital silence reports -91.
+   * Set REJECT_SILENT_UPLOADS=false to accept them anyway.
+   */
+  silenceThresholdDb: floatEnv(process.env.SILENCE_THRESHOLD_DB, -45),
+  rejectSilentUploads: boolEnv(process.env.REJECT_SILENT_UPLOADS, true),
   /** Parallelism of the bulk evaluation queue (1 = strictly sequential). */
   bulkConcurrency: Math.max(1, intEnv(process.env.BULK_CONCURRENCY, 1)),
 } as const;

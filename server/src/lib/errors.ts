@@ -13,5 +13,8 @@ export class ApiError extends Error {
 export const badRequest = (message: string): ApiError => new ApiError(400, "BAD_REQUEST", message);
 export const notFound = (message: string): ApiError => new ApiError(404, "NOT_FOUND", message);
 export const conflict = (message: string): ApiError => new ApiError(409, "CONFLICT", message);
+/** The upload was well-formed but contains nothing worth evaluating. */
+export const noAudibleContent = (message: string): ApiError =>
+  new ApiError(422, "NO_AUDIBLE_CONTENT", message);
 export const unsupportedMedia = (message: string): ApiError =>
   new ApiError(415, "UNSUPPORTED_MEDIA_TYPE", message);

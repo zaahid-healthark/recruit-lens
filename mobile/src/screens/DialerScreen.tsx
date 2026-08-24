@@ -259,9 +259,9 @@ export function DialerScreen(): React.JSX.Element {
             <Text style={styles.cardTitle}>Not uploaded ({skipped.length})</Text>
           </View>
           <Text style={styles.cardHint}>
-            Recordings in the folder that were kept off the server — calls you did not dial
-            from this app, and anything shorter than {minDurationSeconds}s. Play them to
-            check, then import or delete.
+            Recordings kept off the server: calls you did not dial from this app, anything
+            shorter than {minDurationSeconds}s, and files the recorder saved with no sound
+            in them. Play them to check, then import or delete.
           </Text>
           {skipped.map((file) => (
             <View key={file.uri} style={styles.skippedRow}>
@@ -271,7 +271,12 @@ export function DialerScreen(): React.JSX.Element {
                     {file.name}
                   </Text>
                   <Text style={styles.skippedMeta}>
-                    {file.reason === "unmatched" ? "Not a dialled call" : "Too short"} •{" "}
+                    {file.reason === "unmatched"
+                      ? "Not a dialled call"
+                      : file.reason === "too_short"
+                        ? "Too short"
+                        : "No sound recorded"}{" "}
+                    •{" "}
                     {formatDuration(file.durationSeconds)} • {formatDate(file.seenAt)}
                   </Text>
                 </View>

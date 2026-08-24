@@ -43,6 +43,80 @@ export async function getDurationSeconds(filePath: string): Promise<number | nul
   }
 }
 
+export interface AudioAnalysis {
+  durationSeconds: number | null;
+  /** Peak volume in dBFS. 0 is full scale; digital silence reports -91. */
+  maxVolumeDb: number | null;
+  meanVolumeDb: number | null;
+  /**
+   * True only when the file was measured AND found to have no audible content.
+   * An unreadable or unmeasurable file is false, never true — "unknown" must
+   * never be treated as "silent", or a real interview could be rejected.
+   */
+  isSilent: boolean;
+}
+
+/**
+ * Decode a file once and report both its duration and its volume levels.
+ *
+ * Exists because a call recorder can produce a file of the right size and
+ * duration that contains no audio at all — when the recorder loses the
+ * permission it needs mid-session, it still writes the file. Nothing about
+ * the file's metadata distinguishes that from a real interview; only decoding
+ * it does. `volumedetect` reports peak/mean level, and ffmpeg prints the
+ * Duration line in the same pass, so one invocation answers both questions.
+ */
+export async function analyzeAudio(
+  filePath: string,
+  silenceThresholdDb: number
+): Promise<AudioAnalysis> {
+  const empty: AudioAnalysis = {
+    durationSeconds: null,
+    maxVolumeDb: null,
+    meanVolumeDb: null,
+    isSilent: false,
+  };
+  try {
+    // -f null discards the output; we only want what volumedetect logs.
+    const { stderr } = await runFfmpeg([
+      "-hide_banner",
+      "-i",
+      filePath,
+      "-af",
+      "volumedetect",
+      "-f",
+      "null",
+      "-",
+    ]);
+
+    const durationMatch = stderr.match(/Duration:\s*(\d+):(\d+):(\d+(?:\.\d+)?)/);
+    const durationSeconds = durationMatch
+      ? Math.round(
+          Number(durationMatch[1]) * 3600 +
+            Number(durationMatch[2]) * 60 +
+            Number(durationMatch[3])
+        )
+      : null;
+
+    const maxMatch = stderr.match(/max_volume:\s*(-?\d+(?:\.\d+)?) dB/);
+    const meanMatch = stderr.match(/mean_volume:\s*(-?\d+(?:\.\d+)?) dB/);
+    const maxVolumeDb = maxMatch ? Number(maxMatch[1]) : null;
+    const meanVolumeDb = meanMatch ? Number(meanMatch[1]) : null;
+
+    return {
+      durationSeconds,
+      maxVolumeDb,
+      meanVolumeDb,
+      // Speech peaks far above this even on a quiet line; a recorder that
+      // captured nothing reports the 16-bit floor (-91 dB).
+      isSilent: maxVolumeDb !== null && maxVolumeDb < silenceThresholdDb,
+    };
+  } catch (err) {
+    log.warn("Could not analyze audio levels:", err);
+    return empty;
+  }
+}
+
 export interface NormalizedAudio {
   path: string;
   /** true when `path` is a transcoded temp file that must be cleaned up afterwards. */

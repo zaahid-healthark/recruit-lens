@@ -40,6 +40,8 @@ export interface ScanOutcome {
   unmatched: number;
   /** Files held back this pass for being shorter than the minimum. */
   tooShort: number;
+  /** Files the server decoded and found silent. */
+  noAudio: number;
   /** Files renamed inside the recorder's folder. */
   renamed: number;
   discovered: number;
@@ -181,6 +183,7 @@ export async function runScan(
     settling: 0,
     unmatched: 0,
     tooShort: 0,
+    noAudio: 0,
     renamed: 0,
     discovered: 0,
     error: null,
@@ -316,6 +319,14 @@ export async function runScan(
       );
     } catch (err) {
       const message = err instanceof Error ? err.message : String(err);
+      // The server decoded the file and found no sound in it. That is a
+      // verdict about the recording, not a transport failure, so it belongs
+      // in the visible skip list rather than the silent rejected ledger.
+      if (err instanceof ApiRequestError && err.code === "NO_AUDIBLE_CONTENT") {
+        skip("no_audio");
+        outcome.noAudio += 1;
+        continue;
+      }
       if (isPermanentRejection(err)) {
         // Unsupported/rejected file — skip it so it can't block the queue.
         next.rejected[file.uri] = message.slice(0, 200);
@@ -415,6 +426,7 @@ function summarize(outcome: ScanOutcome): string {
   if (outcome.settling > 0) parts.push(`${outcome.settling} still recording`);
   if (outcome.unmatched > 0) parts.push(`${outcome.unmatched} not from a dialled call`);
   if (outcome.tooShort > 0) parts.push(`${outcome.tooShort} too short`);
+  if (outcome.noAudio > 0) parts.push(`${outcome.noAudio} with no sound`);
   if (outcome.error) parts.push(`failed: ${outcome.error.slice(0, 100)}`);
   return parts.length > 0 ? parts.join(", ") : "no new files";
 }

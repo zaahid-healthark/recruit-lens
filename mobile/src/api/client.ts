@@ -20,7 +20,9 @@ import { API_BASE_URL, API_KEY } from "../config";
 export class ApiRequestError extends Error {
   constructor(
     message: string,
-    public readonly status?: number
+    public readonly status?: number,
+    /** Machine-readable code from the API body, for branching on a specific failure. */
+    public readonly code?: string
   ) {
     super(message);
     this.name = "ApiRequestError";
@@ -64,13 +66,15 @@ async function request<T>(
 
   if (!response.ok) {
     let message = `Request failed (HTTP ${response.status})`;
+    let code: string | undefined;
     try {
-      const body = (await response.json()) as { error?: { message?: string } };
+      const body = (await response.json()) as { error?: { message?: string; code?: string } };
       if (body?.error?.message) message = body.error.message;
+      code = body?.error?.code;
     } catch {
       /* body was not JSON */
     }
-    throw new ApiRequestError(message, response.status);
+    throw new ApiRequestError(message, response.status, code);
   }
   if (response.status === 204) return undefined as T;
   return (await response.json()) as T;
