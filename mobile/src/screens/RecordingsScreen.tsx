@@ -251,6 +251,14 @@ export function RecordingsScreen(): React.JSX.Element {
                 </Text>
               </Pressable>
             )}
+            {/* Long-press works too, but a mistaken upload needs an obvious way out. */}
+            <Pressable
+              hitSlop={8}
+              onPress={() => handleDelete(item)}
+              accessibilityLabel="Remove from server"
+            >
+              <Ionicons name="trash-outline" size={18} color={colors.subtext} />
+            </Pressable>
           </View>
         </View>
         {item.status === "FAILED" && item.errorMessage ? (
@@ -490,6 +498,7 @@ const styles = StyleSheet.create({
     alignItems: "center",
     justifyContent: "center",
     minWidth: 84,
+    gap: 10,
   },
   evalButton: {
     flexDirection: "row",

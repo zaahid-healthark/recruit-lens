@@ -25,6 +25,32 @@ const SKIP_SECONDS = 15;
 /** How long to wait for the source to load before calling it unavailable. */
 const LOAD_TIMEOUT_MS = 12000;
 
+/**
+ * Formats Android's player cannot seek within — a seek snaps back to zero.
+ * ExoPlayer builds no seek table for these and its constant-bitrate fallback
+ * is off by default. Server-hosted audio is transcoded before it is served, so
+ * this only catches local files still in the recorder's own folder.
+ */
+const UNSEEKABLE_EXT = /\.(amr|awb|3gp|3gpp|wma)$/i;
+
+function isUnseekableSource(source: AudioSource): boolean {
+  const raw =
+    typeof source === "string"
+      ? source
+      : source && typeof source === "object" && "uri" in source
+        ? String(source.uri ?? "")
+        : "";
+  if (!raw) return false;
+  let decoded = raw;
+  try {
+    // SAF URIs percent-encode the path, so the extension is hidden until decoded.
+    decoded = decodeURIComponent(raw);
+  } catch {
+    /* malformed escape — test the raw string instead */
+  }
+  return UNSEEKABLE_EXT.test(decoded.split("?")[0]);
+}
+
 const clamp01 = (n: number): number => (n < 0 ? 0 : n > 1 ? 1 : n);
 
 export function AudioPlayerBar({
@@ -59,13 +85,16 @@ export function AudioPlayerBar({
     return () => clearTimeout(t);
   }, [status.isLoaded]);
   const unavailable = timedOut && !status.isLoaded;
-  const seekable = status.isLoaded && duration > 0;
+  const formatBlocksSeek = React.useMemo(() => isUnseekableSource(source), [source]);
+  const seekable = status.isLoaded && duration > 0 && !formatBlocksSeek;
 
   // Refs, because the PanResponder is created once and would otherwise close
   // over the first render's values forever.
   const trackWidthRef = React.useRef(0);
   const durationRef = React.useRef(0);
   const seekableRef = React.useRef(false);
+  /** Latest dragged position, so release seeks to what the finger last showed. */
+  const scrubRef = React.useRef<number | null>(null);
   trackWidthRef.current = trackWidth;
   durationRef.current = duration;
   seekableRef.current = seekable;
@@ -85,18 +114,30 @@ export function AudioPlayerBar({
         onMoveShouldSetPanResponder: () => seekableRef.current,
         onPanResponderGrant: (e) => {
           if (trackWidthRef.current <= 0) return;
-          setScrubFraction(clamp01(e.nativeEvent.locationX / trackWidthRef.current));
+          const f = clamp01(e.nativeEvent.locationX / trackWidthRef.current);
+          scrubRef.current = f;
+          setScrubFraction(f);
         },
         onPanResponderMove: (e) => {
           if (trackWidthRef.current <= 0) return;
-          setScrubFraction(clamp01(e.nativeEvent.locationX / trackWidthRef.current));
+          const f = clamp01(e.nativeEvent.locationX / trackWidthRef.current);
+          scrubRef.current = f;
+          setScrubFraction(f);
         },
-        onPanResponderRelease: (e) => {
-          const width = trackWidthRef.current;
-          if (width > 0) seekToFraction(e.nativeEvent.locationX / width);
+        onPanResponderRelease: () => {
+          // Seek to the last position tracked during the drag, NOT to
+          // locationX on the release event — that is measured against
+          // whatever view handled the touch-end and can read as 0, which
+          // silently sent every scrub back to the start of the recording.
+          const f = scrubRef.current;
+          if (f !== null) seekToFraction(f);
+          scrubRef.current = null;
           setScrubFraction(null);
         },
-        onPanResponderTerminate: () => setScrubFraction(null),
+        onPanResponderTerminate: () => {
+          scrubRef.current = null;
+          setScrubFraction(null);
+        },
       }),
     [seekToFraction]
   );
@@ -184,6 +225,13 @@ export function AudioPlayerBar({
         </Text>
       </View>
 
+      {formatBlocksSeek && status.isLoaded ? (
+        <Text style={styles.note}>
+          This file&apos;s format can&apos;t be skipped through on Android. Send it to the server
+          to scrub it there.
+        </Text>
+      ) : null}
+
       {/* Padded hit area — a 4px bar is far too thin to grab reliably. */}
       <View style={styles.trackHitArea} {...panResponder.panHandlers}>
         <View style={styles.track} onLayout={onTrackLayout}>
@@ -261,6 +309,12 @@ const styles = StyleSheet.create({
     height: 12,
     borderRadius: 6,
     backgroundColor: colors.primary,
+  },
+  note: {
+    fontSize: 11,
+    color: colors.subtext,
+    lineHeight: 15,
+    marginTop: -6,
   },
   knobActive: {
     width: 18,

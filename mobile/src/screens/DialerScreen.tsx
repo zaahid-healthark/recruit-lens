@@ -132,7 +132,10 @@ export function DialerScreen(): React.JSX.Element {
   };
 
   const handleDeleteSkipped = (uri: string, name: string): void => {
-    Alert.alert("Delete recording", `Permanently delete "${name}" from the folder?`, [
+    Alert.alert(
+      "Delete from phone",
+      `Permanently delete "${name}" from your recorder's folder? It was never uploaded, so this is the only copy.`,
+      [
       { text: "Cancel", style: "cancel" },
       {
         text: "Delete",

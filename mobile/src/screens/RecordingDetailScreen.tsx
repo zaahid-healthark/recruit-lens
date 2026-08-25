@@ -133,11 +133,15 @@ export function RecordingDetailScreen(): React.JSX.Element {
   };
 
   const handleDelete = (): void => {
-    Alert.alert("Delete recording", "Delete this recording and all its data?", [
-      { text: "Cancel", style: "cancel" },
-      {
-        text: "Delete",
-        style: "destructive",
+    Alert.alert(
+      "Remove from server",
+      "Deletes this recording, its transcript and its scores from the server. " +
+        "The copy on this phone is left alone.",
+      [
+        { text: "Cancel", style: "cancel" },
+        {
+          text: "Delete",
+          style: "destructive",
         onPress: () => {
           api
             .deleteRecording(id)

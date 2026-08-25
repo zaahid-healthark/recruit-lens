@@ -20,7 +20,7 @@ import {
 } from "../lib/errors";
 import { log } from "../lib/logger";
 import { prisma } from "../lib/prisma";
-import { analyzeAudio } from "../services/audio";
+import { analyzeAudio, ensureSeekableAudio } from "../services/audio";
 import { evaluateRecording, isEvaluationInFlight } from "../services/pipeline";
 import { storage } from "../storage";
 
@@ -220,7 +220,17 @@ recordingsRouter.get(
     });
     if (!recording) throw notFound("Recording not found");
 
-    const localPath = await storage.getLocalPath(recording.storagePath);
+    const storedPath = await storage.getLocalPath(recording.storagePath);
+    if (!fssync.existsSync(storedPath)) {
+      throw notFound(
+        "The audio file is no longer stored on the server. Transcript and scores are unaffected."
+      );
+    }
+
+    // Call recorders write AMR, which Android's player cannot seek within —
+    // scrubbing snaps back to zero. Serve a seekable transcode instead.
+    const playable = await ensureSeekableAudio(storedPath);
+    const localPath = playable.path;
     let size: number;
     try {
       size = fssync.statSync(localPath).size;
@@ -232,9 +242,10 @@ recordingsRouter.get(
 
     const ext = path.extname(recording.originalFilename).toLowerCase();
     const contentType =
-      recording.mimeType && recording.mimeType !== "application/octet-stream"
+      playable.contentType ??
+      (recording.mimeType && recording.mimeType !== "application/octet-stream"
         ? recording.mimeType
-        : (MIME_BY_EXT[ext] ?? "application/octet-stream");
+        : (MIME_BY_EXT[ext] ?? "application/octet-stream"));
 
     res.setHeader("Content-Type", contentType);
     res.setHeader("Accept-Ranges", "bytes");

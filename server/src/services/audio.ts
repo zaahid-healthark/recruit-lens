@@ -117,6 +117,65 @@ export async function analyzeAudio(
   }
 }
 
+/**
+ * Formats Android's player cannot seek within.
+ *
+ * ExoPlayer builds no seek table for these: AMR and friends carry no index,
+ * and its constant-bitrate fallback is off by default and not exposed through
+ * expo-audio. A seek in one of these snaps the position back to zero, so the
+ * scrub bar and skip buttons appear broken. Call recorders write AMR by
+ * default, which is exactly what this app receives.
+ */
+const UNSEEKABLE_EXTS = new Set([".amr", ".awb", ".3gp", ".3gpp", ".wma"]);
+
+export interface PlayableAudio {
+  path: string;
+  /** Set when the file was transcoded, so the response advertises the new type. */
+  contentType: string | null;
+}
+
+/**
+ * Return a version of this recording the phone can actually scrub through,
+ * transcoding to MP3 only for the formats that need it.
+ *
+ * The result is cached next to the original, so the cost lands once on the
+ * first play rather than on every seek. A failed transcode falls back to the
+ * original: unseekable playback is worse than seekable, but far better than
+ * no playback at all.
+ */
+export async function ensureSeekableAudio(filePath: string): Promise<PlayableAudio> {
+  const ext = path.extname(filePath).toLowerCase();
+  if (!UNSEEKABLE_EXTS.has(ext)) return { path: filePath, contentType: null };
+
+  const cached = `${filePath}.playable.mp3`;
+  try {
+    const stat = await fs.stat(cached);
+    if (stat.size > 0) return { path: cached, contentType: "audio/mpeg" };
+  } catch {
+    /* not cached yet */
+  }
+
+  // Mono 32 kbps is plenty for speech and keeps a long interview small.
+  const { code, stderr } = await runFfmpeg([
+    "-y",
+    "-i",
+    filePath,
+    "-ac",
+    "1",
+    "-ar",
+    "16000",
+    "-b:a",
+    "32k",
+    cached,
+  ]);
+  if (code !== 0) {
+    log.warn(`Playback transcode failed (code ${code}) — serving the original.`, stderr.slice(-300));
+    await fs.unlink(cached).catch(() => undefined);
+    return { path: filePath, contentType: null };
+  }
+  return { path: cached, contentType: "audio/mpeg" };
+}
+
 export interface NormalizedAudio {
   path: string;
   /** true when `path` is a transcoded temp file that must be cleaned up afterwards. */
