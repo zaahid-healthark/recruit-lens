@@ -252,7 +252,7 @@ recordingsRouter.get(
     res.setHeader("Cache-Control", "private, max-age=3600");
 
     // "bytes=START-END", either end optional.
-    const range = /^bytes=(d*)-(d*)$/.exec(req.headers.range ?? "");
+    const range = /^bytes=(\d*)-(\d*)$/.exec(req.headers.range ?? "");
     if (range) {
       const start = range[1] ? parseInt(range[1], 10) : 0;
       const end = range[2] ? parseInt(range[2], 10) : size - 1;
