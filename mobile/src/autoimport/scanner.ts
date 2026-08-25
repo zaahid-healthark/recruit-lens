@@ -98,15 +98,27 @@ function recordedAtFor(filename: string, call: PendingCall | null): Date {
   return new Date();
 }
 
-function matchPendingCall(
-  filename: string,
-  calls: PendingCall[],
-  recordedAt: Date | null
-): PendingCall | null {
-  // 1) Primary: the recorder embeds the dialed number in the filename.
-  const byNumber = calls.find((c) => filenameMatchesNumber(filename, c.digits));
-  if (byNumber) return byNumber;
-  // 2) Fallback: exactly one live pending call and the file was recorded after it started.
+/**
+ * Confident match: the recorder embedded the dialled number in the filename.
+ *
+ * This is the ONLY basis on which a recording is uploaded automatically.
+ * Timing is deliberately not accepted as proof — see suggestPendingCall.
+ */
+function matchPendingCall(filename: string, calls: PendingCall[]): PendingCall | null {
+  return calls.find((c) => filenameMatchesNumber(filename, c.digits)) ?? null;
+}
+
+/**
+ * Best guess at which pending call an unmatched recording belongs to, from
+ * timing alone.
+ *
+ * This is NOT proof of anything. A recruiter who dials a candidate, gets no
+ * recording, and later takes a personal call would produce a file that fits
+ * this test perfectly — so acting on it would upload a private call to the
+ * server. It exists only to pre-fill the confirmation the user is shown; the
+ * decision to upload stays with them.
+ */
+function suggestPendingCall(calls: PendingCall[], recordedAt: Date | null): PendingCall | null {
   const live = calls.filter((c) => Date.now() - Date.parse(c.startedAt) < CALL_MATCH_WINDOW_MS);
   if (
     live.length === 1 &&
@@ -268,7 +280,9 @@ export async function runScan(
 
     // ── Decide whether this is an interview at all ──
     const recordedAt = recordedAtFor(file.name, null);
-    const match = matchPendingCall(file.name, next.pendingCalls, recordedAt);
+    // Only a number match authorises an upload. Timing alone is a suggestion.
+    const match = matchPendingCall(file.name, next.pendingCalls);
+    const suggestion = match ? null : suggestPendingCall(next.pendingCalls, recordedAt);
 
     // Probed once per file and remembered on the skip entry, so the list can
     // show a duration and a re-scan never re-probes the same file.
@@ -280,12 +294,16 @@ export async function runScan(
         durationSeconds,
         sizeBytes: size,
         seenAt: new Date(nowMs).toISOString(),
+        suggestedCallId: suggestion?.id ?? null,
+        suggestedCandidateName: suggestion?.candidateName ?? null,
+        suggestedJobId: suggestion?.jobId ?? null,
       };
       delete next.probes[file.uri];
     };
 
-    // A call recorder records everything, including personal calls. Only calls
-    // placed from the Dialer tab are ours to upload.
+    // A call recorder records every call, including personal ones. Nothing is
+    // uploaded unless the dialled number is in the filename — a recording that
+    // merely happened after a call was dialled is not evidence it IS that call.
     if (!match) {
       skip("unmatched");
       outcome.unmatched += 1;
@@ -397,6 +415,11 @@ export async function importSkippedFile(
   return {
     ...state,
     skipped,
+    // Confirming a suggestion resolves that pending call. Left in place it
+    // would keep suggesting itself for every later recording.
+    pendingCalls: entry.suggestedCallId
+      ? state.pendingCalls.filter((c) => c.id !== entry.suggestedCallId)
+      : state.pendingCalls,
     importedUris: { ...state.importedUris, [uri]: true },
     totalImported: state.totalImported + 1,
   };

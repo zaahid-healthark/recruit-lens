@@ -110,31 +110,35 @@ export function DialerScreen(): React.JSX.Element {
     }
   };
 
-  const handleImportSkipped = (uri: string, name: string): void => {
-    Alert.prompt
-      ? Alert.prompt(
-          "Import this recording",
-          "Candidate name (optional) — leave blank to keep the original filename.",
-          [
-            { text: "Cancel", style: "cancel" },
+  const handleImportSkipped = (file: (typeof skipped)[number]): void => {
+    // The suggestion comes from timing only, so it is offered, never assumed.
+    const suggested = file.suggestedCandidateName;
+    const body = suggested
+      ? `This may be your call with ${suggested}, based on when it was recorded — the number is not in the filename, so it could be someone else. Upload it as ${suggested}?`
+      : `Upload "${file.name}" for evaluation?`;
+
+    Alert.alert("Import this recording", body, [
+      { text: "Cancel", style: "cancel" },
+      ...(suggested
+        ? [
             {
-              text: "Import",
-              onPress: (value?: string) => void runImport(uri, value ?? ""),
+              text: "Upload unnamed",
+              onPress: () => void runImport(file.uri, "", null),
             },
-          ],
-          "plain-text"
-        )
-      : // Alert.prompt is iOS-only; on Android import under the existing name.
-        Alert.alert("Import this recording", `Upload "${name}" for evaluation?`, [
-          { text: "Cancel", style: "cancel" },
-          { text: "Import", onPress: () => void runImport(uri, "") },
-        ]);
+          ]
+        : []),
+      {
+        text: suggested ? `Upload as ${suggested}` : "Import",
+        onPress: () =>
+          void runImport(file.uri, suggested ?? "", file.suggestedJobId ?? job?.id ?? null),
+      },
+    ]);
   };
 
-  const runImport = async (uri: string, name: string): Promise<void> => {
+  const runImport = async (uri: string, name: string, jobId: string | null): Promise<void> => {
     setBusyUri(uri);
     try {
-      await importSkipped(uri, name, job?.id ?? null);
+      await importSkipped(uri, name, jobId);
     } catch (err) {
       Alert.alert("Import failed", err instanceof Error ? err.message : String(err));
     } finally {
@@ -291,6 +295,11 @@ export function DialerScreen(): React.JSX.Element {
                     •{" "}
                     {formatDuration(file.durationSeconds)} • {formatDate(file.seenAt)}
                   </Text>
+                  {file.suggestedCandidateName ? (
+                    <Text style={styles.suggestion} numberOfLines={1}>
+                      Possibly {file.suggestedCandidateName} — unconfirmed
+                    </Text>
+                  ) : null}
                 </View>
                 {busyUri === file.uri ? (
                   <ActivityIndicator size="small" color={colors.primary} />
@@ -298,7 +307,7 @@ export function DialerScreen(): React.JSX.Element {
                   <View style={styles.skippedActions}>
                     <Pressable
                       hitSlop={6}
-                      onPress={() => handleImportSkipped(file.uri, file.name)}
+                      onPress={() => handleImportSkipped(file)}
                       accessibilityLabel="Import this recording"
                     >
                       <Ionicons name="cloud-upload-outline" size={19} color={colors.primary} />
@@ -591,6 +600,12 @@ const styles = StyleSheet.create({
   skippedMeta: {
     fontSize: 11.5,
     color: colors.subtext,
+    marginTop: 2,
+  },
+  suggestion: {
+    fontSize: 11.5,
+    color: colors.warning,
+    fontWeight: "600",
     marginTop: 2,
   },
   skippedActions: {

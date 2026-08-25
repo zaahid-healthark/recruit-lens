@@ -36,6 +36,15 @@ export interface SkippedFile {
   durationSeconds: number | null;
   sizeBytes: number;
   seenAt: string; // ISO
+  /**
+   * A GUESS at which pending call this belongs to, from timing alone — the
+   * dialled number was not in the filename. Never auto-uploaded on this basis:
+   * a personal call taken after dialling a candidate would look identical.
+   * It only pre-fills the confirmation, so the user decides.
+   */
+  suggestedCallId: string | null;
+  suggestedCandidateName: string | null;
+  suggestedJobId: string | null;
 }
 
 /**
