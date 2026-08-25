@@ -382,33 +382,54 @@ export async function runScan(
 }
 
 /**
- * Upload a file the scanner deliberately held back (an inbound call from a
- * candidate, or a short recording that is genuinely worth keeping). Takes the
- * candidate name and job from the caller since there is no pending call to
- * infer them from. Returns the state with the file moved out of `skipped`.
+ * Upload a file the scanner deliberately held back, under a name the user
+ * chose after listening to it.
+ *
+ * This is the escape hatch for every case automatic matching cannot cover: a
+ * candidate who rings back from a different number, a call taken the next day,
+ * a recorder that wrote a filename with no number in it. Naming the recording
+ * IS the act of approving it — the app never infers approval from a filename
+ * on its own.
+ *
+ * `renameLocal` also renames the file inside the recorder's folder, so the
+ * recruiter's own folder stops showing an anonymous `phone_...` entry.
  */
 export async function importSkippedFile(
   state: AutoImportState,
   uri: string,
   candidateName: string,
-  jobId: string | null
+  jobId: string | null,
+  renameLocal = false
 ): Promise<AutoImportState> {
   const entry = state.skipped[uri];
   if (!entry) throw new Error("That file is no longer in the skipped list.");
 
   const ext = extensionOf(entry.name);
   const when = timestampFromFilename(entry.name) ?? new Date(entry.seenAt);
-  const name = candidateName.trim()
-    ? buildCandidateFilename(candidateName.trim(), when, ext)
-    : entry.name;
+  const trimmed = candidateName.trim();
+  const name = trimmed ? buildCandidateFilename(trimmed, when, ext) : entry.name;
 
   await api.uploadRecording(
     { uri, name, mimeType: mimeFromExtension(ext) },
-    candidateName.trim() || undefined,
+    trimmed || undefined,
     `Imported manually from the watched folder • Original file: ${entry.name}`,
     UPLOAD_TIMEOUT_MS,
     jobId
   );
+
+  // Only after the upload succeeds is the local file touched, so a failed
+  // rename can never cost a recording that was not safely on the server.
+  let finalUri = uri;
+  if (renameLocal && trimmed && state.folderUri) {
+    const renamed = await renameInFolder(
+      state.folderUri,
+      uri,
+      entry.name,
+      name,
+      entry.sizeBytes
+    );
+    if (renamed) finalUri = renamed;
+  }
 
   const skipped = { ...state.skipped };
   delete skipped[uri];
@@ -420,7 +441,9 @@ export async function importSkippedFile(
     pendingCalls: entry.suggestedCallId
       ? state.pendingCalls.filter((c) => c.id !== entry.suggestedCallId)
       : state.pendingCalls,
-    importedUris: { ...state.importedUris, [uri]: true },
+    // Key on the post-rename URI, or a rescan would see the new name as a new
+    // file and hold it back all over again.
+    importedUris: { ...state.importedUris, [finalUri]: true },
     totalImported: state.totalImported + 1,
   };
 }

@@ -12,10 +12,10 @@ import {
   View,
 } from "react-native";
 import type { JobDto } from "@interview-evaluator/shared";
-import { api } from "../api/client";
 import { useAutoImport } from "../autoimport/AutoImportContext";
 import { AudioPlayerBar } from "../components/AudioPlayerBar";
 import { JobPicker } from "../components/JobPicker";
+import { ImportSkippedModal } from "../components/ImportSkippedModal";
 import { formatSweepTime } from "../autoimport/store";
 import { colors, shadow } from "../theme";
 import { formatDate, formatDuration } from "../utils/format";
@@ -87,6 +87,8 @@ export function DialerScreen(): React.JSX.Element {
   const [phoneNumber, setPhoneNumber] = useState("");
   const [job, setJob] = useState<JobDto | null>(null);
   const [pickerOpen, setPickerOpen] = useState(false);
+  /** File awaiting a name before it is sent; null closes the sheet. */
+  const [namingUri, setNamingUri] = useState<string | null>(null);
   /** URI currently being imported/deleted, so its row can show progress. */
   const [busyUri, setBusyUri] = useState<string | null>(null);
 
@@ -110,37 +112,18 @@ export function DialerScreen(): React.JSX.Element {
     }
   };
 
-  const handleImportSkipped = (file: (typeof skipped)[number]): void => {
-    // The suggestion comes from timing only, so it is offered, never assumed.
-    const suggested = file.suggestedCandidateName;
-    const body = suggested
-      ? `This may be your call with ${suggested}, based on when it was recorded — the number is not in the filename, so it could be someone else. Upload it as ${suggested}?`
-      : `Upload "${file.name}" for evaluation?`;
-
-    Alert.alert("Import this recording", body, [
-      { text: "Cancel", style: "cancel" },
-      ...(suggested
-        ? [
-            {
-              text: "Upload unnamed",
-              onPress: () => void runImport(file.uri, "", null),
-            },
-          ]
-        : []),
-      {
-        text: suggested ? `Upload as ${suggested}` : "Import",
-        onPress: () =>
-          void runImport(file.uri, suggested ?? "", file.suggestedJobId ?? job?.id ?? null),
-      },
-    ]);
-  };
-
-  const runImport = async (uri: string, name: string, jobId: string | null): Promise<void> => {
-    setBusyUri(uri);
+  const runImport = async (input: {
+    uri: string;
+    candidateName: string;
+    jobId: string | null;
+    renameLocal: boolean;
+  }): Promise<void> => {
+    setBusyUri(input.uri);
     try {
-      await importSkipped(uri, name, jobId);
+      await importSkipped(input.uri, input.candidateName, input.jobId, input.renameLocal);
+      setNamingUri(null);
     } catch (err) {
-      Alert.alert("Import failed", err instanceof Error ? err.message : String(err));
+      Alert.alert("Could not send", err instanceof Error ? err.message : String(err));
     } finally {
       setBusyUri(null);
     }
@@ -307,8 +290,8 @@ export function DialerScreen(): React.JSX.Element {
                   <View style={styles.skippedActions}>
                     <Pressable
                       hitSlop={6}
-                      onPress={() => handleImportSkipped(file)}
-                      accessibilityLabel="Import this recording"
+                      onPress={() => setNamingUri(file.uri)}
+                      accessibilityLabel="Name and send this recording"
                     >
                       <Ionicons name="cloud-upload-outline" size={19} color={colors.primary} />
                     </Pressable>
@@ -472,6 +455,13 @@ export function DialerScreen(): React.JSX.Element {
       <Text style={styles.footnote}>
         In-app calling (without the phone dialer) is planned for a future release.
       </Text>
+
+      <ImportSkippedModal
+        file={skipped.find((f) => f.uri === namingUri) ?? null}
+        defaultJob={job}
+        onCancel={() => setNamingUri(null)}
+        onSubmit={runImport}
+      />
 
       <JobPicker
         visible={pickerOpen}

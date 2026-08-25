@@ -85,7 +85,12 @@ interface AutoImportContextValue {
   ) => Promise<boolean>;
   removePendingCall: (id: string) => void;
   /** Upload a held-back file anyway (e.g. a candidate who called in). */
-  importSkipped: (uri: string, candidateName: string, jobId: string | null) => Promise<void>;
+  importSkipped: (
+    uri: string,
+    candidateName: string,
+    jobId: string | null,
+    renameLocal?: boolean
+  ) => Promise<void>;
   /** Permanently delete a held-back file from the recorder's folder. */
   deleteSkipped: (uri: string) => Promise<void>;
 }
@@ -264,10 +269,21 @@ export function AutoImportProvider({ children }: { children: React.ReactNode }):
   }, [scan]);
 
   const importSkipped = useCallback(
-    async (uri: string, candidateName: string, jobId: string | null): Promise<void> => {
+    async (
+      uri: string,
+      candidateName: string,
+      jobId: string | null,
+      renameLocal = false
+    ): Promise<void> => {
       // Throws on failure so the caller can surface it — importing is an
       // explicit user action and must not fail silently.
-      const next = await importSkippedFile(stateRef.current, uri, candidateName, jobId);
+      const next = await importSkippedFile(
+        stateRef.current,
+        uri,
+        candidateName,
+        jobId,
+        renameLocal
+      );
       commit(next);
       bump();
     },
