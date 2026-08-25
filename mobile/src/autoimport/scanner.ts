@@ -2,10 +2,12 @@ import * as FileSystem from "expo-file-system/legacy";
 import { api, ApiRequestError } from "../api/client";
 import {
   buildCandidateFilename,
+  candidateNameFromFilename,
   extensionOf,
   fileNameFromSafUri,
   filenameMatchesNumber,
   isAudioFilename,
+  looksLikeRawRecorderFile,
   mimeFromExtension,
   timestampFromFilename,
 } from "./naming";
@@ -304,7 +306,14 @@ export async function runScan(
     // A call recorder records every call, including personal ones. Nothing is
     // uploaded unless the dialled number is in the filename — a recording that
     // merely happened after a call was dialled is not evidence it IS that call.
-    if (!match) {
+    //
+    // The exception is a file the user has renamed. The recorder always writes
+    // machine-generated names, so a name that no longer looks machine-written
+    // is a deliberate human act, and that act is the approval. It covers the
+    // case automatic matching cannot: a candidate who rings back later, or from
+    // a different number, whom the recruiter then names by hand.
+    const renamedByUser = next.autoSendRenamed && !looksLikeRawRecorderFile(file.name);
+    if (!match && !renamedByUser) {
       skip("unmatched");
       outcome.unmatched += 1;
       continue;
@@ -324,16 +333,26 @@ export async function runScan(
     // ── Upload ──
     const when = recordedAtFor(file.name, match);
     const ext = extensionOf(file.name);
-    const uploadName = buildCandidateFilename(match.candidateName, when, ext);
-    const notes = `Auto-imported from watched folder • Called ${match.phoneNumber} • Original file: ${file.name}`;
+    // A matched call carries the candidate from the Dialer; a renamed file
+    // carries it in the name the user typed, which is the only thing known
+    // about it. Either way the recording arrives labelled, not anonymous.
+    const candidateName = match
+      ? match.candidateName
+      : (candidateNameFromFilename(file.name) ?? "");
+    const uploadName = candidateName
+      ? buildCandidateFilename(candidateName, when, ext)
+      : file.name;
+    const notes = match
+      ? `Auto-imported from watched folder • Called ${match.phoneNumber} • Original file: ${file.name}`
+      : `Auto-imported after being renamed in the watched folder • Original file: ${file.name}`;
 
     try {
       await api.uploadRecording(
         { uri: file.uri, name: uploadName, mimeType: mimeFromExtension(ext) },
-        match.candidateName,
+        candidateName || undefined,
         notes,
         UPLOAD_TIMEOUT_MS,
-        match.jobId
+        match?.jobId ?? null
       );
     } catch (err) {
       const message = err instanceof Error ? err.message : String(err);
@@ -362,11 +381,17 @@ export async function runScan(
     delete next.probes[file.uri];
     next.totalImported += 1;
     outcome.imported += 1;
-    next.pendingCalls = next.pendingCalls.filter((c) => c.id !== match.id);
-    outcome.matchedCalls += 1;
+    // Only a real match consumes a pending call; a renamed file was never
+    // tied to one, and clearing an unrelated call would strand that candidate.
+    if (match) {
+      next.pendingCalls = next.pendingCalls.filter((c) => c.id !== match.id);
+      outcome.matchedCalls += 1;
+    }
 
     // ── Optional: rename the file in the recorder's folder to match ──
-    if (next.renameOnDisk) {
+    // Only for matched calls. A file that got here by being renamed already
+    // carries the name its owner chose; overwriting it would be presumptuous.
+    if (next.renameOnDisk && match) {
       const renamedUri = await renameInFolder(folderUri, file.uri, file.name, uploadName, size);
       if (renamedUri) {
         delete next.importedUris[file.uri]; // that URI no longer exists

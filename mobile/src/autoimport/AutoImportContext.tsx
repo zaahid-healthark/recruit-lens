@@ -63,6 +63,7 @@ interface AutoImportContextValue {
   /** Files held back from upload, newest first, with the reason why. */
   skipped: (SkippedFile & { uri: string })[];
   minDurationSeconds: number;
+  autoSendRenamed: boolean;
   lastScanAt: string | null;
   lastScanSummary: string | null;
   totalImported: number;
@@ -76,6 +77,7 @@ interface AutoImportContextValue {
   setRenameOnDisk: (value: boolean) => void;
   setDailySweepTime: (hour: number, minute: number) => void;
   setMinDurationSeconds: (seconds: number) => void;
+  setAutoSendRenamed: (value: boolean) => void;
   scanNow: () => Promise<void>;
   /** Register a pending call and open the phone's native dialer. */
   startCall: (
@@ -264,6 +266,14 @@ export function AutoImportProvider({ children }: { children: React.ReactNode }):
     [commit]
   );
 
+  const setAutoSendRenamed = useCallback(
+    (value: boolean): void => {
+      commit({ ...stateRef.current, autoSendRenamed: value });
+      if (value) setTimeout(() => void scan(), 0);
+    },
+    [commit, scan]
+  );
+
   const scanNow = useCallback(async (): Promise<void> => {
     await scan(true);
   }, [scan]);
@@ -374,6 +384,7 @@ export function AutoImportProvider({ children }: { children: React.ReactNode }):
       pendingCalls: state.pendingCalls,
       skipped: skippedList,
       minDurationSeconds: state.minDurationSeconds,
+      autoSendRenamed: state.autoSendRenamed,
       lastScanAt: state.lastScanAt,
       lastScanSummary: state.lastScanSummary,
       totalImported: state.totalImported,
@@ -386,6 +397,7 @@ export function AutoImportProvider({ children }: { children: React.ReactNode }):
       setRenameOnDisk,
       setDailySweepTime,
       setMinDurationSeconds,
+      setAutoSendRenamed,
       scanNow,
       startCall,
       removePendingCall,
@@ -402,6 +414,7 @@ export function AutoImportProvider({ children }: { children: React.ReactNode }):
       setRenameOnDisk,
       setDailySweepTime,
       setMinDurationSeconds,
+      setAutoSendRenamed,
       scanNow,
       startCall,
       removePendingCall,

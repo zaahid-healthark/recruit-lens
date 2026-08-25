@@ -79,6 +79,8 @@ export function DialerScreen(): React.JSX.Element {
     skipped,
     minDurationSeconds,
     setMinDurationSeconds,
+    autoSendRenamed,
+    setAutoSendRenamed,
     importSkipped,
     deleteSkipped,
   } = useAutoImport();
@@ -407,6 +409,22 @@ export function DialerScreen(): React.JSX.Element {
             </View>
 
             <View style={styles.optionRow}>
+              <Ionicons name="create-outline" size={16} color={colors.subtext} />
+              <Text style={styles.optionLabel}>Send recordings you have renamed</Text>
+              <Switch
+                value={autoSendRenamed}
+                onValueChange={setAutoSendRenamed}
+                trackColor={{ true: colors.primary, false: colors.border }}
+                thumbColor="#FFFFFF"
+              />
+            </View>
+            <Text style={styles.optionHint}>
+              Your recorder writes names like phone_9876543210_20260820_125753. Renaming a file
+              to the candidate&apos;s name marks it as an interview, and it uploads on the next
+              scan — for callbacks and any call the app could not match by number.
+            </Text>
+
+            <View style={styles.optionRow}>
               <Ionicons name="pricetag-outline" size={16} color={colors.subtext} />
               <Text style={styles.optionLabel}>Rename the file in the folder too</Text>
               <Switch
@@ -659,6 +677,12 @@ const styles = StyleSheet.create({
     fontSize: 12.5,
     color: colors.text,
     fontWeight: "600",
+  },
+  optionHint: {
+    fontSize: 11.5,
+    color: colors.subtext,
+    lineHeight: 16,
+    marginTop: 6,
   },
   chipRow: {
     flexDirection: "row",

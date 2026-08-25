@@ -81,6 +81,11 @@ export interface AutoImportState {
    * are never uploaded. 0 disables the check.
    */
   minDurationSeconds: number;
+  /**
+   * Treat a file the user has renamed (so it no longer looks like raw recorder
+   * output) as approved, and upload it without waiting to be asked.
+   */
+  autoSendRenamed: boolean;
   /** Local hour/minute of the daily "upload everything" sweep. */
   dailySweepHour: number;
   dailySweepMinute: number;
@@ -102,6 +107,7 @@ export const DEFAULT_STATE: AutoImportState = {
   pendingCalls: [],
   skipped: {},
   minDurationSeconds: 20,
+  autoSendRenamed: true,
   dailySweepHour: 17, // 5 PM
   dailySweepMinute: 0,
   lastSweepDay: null,

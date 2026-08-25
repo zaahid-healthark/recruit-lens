@@ -92,6 +92,40 @@ export function filenameMatchesNumber(filename: string, dialedDigits: string): b
   return short.length === 7 && nameDigits.includes(short);
 }
 
+/**
+ * Does this filename still look like untouched call-recorder output?
+ *
+ * Cube ACR writes `phone_<number>_<YYYYMMDD>_<HHMMSS>.<ext>`, so a file that
+ * no longer looks like that has been renamed by a person — and renaming is
+ * how the user approves a recording for upload.
+ *
+ * Both halves are checked, not just the `phone_` prefix, because some
+ * recorders substitute a saved contact's name for `phone`. Treating
+ * `Wife_9876543210_20260820_125753.amr` as "renamed, therefore approved"
+ * would auto-upload a personal call. Keeping the machine-written timestamp
+ * as part of the test means only a genuine rename counts.
+ */
+export function looksLikeRawRecorderFile(filename: string): boolean {
+  return /^phone[_-]/i.test(filename) || /_20\d{6}_\d{6}/.test(filename);
+}
+
+/**
+ * Recover the candidate name a user typed when renaming a file, by stripping
+ * the extension and any trailing date stamp this app itself appends.
+ * Returns null when nothing meaningful is left.
+ */
+export function candidateNameFromFilename(filename: string): string | null {
+  const dot = filename.lastIndexOf(".");
+  const stem = dot > 0 ? filename.slice(0, dot) : filename;
+  const withoutStamp = stem
+    // "Sai Kumar 2026-08-20 12-57" — the shape buildCandidateFilename writes.
+    .replace(/\s+20\d{2}-\d{2}-\d{2}([\s_-]+\d{2}-\d{2})?$/, "")
+    .replace(/[_-]+/g, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+  return withoutStamp.length > 0 ? withoutStamp.slice(0, 200) : null;
+}
+
 /** Parse the "YYYYMMDD_HHMMSS" stamp most call recorders put in filenames. */
 export function timestampFromFilename(filename: string): Date | null {
   const m = filename.match(/(20\d{6})_(\d{6})/);
