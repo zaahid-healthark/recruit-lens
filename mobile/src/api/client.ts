@@ -201,6 +201,19 @@ export const api = {
       body: JSON.stringify(input),
     }),
 
+  /**
+   * Pull the text out of a JD document so the user does not have to type it.
+   * Extraction happens server-side — there is no dependable PDF text
+   * extractor for React Native. Nothing is stored; the text comes straight
+   * back for the editor to show.
+   */
+  extractJobText: (file: UploadFileInput): Promise<{ text: string; pages: number | null }> => {
+    const form = new FormData();
+    form.append("file", { uri: file.uri, name: file.name, type: file.mimeType } as unknown as Blob);
+    // Parsing a long PDF takes a moment; the default would clip it.
+    return request("/jobs/extract-text", { method: "POST", body: form }, 120000);
+  },
+
   deleteJob: (id: string): Promise<void> =>
     request<void>(`/jobs/${id}`, { method: "DELETE" }),
 };

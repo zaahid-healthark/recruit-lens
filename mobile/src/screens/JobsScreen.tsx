@@ -17,6 +17,7 @@ import {
 } from "react-native";
 import { api } from "../api/client";
 import { EmptyState } from "../components/EmptyState";
+import { JdFilePicker } from "../components/JdFilePicker";
 import { colors, scoreColor, shadow } from "../theme";
 import { formatDate } from "../utils/format";
 
@@ -249,9 +250,17 @@ export function JobsScreen(): React.JSX.Element {
                 autoCapitalize="words"
                 editable={!saving}
               />
+              {/* Above the textarea on purpose: loading the file is the fast
+                  path, and it should be visible before anyone starts typing. */}
+              <View style={{ marginBottom: 10 }}>
+                <JdFilePicker
+                  onExtracted={(text) => setEditor((e) => (e ? { ...e, jdText: text } : e))}
+                  disabled={saving}
+                />
+              </View>
               <TextInput
                 style={[styles.input, styles.jdInput]}
-                placeholder="Paste the full job description — requirements, skills, experience…"
+                placeholder="…or paste the job description — requirements, skills, experience"
                 placeholderTextColor={colors.subtext}
                 value={editor?.jdText ?? ""}
                 onChangeText={(t) => setEditor((e) => (e ? { ...e, jdText: t } : e))}

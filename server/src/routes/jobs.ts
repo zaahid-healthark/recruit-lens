@@ -1,11 +1,19 @@
 import { OTHER_VALUE } from "@interview-evaluator/shared";
 import { Router } from "express";
+import multer from "multer";
+import path from "path";
 import { z } from "zod";
 import { DEPARTMENT_NAMES, TAXONOMY } from "../config/taxonomy";
 import { asyncHandler } from "../lib/asyncHandler";
 import { toJobDto } from "../lib/dto";
-import { badRequest, notFound } from "../lib/errors";
+import { badRequest, notFound, unsupportedMedia } from "../lib/errors";
 import { prisma } from "../lib/prisma";
+import {
+  extractDocumentText,
+  logExtraction,
+  looksScanned,
+  SUPPORTED_DOC_EXTENSIONS,
+} from "../services/documentText";
 
 /**
  * Job openings and their descriptions. A recording linked to a job is scored
@@ -165,5 +173,62 @@ jobsRouter.delete(
     if (!job) throw notFound("Job not found");
     await prisma.job.delete({ where: { id: job.id } });
     res.status(204).send();
+  })
+);
+
+/**
+ * POST /jobs/extract-text — pull the text out of an uploaded JD document.
+ *
+ * Typing a job description on a phone keyboard is miserable and recruiters
+ * already have the file. This returns the text for the app to drop into the
+ * editor, where it can still be reviewed and corrected — extraction is never
+ * trusted enough to save a job on its own.
+ *
+ * Nothing is stored: the buffer is parsed in memory and discarded.
+ */
+const docUpload = multer({
+  storage: multer.memoryStorage(),
+  // A job description is a few pages; anything far larger is the wrong file.
+  limits: { fileSize: 15 * 1024 * 1024 },
+  fileFilter: (_req, file, cb) => {
+    const ext = path.extname(file.originalname).toLowerCase();
+    if (SUPPORTED_DOC_EXTENSIONS.has(ext) || ext === ".doc") cb(null, true);
+    else {
+      cb(
+        unsupportedMedia(
+          `Cannot read "${ext || file.originalname}" — upload a PDF, DOCX or plain text file.`
+        )
+      );
+    }
+  },
+});
+
+jobsRouter.post(
+  "/extract-text",
+  docUpload.single("file"),
+  asyncHandler(async (req, res) => {
+    if (!req.file) {
+      throw badRequest('No file uploaded — send multipart/form-data with a "file" field.');
+    }
+    const filename = Buffer.from(req.file.originalname, "latin1").toString("utf8");
+
+    let doc;
+    try {
+      doc = await extractDocumentText(req.file.buffer, filename);
+    } catch (err) {
+      // Parsing failures are the user's problem to fix (wrong format, password
+      // protected), so surface the reason rather than a generic 500.
+      throw badRequest(err instanceof Error ? err.message : "Could not read that file.");
+    }
+
+    if (looksScanned(doc)) {
+      throw badRequest(
+        "This looks like a scanned document with no selectable text. Paste the description instead, " +
+          "or export a text-based PDF."
+      );
+    }
+
+    logExtraction(filename, doc);
+    res.json({ text: doc.text, pages: doc.pages, filename });
   })
 );

@@ -12,6 +12,7 @@ import {
   View,
 } from "react-native";
 import { api } from "../api/client";
+import { JdFilePicker } from "./JdFilePicker";
 import { colors, shadow } from "../theme";
 
 /**
@@ -113,9 +114,14 @@ export function JobPicker({
                 autoCapitalize="words"
                 editable={!saving}
               />
+              {/* Above the textarea on purpose: the file is the fast path, and
+                  a recruiter should see it before starting to type. */}
+              <View style={{ marginBottom: 10 }}>
+                <JdFilePicker onExtracted={setJdText} disabled={saving} />
+              </View>
               <TextInput
                 style={[styles.input, styles.jdInput]}
-                placeholder="Paste the full job description here — requirements, skills, experience…"
+                placeholder="…or paste the job description here — requirements, skills, experience"
                 placeholderTextColor={colors.subtext}
                 value={jdText}
                 onChangeText={setJdText}
