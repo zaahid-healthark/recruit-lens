@@ -63,6 +63,7 @@ interface AutoImportContextValue {
   /** Files held back from upload, newest first, with the reason why. */
   skipped: (SkippedFile & { uri: string })[];
   minDurationSeconds: number;
+  autoSendAll: boolean;
   autoSendRenamed: boolean;
   lastScanAt: string | null;
   lastScanSummary: string | null;
@@ -77,6 +78,7 @@ interface AutoImportContextValue {
   setRenameOnDisk: (value: boolean) => void;
   setDailySweepTime: (hour: number, minute: number) => void;
   setMinDurationSeconds: (seconds: number) => void;
+  setAutoSendAll: (value: boolean) => void;
   setAutoSendRenamed: (value: boolean) => void;
   scanNow: () => Promise<void>;
   /** Register a pending call and open the phone's native dialer. */
@@ -266,6 +268,15 @@ export function AutoImportProvider({ children }: { children: React.ReactNode }):
     [commit]
   );
 
+  const setAutoSendAll = useCallback(
+    (value: boolean): void => {
+      commit({ ...stateRef.current, autoSendAll: value });
+      // Turning it on should act on the backlog immediately, not at the next tick.
+      if (value) setTimeout(() => void scan(), 0);
+    },
+    [commit, scan]
+  );
+
   const setAutoSendRenamed = useCallback(
     (value: boolean): void => {
       commit({ ...stateRef.current, autoSendRenamed: value });
@@ -384,6 +395,7 @@ export function AutoImportProvider({ children }: { children: React.ReactNode }):
       pendingCalls: state.pendingCalls,
       skipped: skippedList,
       minDurationSeconds: state.minDurationSeconds,
+      autoSendAll: state.autoSendAll,
       autoSendRenamed: state.autoSendRenamed,
       lastScanAt: state.lastScanAt,
       lastScanSummary: state.lastScanSummary,
@@ -397,6 +409,7 @@ export function AutoImportProvider({ children }: { children: React.ReactNode }):
       setRenameOnDisk,
       setDailySweepTime,
       setMinDurationSeconds,
+      setAutoSendAll,
       setAutoSendRenamed,
       scanNow,
       startCall,
@@ -414,6 +427,7 @@ export function AutoImportProvider({ children }: { children: React.ReactNode }):
       setRenameOnDisk,
       setDailySweepTime,
       setMinDurationSeconds,
+      setAutoSendAll,
       setAutoSendRenamed,
       scanNow,
       startCall,

@@ -1,98 +1,44 @@
 import { Ionicons } from "@expo/vector-icons";
 import React, { useState } from "react";
 import {
-  ActivityIndicator,
   Alert,
   Pressable,
   ScrollView,
   StyleSheet,
-  Switch,
   Text,
   TextInput,
   View,
 } from "react-native";
 import type { JobDto } from "@interview-evaluator/shared";
 import { useAutoImport } from "../autoimport/AutoImportContext";
-import { AudioPlayerBar } from "../components/AudioPlayerBar";
 import { JobPicker } from "../components/JobPicker";
-import { ImportSkippedModal } from "../components/ImportSkippedModal";
-import { formatSweepTime } from "../autoimport/store";
 import { colors, shadow } from "../theme";
-import { formatDate, formatDuration } from "../utils/format";
+import { formatDate } from "../utils/format";
 
 /**
- * ── DIALER + AUTO-IMPORT ─────────────────────────────────────────────────────
+ * Manual outbound call.
  *
- * Calling works through the phone's native dialer: enter candidate name +
- * number → a "pending call" is registered → the dialer opens pre-filled → the
- * recruiter presses the call button. A recorder app (e.g. Cube ACR) saves the
- * call audio into its folder; the watched-folder scanner below picks the file
- * up, matches it back to the pending call (via the number embedded in the
- * filename), renames it "<Candidate> <date>" and uploads it for evaluation.
+ * Most calls are dialled from the phone's own dialer and picked up by the
+ * watched folder, which is why this is no longer a tab. It survives for the
+ * case worth the extra taps: binding a candidate name and a JD to a call up
+ * front, so the recording arrives already labelled instead of relying on the
+ * server to work out who it was.
  *
- * Still stubbed for a future release: true in-app calling via a CPaaS
- * provider (Exotel/Plivo click-to-call + webhook auto-import). The seam is
- * this same screen — replace startCall() with a POST /calls integration.
- * ─────────────────────────────────────────────────────────────────────────────
+ * Auto-import configuration lives in Settings; the files it holds back live
+ * on the On this phone tab.
  */
-/** Preset times for the daily upload sweep. */
-/**
- * Minimum call length worth uploading. A recruiter screening call that ends in
- * seconds is a hang-up or a wrong number, not an interview. "Off" uploads
- * everything, for when the threshold is getting in the way.
- */
-const MIN_DURATIONS: { label: string; seconds: number }[] = [
-  { label: "Off", seconds: 0 },
-  { label: "10s", seconds: 10 },
-  { label: "20s", seconds: 20 },
-  { label: "60s", seconds: 60 },
-];
-
-const SWEEP_TIMES: { label: string; hour: number }[] = [
-  { label: "9 AM", hour: 9 },
-  { label: "1 PM", hour: 13 },
-  { label: "5 PM", hour: 17 },
-  { label: "9 PM", hour: 21 },
-];
-
 export function DialerScreen(): React.JSX.Element {
   const {
     folderUri,
-    folderLabel,
-    enabled,
-    scanning,
     pendingCalls,
-    lastScanAt,
-    lastScanSummary,
-    totalImported,
-    settlingCount,
-    renameOnDisk,
-    dailySweepHour,
-    dailySweepMinute,
-    pickFolder,
-    setEnabled,
-    setRenameOnDisk,
-    setDailySweepTime,
-    scanNow,
     startCall,
     removePendingCall,
-    skipped,
-    minDurationSeconds,
-    setMinDurationSeconds,
-    autoSendRenamed,
-    setAutoSendRenamed,
-    importSkipped,
-    deleteSkipped,
   } = useAutoImport();
 
   const [candidateName, setCandidateName] = useState("");
   const [phoneNumber, setPhoneNumber] = useState("");
   const [job, setJob] = useState<JobDto | null>(null);
   const [pickerOpen, setPickerOpen] = useState(false);
-  /** File awaiting a name before it is sent; null closes the sheet. */
-  const [namingUri, setNamingUri] = useState<string | null>(null);
-  /** URI currently being imported/deleted, so its row can show progress. */
-  const [busyUri, setBusyUri] = useState<string | null>(null);
 
   const handleCall = async (): Promise<void> => {
     const ok = await startCall(
@@ -112,48 +58,6 @@ export function DialerScreen(): React.JSX.Element {
         );
       }
     }
-  };
-
-  const runImport = async (input: {
-    uri: string;
-    candidateName: string;
-    jobId: string | null;
-    renameLocal: boolean;
-  }): Promise<void> => {
-    setBusyUri(input.uri);
-    try {
-      await importSkipped(input.uri, input.candidateName, input.jobId, input.renameLocal);
-      setNamingUri(null);
-    } catch (err) {
-      Alert.alert("Could not send", err instanceof Error ? err.message : String(err));
-    } finally {
-      setBusyUri(null);
-    }
-  };
-
-  const handleDeleteSkipped = (uri: string, name: string): void => {
-    Alert.alert(
-      "Delete from phone",
-      `Permanently delete "${name}" from your recorder's folder? It was never uploaded, so this is the only copy.`,
-      [
-      { text: "Cancel", style: "cancel" },
-      {
-        text: "Delete",
-        style: "destructive",
-        onPress: () => {
-          void (async () => {
-            setBusyUri(uri);
-            try {
-              await deleteSkipped(uri);
-            } catch (err) {
-              Alert.alert("Delete failed", err instanceof Error ? err.message : String(err));
-            } finally {
-              setBusyUri(null);
-            }
-          })();
-        },
-      },
-    ]);
   };
 
   const handleRemovePending = (id: string, name: string): void => {
@@ -253,236 +157,10 @@ export function DialerScreen(): React.JSX.Element {
         </View>
       ) : null}
 
-      {/* ── Held back: recorded but deliberately not uploaded ── */}
-      {skipped.length > 0 ? (
-        <View style={styles.card}>
-          <View style={styles.cardHeader}>
-            <View style={styles.cardIcon}>
-              <Ionicons name="filter-outline" size={18} color={colors.subtext} />
-            </View>
-            <Text style={styles.cardTitle}>Not uploaded ({skipped.length})</Text>
-          </View>
-          <Text style={styles.cardHint}>
-            Recordings kept off the server: calls you did not dial from this app, anything
-            shorter than {minDurationSeconds}s, and files the recorder saved with no sound
-            in them. Play them to check, then import or delete.
-          </Text>
-          {skipped.map((file) => (
-            <View key={file.uri} style={styles.skippedRow}>
-              <View style={styles.skippedHeader}>
-                <View style={{ flex: 1 }}>
-                  <Text style={styles.skippedName} numberOfLines={1}>
-                    {file.name}
-                  </Text>
-                  <Text style={styles.skippedMeta}>
-                    {file.reason === "unmatched"
-                      ? "Not a dialled call"
-                      : file.reason === "too_short"
-                        ? "Too short"
-                        : "No sound recorded"}{" "}
-                    •{" "}
-                    {formatDuration(file.durationSeconds)} • {formatDate(file.seenAt)}
-                  </Text>
-                  {file.suggestedCandidateName ? (
-                    <Text style={styles.suggestion} numberOfLines={1}>
-                      Possibly {file.suggestedCandidateName} — unconfirmed
-                    </Text>
-                  ) : null}
-                </View>
-                {busyUri === file.uri ? (
-                  <ActivityIndicator size="small" color={colors.primary} />
-                ) : (
-                  <View style={styles.skippedActions}>
-                    <Pressable
-                      hitSlop={6}
-                      onPress={() => setNamingUri(file.uri)}
-                      accessibilityLabel="Name and send this recording"
-                    >
-                      <Ionicons name="cloud-upload-outline" size={19} color={colors.primary} />
-                    </Pressable>
-                    <Pressable
-                      hitSlop={6}
-                      onPress={() => handleDeleteSkipped(file.uri, file.name)}
-                      accessibilityLabel="Delete this recording"
-                    >
-                      <Ionicons name="trash-outline" size={19} color={colors.danger} />
-                    </Pressable>
-                  </View>
-                )}
-              </View>
-              <AudioPlayerBar
-                source={file.uri}
-                fallbackDurationSeconds={file.durationSeconds}
-                compact
-              />
-            </View>
-          ))}
-        </View>
-      ) : null}
-
-      {/* ── Watched folder / auto-import ── */}
-      <View style={styles.card}>
-        <View style={styles.cardHeader}>
-          <View style={styles.cardIcon}>
-            <Ionicons name="folder-open-outline" size={18} color={colors.primary} />
-          </View>
-          <Text style={styles.cardTitle}>Auto-import folder</Text>
-          {folderUri ? (
-            <Switch
-              value={enabled}
-              onValueChange={setEnabled}
-              trackColor={{ true: colors.primary, false: colors.border }}
-              thumbColor="#FFFFFF"
-            />
-          ) : null}
-        </View>
-
-        {folderUri ? (
-          <View>
-            <View style={styles.folderRow}>
-              <Ionicons name="folder" size={15} color={colors.primary} />
-              <Text style={styles.folderLabel} numberOfLines={1}>
-                {folderLabel ?? "Selected folder"}
-              </Text>
-            </View>
-            <Text style={styles.statusLine}>
-              {enabled
-                ? "Watching for new audio files — on open, on return to the app, and every minute."
-                : "Watching is paused."}
-            </Text>
-            <Text style={styles.statusLine}>
-              {lastScanAt
-                ? `Last scan ${formatDate(lastScanAt)}: ${lastScanSummary ?? "—"}`
-                : "Not scanned yet."}
-              {totalImported > 0 ? ` • ${totalImported} imported so far` : ""}
-            </Text>
-            {settlingCount > 0 ? (
-              <Text style={styles.settlingLine}>
-                {settlingCount} file{settlingCount === 1 ? "" : "s"} still being recorded — will
-                upload once the call ends.
-              </Text>
-            ) : null}
-
-            <View style={styles.optionRow}>
-              <Ionicons name="time-outline" size={16} color={colors.subtext} />
-              <Text style={styles.optionLabel}>
-                Daily sweep at {formatSweepTime(dailySweepHour, dailySweepMinute)}
-              </Text>
-            </View>
-            <View style={styles.chipRow}>
-              {SWEEP_TIMES.map((t) => {
-                const active = dailySweepHour === t.hour && dailySweepMinute === 0;
-                return (
-                  <Pressable
-                    key={t.hour}
-                    style={[styles.chip, active && styles.chipActive]}
-                    onPress={() => setDailySweepTime(t.hour, 0)}
-                  >
-                    <Text style={[styles.chipLabel, active && styles.chipLabelActive]}>
-                      {t.label}
-                    </Text>
-                  </Pressable>
-                );
-              })}
-            </View>
-
-            <View style={styles.optionRow}>
-              <Ionicons name="cut-outline" size={16} color={colors.subtext} />
-              <Text style={styles.optionLabel}>
-                {minDurationSeconds > 0
-                  ? `Skip calls under ${minDurationSeconds}s`
-                  : "Upload calls of any length"}
-              </Text>
-            </View>
-            <View style={styles.chipRow}>
-              {MIN_DURATIONS.map((d) => {
-                const active = minDurationSeconds === d.seconds;
-                return (
-                  <Pressable
-                    key={d.seconds}
-                    style={[styles.chip, active && styles.chipActive]}
-                    onPress={() => setMinDurationSeconds(d.seconds)}
-                  >
-                    <Text style={[styles.chipLabel, active && styles.chipLabelActive]}>
-                      {d.label}
-                    </Text>
-                  </Pressable>
-                );
-              })}
-            </View>
-
-            <View style={styles.optionRow}>
-              <Ionicons name="create-outline" size={16} color={colors.subtext} />
-              <Text style={styles.optionLabel}>Send recordings you have renamed</Text>
-              <Switch
-                value={autoSendRenamed}
-                onValueChange={setAutoSendRenamed}
-                trackColor={{ true: colors.primary, false: colors.border }}
-                thumbColor="#FFFFFF"
-              />
-            </View>
-            <Text style={styles.optionHint}>
-              Your recorder writes names like phone_9876543210_20260820_125753. Renaming a file
-              to the candidate&apos;s name marks it as an interview, and it uploads on the next
-              scan — for callbacks and any call the app could not match by number.
-            </Text>
-
-            <View style={styles.optionRow}>
-              <Ionicons name="pricetag-outline" size={16} color={colors.subtext} />
-              <Text style={styles.optionLabel}>Rename the file in the folder too</Text>
-              <Switch
-                value={renameOnDisk}
-                onValueChange={setRenameOnDisk}
-                trackColor={{ true: colors.primary, false: colors.border }}
-                thumbColor="#FFFFFF"
-              />
-            </View>
-            <View style={styles.buttonRow}>
-              <Pressable
-                style={styles.secondaryButton}
-                onPress={() => void scanNow()}
-                disabled={scanning}
-              >
-                {scanning ? (
-                  <ActivityIndicator size="small" color={colors.primary} />
-                ) : (
-                  <Ionicons name="refresh" size={15} color={colors.primary} />
-                )}
-                <Text style={styles.secondaryButtonLabel}>
-                  {scanning ? "Scanning…" : "Scan now"}
-                </Text>
-              </Pressable>
-              <Pressable style={styles.secondaryButton} onPress={() => void pickFolder()}>
-                <Ionicons name="swap-horizontal" size={15} color={colors.primary} />
-                <Text style={styles.secondaryButtonLabel}>Change folder</Text>
-              </Pressable>
-            </View>
-          </View>
-        ) : (
-          <View>
-            <Text style={styles.cardHint}>
-              Choose the folder where your call recorder saves audio (for Cube ACR this is usually
-              CubeCallRecorder/All). New recordings in it are uploaded to the server automatically —
-              no share sheet needed.
-            </Text>
-            <Pressable style={styles.callButton} onPress={() => void pickFolder()}>
-              <Ionicons name="folder-open" size={16} color="#FFFFFF" />
-              <Text style={styles.callButtonLabel}>Choose folder to watch</Text>
-            </Pressable>
-          </View>
-        )}
-      </View>
-
       <Text style={styles.footnote}>
         In-app calling (without the phone dialer) is planned for a future release.
       </Text>
 
-      <ImportSkippedModal
-        file={skipped.find((f) => f.uri === namingUri) ?? null}
-        defaultJob={job}
-        onCancel={() => setNamingUri(null)}
-        onSubmit={runImport}
-      />
 
       <JobPicker
         visible={pickerOpen}

@@ -8,7 +8,7 @@ import type { UploadFileInput } from "./src/api/client";
 import { AutoImportProvider } from "./src/autoimport/AutoImportContext";
 import { ImportModal } from "./src/components/ImportModal";
 import { RefreshProvider, useRefresh } from "./src/context/RefreshContext";
-import { RootNavigator } from "./src/navigation/RootNavigator";
+import { navigationRef, RootNavigator } from "./src/navigation/RootNavigator";
 import { extensionFromMime } from "./src/utils/format";
 
 /**
@@ -69,7 +69,7 @@ export default function App(): React.JSX.Element {
       <SafeAreaProvider>
         <RefreshProvider>
           <AutoImportProvider>
-            <NavigationContainer>
+            <NavigationContainer ref={navigationRef}>
               <StatusBar style="dark" />
               <RootNavigator />
               <ShareIntentGate />

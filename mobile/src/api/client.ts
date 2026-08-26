@@ -116,13 +116,20 @@ export const api = {
     // Long interview recordings on mobile data need more than the default;
     // the auto-import scanner passes a larger value.
     timeoutMs = 120000,
-    jobId?: string | null
+    jobId?: string | null,
+    /**
+     * True when nobody confirmed this is an interview — the scanner sent it
+     * on length alone. Tells the server to screen the opening minutes and
+     * reject the call if it is unrelated to recruitment.
+     */
+    autoImported?: boolean
   ): Promise<RecordingListItemDto> => {
     const form = new FormData();
     // React Native FormData accepts { uri, name, type } file descriptors.
     form.append("file", { uri: file.uri, name: file.name, type: file.mimeType } as unknown as Blob);
     if (candidateName) form.append("candidateName", candidateName);
     if (notes) form.append("notes", notes);
+    if (autoImported) form.append("autoImported", "true");
     if (jobId) form.append("jobId", jobId);
     // Don't set Content-Type manually — fetch adds the multipart boundary itself.
     return request<RecordingListItemDto>("/recordings", { method: "POST", body: form }, timeoutMs);

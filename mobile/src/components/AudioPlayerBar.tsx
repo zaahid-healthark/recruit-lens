@@ -22,8 +22,18 @@ import { formatDuration } from "../utils/format";
 
 /** How far the skip buttons jump. */
 const SKIP_SECONDS = 15;
-/** How long to wait for the source to load before calling it unavailable. */
-const LOAD_TIMEOUT_MS = 12000;
+/**
+ * How long to wait before declaring a source unavailable.
+ *
+ * Generous because the server transcodes long recordings into a seekable
+ * format on first play, and a 25-minute call takes real time to convert. The
+ * old 12s budget expired mid-conversion and reported a perfectly good
+ * recording as broken — which is exactly what "calls over 5 minutes show
+ * unavailable" was.
+ */
+const LOAD_TIMEOUT_MS = 90_000;
+/** After this long, say something more useful than "loading". */
+const PREPARING_AFTER_MS = 6_000;
 
 /**
  * Formats Android's player cannot seek within — a seek snaps back to zero.
@@ -76,13 +86,19 @@ export function AudioPlayerBar({
   // so the row survives while the audio does not. The player surfaces no error
   // for that, it simply never loads, so treat "still not loaded" as failure.
   const [timedOut, setTimedOut] = React.useState(false);
+  const [preparing, setPreparing] = React.useState(false);
   React.useEffect(() => {
     if (status.isLoaded) {
       setTimedOut(false);
+      setPreparing(false);
       return;
     }
-    const t = setTimeout(() => setTimedOut(true), LOAD_TIMEOUT_MS);
-    return () => clearTimeout(t);
+    const slow = setTimeout(() => setPreparing(true), PREPARING_AFTER_MS);
+    const dead = setTimeout(() => setTimedOut(true), LOAD_TIMEOUT_MS);
+    return () => {
+      clearTimeout(slow);
+      clearTimeout(dead);
+    };
   }, [status.isLoaded]);
   const unavailable = timedOut && !status.isLoaded;
   const formatBlocksSeek = React.useMemo(() => isUnseekableSource(source), [source]);
@@ -170,19 +186,19 @@ export function AudioPlayerBar({
   return (
     <View style={styles.wrap}>
       <View style={styles.controls}>
-        <Pressable
-          onPress={() => skip(-SKIP_SECONDS)}
-          hitSlop={8}
-          disabled={!seekable}
-          accessibilityLabel={`Back ${SKIP_SECONDS} seconds`}
-          style={styles.skipButton}
-        >
-          <Ionicons
-            name="play-back"
-            size={iconSize}
-            color={seekable ? colors.subtext : colors.border}
-          />
-        </Pressable>
+        {/* Rendered only when seeking works. A permanently disabled control
+            reads as "this is broken"; absence reads as "this format cannot do
+            that", which is what is actually true. */}
+        {seekable ? (
+          <Pressable
+            onPress={() => skip(-SKIP_SECONDS)}
+            hitSlop={8}
+            accessibilityLabel={`Back ${SKIP_SECONDS} seconds`}
+            style={styles.skipButton}
+          >
+            <Ionicons name="play-back" size={iconSize} color={colors.subtext} />
+          </Pressable>
+        ) : null}
 
         <Pressable
           onPress={togglePlay}
@@ -200,25 +216,24 @@ export function AudioPlayerBar({
           />
         </Pressable>
 
-        <Pressable
-          onPress={() => skip(SKIP_SECONDS)}
-          hitSlop={8}
-          disabled={!seekable}
-          accessibilityLabel={`Forward ${SKIP_SECONDS} seconds`}
-          style={styles.skipButton}
-        >
-          <Ionicons
-            name="play-forward"
-            size={iconSize}
-            color={seekable ? colors.subtext : colors.border}
-          />
-        </Pressable>
+        {seekable ? (
+          <Pressable
+            onPress={() => skip(SKIP_SECONDS)}
+            hitSlop={8}
+            accessibilityLabel={`Forward ${SKIP_SECONDS} seconds`}
+            style={styles.skipButton}
+          >
+            <Ionicons name="play-forward" size={iconSize} color={colors.subtext} />
+          </Pressable>
+        ) : null}
 
         <Text style={styles.time}>
           {unavailable
             ? "unavailable"
             : !status.isLoaded
-              ? "loading…"
+              ? preparing
+                ? "preparing…"
+                : "loading…"
               : `${formatDuration(Math.round(position))}${
                   duration > 0 ? ` / ${formatDuration(Math.round(duration))}` : ""
                 }`}
@@ -232,12 +247,14 @@ export function AudioPlayerBar({
         </Text>
       ) : null}
 
-      {/* Padded hit area — a 4px bar is far too thin to grab reliably. */}
-      <View style={styles.trackHitArea} {...panResponder.panHandlers}>
-        <View style={styles.track} onLayout={onTrackLayout}>
-          <View style={[styles.trackFill, { width: `${progress * 100}%` }]} />
-        </View>
-        {seekable ? (
+      {/* The timeline is a seek control, so it goes too when seeking cannot
+          work — a bar that ignores every drag is worse than none.
+          Padded hit area: a 4px bar is far too thin to grab reliably. */}
+      {seekable ? (
+        <View style={styles.trackHitArea} {...panResponder.panHandlers}>
+          <View style={styles.track} onLayout={onTrackLayout}>
+            <View style={[styles.trackFill, { width: `${progress * 100}%` }]} />
+          </View>
           <View
             pointerEvents="none"
             style={[
@@ -246,8 +263,8 @@ export function AudioPlayerBar({
               { left: Math.max(0, progress * trackWidth - (scrubFraction !== null ? 9 : 6)) },
             ]}
           />
-        ) : null}
-      </View>
+        </View>
+      ) : null}
     </View>
   );
 }

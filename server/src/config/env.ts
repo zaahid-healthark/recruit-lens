@@ -32,6 +32,14 @@ export const env = {
    */
   transcribeModel: process.env.OPENAI_TRANSCRIBE_MODEL ?? "gpt-4o-transcribe-diarize",
   evalModel: process.env.OPENAI_EVAL_MODEL ?? "gpt-5.4",
+  /**
+   * Model for the auto-upload screening gate (is this a recruitment call?).
+   * A cheap yes/no on a 3-minute transcript — point it at a smaller model to
+   * cut cost without touching evaluation quality.
+   */
+  screeningModel: process.env.OPENAI_SCREENING_MODEL ?? process.env.OPENAI_EVAL_MODEL ?? "gpt-5.4",
+  /** Reject auto-uploaded calls the screening gate judges unrelated to hiring. */
+  screenAutoUploads: boolEnv(process.env.SCREEN_AUTO_UPLOADS, true),
   /** Local uploads directory for LocalDiskStorage. */
   storageDir: path.resolve(process.env.STORAGE_DIR ?? "./uploads"),
   /**

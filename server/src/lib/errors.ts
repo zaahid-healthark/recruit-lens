@@ -16,5 +16,8 @@ export const conflict = (message: string): ApiError => new ApiError(409, "CONFLI
 /** The upload was well-formed but contains nothing worth evaluating. */
 export const noAudibleContent = (message: string): ApiError =>
   new ApiError(422, "NO_AUDIBLE_CONTENT", message);
+/** Auto-uploaded, but the screening gate judged it unrelated to recruitment. */
+export const notScreeningCall = (message: string): ApiError =>
+  new ApiError(422, "NOT_A_SCREENING_CALL", message);
 export const unsupportedMedia = (message: string): ApiError =>
   new ApiError(415, "UNSUPPORTED_MEDIA_TYPE", message);

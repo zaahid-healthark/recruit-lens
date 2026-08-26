@@ -44,6 +44,8 @@ export interface ScanOutcome {
   tooShort: number;
   /** Files the server decoded and found silent. */
   noAudio: number;
+  /** Files the server screened and judged unrelated to recruitment. */
+  notRelevant: number;
   /** Files renamed inside the recorder's folder. */
   renamed: number;
   discovered: number;
@@ -198,6 +200,7 @@ export async function runScan(
     unmatched: 0,
     tooShort: 0,
     noAudio: 0,
+    notRelevant: 0,
     renamed: 0,
     discovered: 0,
     error: null,
@@ -289,7 +292,7 @@ export async function runScan(
     // Probed once per file and remembered on the skip entry, so the list can
     // show a duration and a re-scan never re-probes the same file.
     const durationSeconds = await probeDurationSeconds(file.uri);
-    const skip = (reason: SkippedFile["reason"]): void => {
+    const skip = (reason: SkippedFile["reason"], serverReason?: string): void => {
       next.skipped[file.uri] = {
         name: file.name,
         reason,
@@ -299,6 +302,7 @@ export async function runScan(
         suggestedCallId: suggestion?.id ?? null,
         suggestedCandidateName: suggestion?.candidateName ?? null,
         suggestedJobId: suggestion?.jobId ?? null,
+        serverReason: serverReason ?? null,
       };
       delete next.probes[file.uri];
     };
@@ -313,7 +317,11 @@ export async function runScan(
     // case automatic matching cannot: a candidate who rings back later, or from
     // a different number, whom the recruiter then names by hand.
     const renamedByUser = next.autoSendRenamed && !looksLikeRawRecorderFile(file.name);
-    if (!match && !renamedByUser) {
+    // Recruiters dial from the phone's own dialer, so nothing would ever match
+    // and every real interview would sit unsent. Send anything long enough to
+    // be one and let the server decide — it screens the opening minutes and
+    // rejects calls unrelated to recruitment before storing anything.
+    if (!match && !renamedByUser && !next.autoSendAll) {
       skip("unmatched");
       outcome.unmatched += 1;
       continue;
@@ -352,7 +360,11 @@ export async function runScan(
         candidateName || undefined,
         notes,
         UPLOAD_TIMEOUT_MS,
-        match?.jobId ?? null
+        match?.jobId ?? null,
+        // Only unconfirmed sends are screened. A matched call was dialled from
+        // the app and a renamed one was named by hand — both are already a
+        // human saying this is an interview.
+        !match && !renamedByUser
       );
     } catch (err) {
       const message = err instanceof Error ? err.message : String(err);
@@ -362,6 +374,14 @@ export async function runScan(
       if (err instanceof ApiRequestError && err.code === "NO_AUDIBLE_CONTENT") {
         skip("no_audio");
         outcome.noAudio += 1;
+        continue;
+      }
+      // The server transcribed the opening and judged it unrelated to hiring.
+      // Nothing was stored; it belongs on the Not-useful list, not in the
+      // invisible rejected ledger.
+      if (err instanceof ApiRequestError && err.code === "NOT_A_SCREENING_CALL") {
+        skip("not_relevant", err.message);
+        outcome.notRelevant += 1;
         continue;
       }
       if (isPermanentRejection(err)) {
@@ -498,6 +518,7 @@ function summarize(outcome: ScanOutcome): string {
   if (outcome.unmatched > 0) parts.push(`${outcome.unmatched} not from a dialled call`);
   if (outcome.tooShort > 0) parts.push(`${outcome.tooShort} too short`);
   if (outcome.noAudio > 0) parts.push(`${outcome.noAudio} with no sound`);
+  if (outcome.notRelevant > 0) parts.push(`${outcome.notRelevant} not interview calls`);
   if (outcome.error) parts.push(`failed: ${outcome.error.slice(0, 100)}`);
   return parts.length > 0 ? parts.join(", ") : "no new files";
 }

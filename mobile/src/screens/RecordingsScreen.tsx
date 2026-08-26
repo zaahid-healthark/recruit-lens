@@ -16,6 +16,7 @@ import {
   RefreshControl,
   StyleSheet,
   Text,
+  TextInput,
   View,
 } from "react-native";
 import { api, ApiRequestError, UploadFileInput } from "../api/client";
@@ -43,6 +44,8 @@ export function RecordingsScreen(): React.JSX.Element {
   const [bulk, setBulk] = useState<BulkStatusDto | null>(null);
   const [taxonomy, setTaxonomy] = useState<TaxonomyDto | null>(null);
   const [tab, setTab] = useState(0); // 0 = Unevaluated, 1 = Evaluated
+  /** Free-text filter, applied to both tabs. */
+  const [query, setQuery] = useState("");
   const [refreshing, setRefreshing] = useState(false);
   const [loadError, setLoadError] = useState<string | null>(null);
   const [deptFilter, setDeptFilter] = useState<string | null>(null);
@@ -86,19 +89,42 @@ export function RecordingsScreen(): React.JSX.Element {
     setRefreshing(false);
   }, [load]);
 
+  /**
+   * Matches whatever a recruiter is likely to remember about a call: who it
+   * was with, the role, the job, or the filename the recorder produced.
+   */
+  const matchesQuery = useCallback(
+    (r: RecordingListItemDto): boolean => {
+      const q = query.trim().toLowerCase();
+      if (!q) return true;
+      return [
+        r.candidateName,
+        r.originalFilename,
+        r.detectedRole,
+        r.callSummary,
+        r.job?.title,
+        r.evaluationSummary?.roleDesignation,
+      ]
+        .filter(Boolean)
+        .some((v) => String(v).toLowerCase().includes(q));
+    },
+    [query]
+  );
+
   const pending = useMemo(
-    () => (recordings ?? []).filter((r) => r.status !== "EVALUATED"),
-    [recordings]
+    () => (recordings ?? []).filter((r) => r.status !== "EVALUATED" && matchesQuery(r)),
+    [recordings, matchesQuery]
   );
   const evaluated = useMemo(
     () =>
       (recordings ?? []).filter(
         (r) =>
           r.status === "EVALUATED" &&
+          matchesQuery(r) &&
           (!deptFilter || r.evaluationSummary?.department === deptFilter) &&
           (!subFilter || r.evaluationSummary?.subCategory === subFilter)
       ),
-    [recordings, deptFilter, subFilter]
+    [recordings, deptFilter, subFilter, matchesQuery]
   );
 
   // Manual upload path (complements the Android share-sheet import):
@@ -229,6 +255,16 @@ export function RecordingsScreen(): React.JSX.Element {
               {formatDate(item.importedAt)} • {formatDuration(item.durationSeconds)}
               {item.candidateName ? ` • ${item.candidateName}` : ""}
             </Text>
+            {item.detectedRole ? (
+              <Text style={styles.detectedRole} numberOfLines={1}>
+                {item.detectedRole}
+              </Text>
+            ) : null}
+            {item.callSummary ? (
+              <Text style={styles.summary} numberOfLines={2}>
+                {item.callSummary}
+              </Text>
+            ) : null}
             <View style={{ marginTop: 6 }}>
               <StatusPill status={item.status} />
             </View>
@@ -369,6 +405,21 @@ export function RecordingsScreen(): React.JSX.Element {
   return (
     <View style={styles.container}>
       <View style={styles.segmentWrap}>
+        <View style={styles.search}>
+          <Ionicons name="search" size={15} color={colors.subtext} />
+          <TextInput
+            style={styles.searchInput}
+            placeholder="Search name, role or file"
+            placeholderTextColor={colors.subtext}
+            value={query}
+            onChangeText={setQuery}
+          />
+          {query ? (
+            <Pressable onPress={() => setQuery("")} hitSlop={8}>
+              <Ionicons name="close-circle" size={16} color={colors.subtext} />
+            </Pressable>
+          ) : null}
+        </View>
         <SegmentedControl
           options={[`Unevaluated (${pending.length})`, `Evaluated (${evaluated.length})`]}
           selectedIndex={tab}
@@ -469,6 +520,29 @@ const styles = StyleSheet.create({
     padding: 14,
     marginBottom: 10,
     ...shadow,
+  },
+  search: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 8,
+    backgroundColor: colors.card,
+    borderRadius: 10,
+    paddingHorizontal: 12,
+    height: 40,
+    marginBottom: 12,
+  },
+  searchInput: { flex: 1, fontSize: 13.5, color: colors.text, padding: 0 },
+  detectedRole: {
+    fontSize: 12,
+    color: colors.primary,
+    fontWeight: "700",
+    marginTop: 4,
+  },
+  summary: {
+    fontSize: 11.5,
+    color: colors.subtext,
+    lineHeight: 16,
+    marginTop: 3,
   },
   rowTop: {
     flexDirection: "row",

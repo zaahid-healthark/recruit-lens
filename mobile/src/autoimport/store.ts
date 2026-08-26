@@ -21,7 +21,7 @@ export interface PendingCall {
 }
 
 /** Why a file in the watched folder was not uploaded. */
-export const SKIP_REASONS = ["unmatched", "too_short", "no_audio"] as const;
+export const SKIP_REASONS = ["unmatched", "too_short", "no_audio", "not_relevant"] as const;
 export type SkipReason = (typeof SKIP_REASONS)[number];
 
 /**
@@ -45,6 +45,8 @@ export interface SkippedFile {
   suggestedCallId: string | null;
   suggestedCandidateName: string | null;
   suggestedJobId: string | null;
+  /** Server's explanation when it judged the call unrelated to recruitment. */
+  serverReason: string | null;
 }
 
 /**
@@ -82,6 +84,13 @@ export interface AutoImportState {
    */
   minDurationSeconds: number;
   /**
+   * Send every settled recording long enough to be an interview, without
+   * waiting for it to match a call dialled from the app. Recruiters dial from
+   * the phone's own dialer, so nothing would ever match otherwise; the server
+   * screens each one and rejects calls unrelated to recruitment.
+   */
+  autoSendAll: boolean;
+  /**
    * Treat a file the user has renamed (so it no longer looks like raw recorder
    * output) as approved, and upload it without waiting to be asked.
    */
@@ -106,7 +115,8 @@ export const DEFAULT_STATE: AutoImportState = {
   rejected: {},
   pendingCalls: [],
   skipped: {},
-  minDurationSeconds: 20,
+  minDurationSeconds: 90,
+  autoSendAll: true,
   autoSendRenamed: true,
   dailySweepHour: 17, // 5 PM
   dailySweepMinute: 0,

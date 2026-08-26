@@ -17,7 +17,7 @@
         "buildType": "apk"
       },
       "env": {
-        "EXPO_PUBLIC_API_BASE_URL": "https://recruitlens-api-23zm.onrender.com",
+        "EXPO_PUBLIC_API_BASE_URL": "https://curie.healthark.ai/interview/api",
         "EXPO_PUBLIC_API_KEY": "WHAqFj_8MqlqhlKANlvCx7tLFZ_5lqlU"
       }
     },
@@ -26,7 +26,7 @@
         "buildType": "app-bundle"
       },
       "env": {
-        "EXPO_PUBLIC_API_BASE_URL": "https://recruitlens-api-23zm.onrender.com",
+        "EXPO_PUBLIC_API_BASE_URL": "https://curie.healthark.ai/interview/api",
         "EXPO_PUBLIC_API_KEY": "WHAqFj_8MqlqhlKANlvCx7tLFZ_5lqlU"
       }
     }

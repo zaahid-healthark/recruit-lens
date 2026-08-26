@@ -176,6 +176,44 @@ export async function ensureSeekableAudio(filePath: string): Promise<PlayableAud
   return { path: cached, contentType: "audio/mpeg" };
 }
 
+/**
+ * Copy the first `seconds` of a recording to a temp mp3.
+ *
+ * The screening gate only needs enough audio to tell a job interview from a
+ * personal call, and that is established in the opening exchange — who is
+ * calling, about what role. Transcribing 25 minutes to answer a yes/no
+ * question would cost ~10x more and tell us nothing extra. mono 16 kHz keeps
+ * the upload to OpenAI small.
+ *
+ * Returns null on failure; the caller treats that as "cannot screen" and lets
+ * the recording through rather than rejecting on a technicality.
+ */
+export async function clipHead(filePath: string, seconds: number): Promise<string | null> {
+  const outDir = path.join(os.tmpdir(), "interview-evaluator");
+  await fs.mkdir(outDir, { recursive: true });
+  const outPath = path.join(outDir, `${randomUUID()}.mp3`);
+  const { code, stderr } = await runFfmpeg([
+    "-y",
+    "-i",
+    filePath,
+    "-t",
+    String(seconds),
+    "-ac",
+    "1",
+    "-ar",
+    "16000",
+    "-b:a",
+    "32k",
+    outPath,
+  ]);
+  if (code !== 0) {
+    log.warn(`Could not clip audio for screening (code ${code}).`, stderr.slice(-300));
+    await fs.unlink(outPath).catch(() => undefined);
+    return null;
+  }
+  return outPath;
+}
+
 export interface NormalizedAudio {
   path: string;
   /** true when `path` is a transcoded temp file that must be cleaned up afterwards. */

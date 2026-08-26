@@ -47,6 +47,14 @@ model Recording {
   importedAt            DateTime        @default(now())
   candidateName         String?
   notes                 String?
+  /// Role the screening gate heard discussed, when auto-imported.
+  detectedRole          String?
+  /// 1-2 sentence gist from the screening gate, so a row reads without
+  /// opening the transcript.
+  callSummary           String?
+  /// True when the app sent this without a human confirming it was an
+  /// interview — the only recordings the screening gate runs on.
+  autoImported          Boolean         @default(false)
   /// Job being screened for. SetNull so deleting a job never destroys recordings.
   jobId                 String?
   job                   Job?            @relation(fields: [jobId], references: [id], onDelete: SetNull)

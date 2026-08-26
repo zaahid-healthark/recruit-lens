@@ -16,10 +16,12 @@ import {
   conflict,
   noAudibleContent,
   notFound,
+  notScreeningCall,
   unsupportedMedia,
 } from "../lib/errors";
 import { log } from "../lib/logger";
 import { prisma } from "../lib/prisma";
+import { screenRecording } from "../ai/screening";
 import { analyzeAudio, ensureSeekableAudio } from "../services/audio";
 import { evaluateRecording, isEvaluationInFlight } from "../services/pipeline";
 import { storage } from "../storage";
@@ -63,6 +65,15 @@ const importBodySchema = z.object({
   notes: z.string().trim().max(2000).optional(),
   /** Job to screen this candidate against; its JD drives the scoring. */
   jobId: z.string().uuid().optional(),
+  /**
+   * Sent by the watched-folder scanner for a call nobody confirmed was an
+   * interview. Only these run the screening gate — a share-sheet import or a
+   * manual send is already a human saying "this one counts".
+   */
+  autoImported: z
+    .union([z.boolean(), z.enum(["true", "false"])])
+    .optional()
+    .transform((v) => v === true || v === "true"),
 });
 
 /**
@@ -126,6 +137,20 @@ recordingsRouter.post(
       );
     }
 
+    // Screening gate. Recruiters dial from the phone's own dialer, so the app
+    // cannot tell an interview from a personal call and sends everything long
+    // enough to be one. Deciding here — before anything is stored — is what
+    // keeps a private call from ever entering the library.
+    let verdict = null as Awaited<ReturnType<typeof screenRecording>> | null;
+    if (body.autoImported && env.screenAutoUploads && !env.mockAi) {
+      verdict = await screenRecording(req.file.path);
+      if (!verdict.isScreeningCall) {
+        await fs.unlink(req.file.path).catch(() => undefined);
+        log.info(`Rejected "${originalFilename}" as not a recruitment call: ${verdict.reason}`);
+        throw notScreeningCall(verdict.reason);
+      }
+    }
+
     const storagePath = await storage.saveFromFile(req.file.path, originalFilename);
     const recording = await prisma.recording.create({
       data: {
@@ -133,14 +158,27 @@ recordingsRouter.post(
         storagePath,
         mimeType: req.file.mimetype,
         durationSeconds: analysis.durationSeconds,
-        candidateName: body.candidateName || null,
+        // A name typed by a human always wins over one heard by the model.
+        candidateName: body.candidateName || verdict?.candidateName || null,
         notes: body.notes || null,
+        detectedRole: verdict?.detectedRole ?? null,
+        callSummary: verdict?.summary ?? null,
+        autoImported: body.autoImported ?? false,
         jobId: body.jobId || null,
       },
       include: { evaluation: true, job: true },
     });
     res.status(201).json(toRecordingListItemDto(recording));
     syncRecordingToDrive(recording.id); // best-effort Drive mirror (no-op when unconfigured)
+
+    // Warm the seekable copy now, in the background, rather than on the first
+    // tap of play. Converting a 25-minute AMR takes long enough that doing it
+    // on demand made the player give up and report the recording as
+    // unavailable — the "calls over 5 minutes will not play" symptom.
+    void storage
+      .getLocalPath(storagePath)
+      .then((local) => ensureSeekableAudio(local))
+      .catch((err) => log.warn("Could not pre-build the playable copy:", err));
   })
 );
 

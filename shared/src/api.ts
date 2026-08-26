@@ -100,6 +100,12 @@ export interface RecordingListItemDto {
   notes: string | null;
   /** The job this candidate is being screened for, if any. */
   job: JobRefDto | null;
+  /** Role the screening gate heard discussed; null unless auto-imported. */
+  detectedRole: string | null;
+  /** 1-2 sentence gist, so a row reads without opening the transcript. */
+  callSummary: string | null;
+  /** True when the app sent this without a human confirming it first. */
+  autoImported: boolean;
   status: RecordingStatus;
   errorMessage: string | null;
   evaluationSummary: EvaluationSummaryDto | null;
