@@ -177,41 +177,63 @@ export async function ensureSeekableAudio(filePath: string): Promise<PlayableAud
 }
 
 /**
- * Copy the first `seconds` of a recording to a temp mp3.
+ * Copy `seconds` of audio starting at `startSeconds` to a temp mp3.
  *
  * The screening gate only needs enough audio to tell a job interview from a
  * personal call, and that is established in the opening exchange — who is
  * calling, about what role. Transcribing 25 minutes to answer a yes/no
- * question would cost ~10x more and tell us nothing extra. mono 16 kHz keeps
- * the upload to OpenAI small.
+ * question would cost ~10x more and tell us nothing extra.
+ *
+ * The offset matters as much as the length: a call recorder starts capturing
+ * when the number is dialled, so a recording opens with ringing or a caller
+ * tune before anyone speaks. Transcribing that yields song lyrics, which is
+ * both money spent on nothing and a real risk of the gate rejecting a genuine
+ * interview because the opening does not look like one.
  *
  * Returns null on failure; the caller treats that as "cannot screen" and lets
  * the recording through rather than rejecting on a technicality.
  */
-export async function clipHead(filePath: string, seconds: number): Promise<string | null> {
+export async function clipWindow(
+  filePath: string,
+  startSeconds: number,
+  seconds: number
+): Promise<string | null> {
   const outDir = path.join(os.tmpdir(), "interview-evaluator");
   await fs.mkdir(outDir, { recursive: true });
   const outPath = path.join(outDir, `${randomUUID()}.mp3`);
-  const { code, stderr } = await runFfmpeg([
-    "-y",
-    "-i",
-    filePath,
-    "-t",
-    String(seconds),
-    "-ac",
-    "1",
-    "-ar",
-    "16000",
-    "-b:a",
-    "32k",
-    outPath,
-  ]);
+  const args = ["-y"];
+  // -ss before -i seeks without decoding the skipped part, so a large offset
+  // costs nothing.
+  if (startSeconds > 0) args.push("-ss", String(startSeconds));
+  args.push("-i", filePath, "-t", String(seconds), "-ac", "1", "-ar", "16000", "-b:a", "32k", outPath);
+
+  const { code, stderr } = await runFfmpeg(args);
   if (code !== 0) {
     log.warn(`Could not clip audio for screening (code ${code}).`, stderr.slice(-300));
     await fs.unlink(outPath).catch(() => undefined);
     return null;
   }
   return outPath;
+}
+
+/**
+ * Where to start the screening clip.
+ *
+ * Skipping the ring-in lead is the point, but never at the cost of missing the
+ * conversation entirely: on a call answered quickly, or one barely longer than
+ * the window, the offset is pulled back so a full window of audio still fits.
+ */
+export function screeningStartSeconds(
+  preferredSkip: number,
+  windowSeconds: number,
+  durationSeconds: number | null
+): number {
+  if (preferredSkip <= 0) return 0;
+  if (durationSeconds === null || !Number.isFinite(durationSeconds)) return preferredSkip;
+  // Leave the whole window inside the recording where possible.
+  const latestStart = durationSeconds - windowSeconds;
+  if (latestStart <= 0) return 0;
+  return Math.max(0, Math.min(preferredSkip, Math.floor(latestStart)));
 }
 
 export interface NormalizedAudio {

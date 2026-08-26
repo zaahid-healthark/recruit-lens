@@ -143,7 +143,9 @@ recordingsRouter.post(
     // keeps a private call from ever entering the library.
     let verdict = null as Awaited<ReturnType<typeof screenRecording>> | null;
     if (body.autoImported && env.screenAutoUploads && !env.mockAi) {
-      verdict = await screenRecording(req.file.path);
+      // Duration is already known from the silence decode — it lets the clip
+      // offset be pulled back on a call too short to skip the ring-in.
+      verdict = await screenRecording(req.file.path, analysis.durationSeconds);
       if (!verdict.isScreeningCall) {
         await fs.unlink(req.file.path).catch(() => undefined);
         log.info(`Rejected "${originalFilename}" as not a recruitment call: ${verdict.reason}`);

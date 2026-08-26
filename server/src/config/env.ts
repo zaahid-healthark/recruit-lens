@@ -53,6 +53,14 @@ export const env = {
    * per minute of audio, so it is the main lever on screening cost.
    */
   screeningSeconds: intEnv(process.env.SCREENING_SECONDS, 90),
+  /**
+   * Seconds skipped before the screening clip starts. A call recorder begins
+   * capturing at dial, so a recording opens with ringing or a caller tune —
+   * often a song — before anyone speaks. Transcribing that wastes money and
+   * can make a real interview look like it is about something else. Pulled
+   * back automatically when the recording is too short to skip this much.
+   */
+  screeningSkipSeconds: intEnv(process.env.SCREENING_SKIP_SECONDS, 30),
   /** Reject auto-uploaded calls the screening gate judges unrelated to hiring. */
   screenAutoUploads: boolEnv(process.env.SCREEN_AUTO_UPLOADS, true),
   /** Local uploads directory for LocalDiskStorage. */

@@ -1,7 +1,7 @@
 import fs from "fs/promises";
 import { env } from "../config/env";
 import { log } from "../lib/logger";
-import { clipHead } from "../services/audio";
+import { clipWindow, screeningStartSeconds } from "../services/audio";
 import { getOpenAI } from "./openaiClient";
 import { transcribeAudio } from "./transcribe";
 
@@ -51,7 +51,11 @@ Decide whether this is RECRUITMENT WORK: a job screening or interview call, or a
 
 Answer false for anything else — personal calls, family, friends, delivery and customer-service calls, sales calls TO the recruiter, wrong numbers, automated messages.
 
+This clip starts partway into the recording and may open mid-sentence — that is normal, not a sign of anything. It may also contain ringing, hold music or song lyrics from a caller tune before the call connects. IGNORE all of that: it is the phone network, not the conversation. Never treat music or lyrics as the subject of the call.
+
 Judge only what the audio shows. Calls open with greetings and small talk; do not treat the first few sentences as the whole call. If the exchange is clearly heading into a role discussion, answer true.
+
+If the clip contains no real conversation at all — only ringing, music, or silence — answer TRUE. That means the call could not be judged, and a human should see it rather than have it discarded.
 
 When it IS recruitment work, also extract:
 - "candidate_name": the person being ASSESSED, not the recruiter. The recruiter is the one asking questions and describing the role; the candidate is the one answering about their own experience. If you cannot tell them apart, or no name is spoken, use null — a wrong name is worse than none.
@@ -94,10 +98,18 @@ export function parseVerdict(raw: string): ScreeningVerdict {
  * Transcribe the opening of a recording and decide whether to keep it.
  * Never throws — any failure yields INCONCLUSIVE, which keeps the recording.
  */
-export async function screenRecording(filePath: string): Promise<ScreeningVerdict> {
+export async function screenRecording(
+  filePath: string,
+  durationSeconds: number | null = null
+): Promise<ScreeningVerdict> {
   let clipPath: string | null = null;
   try {
-    clipPath = await clipHead(filePath, env.screeningSeconds);
+    const start = screeningStartSeconds(
+      env.screeningSkipSeconds,
+      env.screeningSeconds,
+      durationSeconds
+    );
+    clipPath = await clipWindow(filePath, start, env.screeningSeconds);
     if (!clipPath) return INCONCLUSIVE;
 
     // Cheaper, non-diarizing model on purpose — see env.screeningTranscribeModel.
