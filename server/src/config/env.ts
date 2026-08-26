@@ -38,6 +38,21 @@ export const env = {
    * cut cost without touching evaluation quality.
    */
   screeningModel: process.env.OPENAI_SCREENING_MODEL ?? process.env.OPENAI_EVAL_MODEL ?? "gpt-5.4",
+  /**
+   * Transcription model for the screening clip only. Defaults to the mini
+   * model at roughly half the price: the gate only decides whether a call is
+   * recruitment work, which needs neither speaker labels nor the accuracy the
+   * evaluation transcript depends on. Full transcription still uses
+   * OPENAI_TRANSCRIBE_MODEL.
+   */
+  screeningTranscribeModel:
+    process.env.OPENAI_SCREENING_TRANSCRIBE_MODEL ?? "gpt-4o-mini-transcribe",
+  /**
+   * Seconds of audio the screening verdict is based on. Whether a call is a
+   * job discussion is clear within the first minute or so, and this is billed
+   * per minute of audio, so it is the main lever on screening cost.
+   */
+  screeningSeconds: intEnv(process.env.SCREENING_SECONDS, 90),
   /** Reject auto-uploaded calls the screening gate judges unrelated to hiring. */
   screenAutoUploads: boolEnv(process.env.SCREEN_AUTO_UPLOADS, true),
   /** Local uploads directory for LocalDiskStorage. */

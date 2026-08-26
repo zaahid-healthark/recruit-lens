@@ -97,10 +97,11 @@ export function parseVerdict(raw: string): ScreeningVerdict {
 export async function screenRecording(filePath: string): Promise<ScreeningVerdict> {
   let clipPath: string | null = null;
   try {
-    clipPath = await clipHead(filePath, SCREENING_SECONDS);
+    clipPath = await clipHead(filePath, env.screeningSeconds);
     if (!clipPath) return INCONCLUSIVE;
 
-    const { text } = await transcribeAudio(clipPath);
+    // Cheaper, non-diarizing model on purpose — see env.screeningTranscribeModel.
+    const { text } = await transcribeAudio(clipPath, env.screeningTranscribeModel);
     if (!text.trim()) return INCONCLUSIVE;
 
     const openai = getOpenAI();
