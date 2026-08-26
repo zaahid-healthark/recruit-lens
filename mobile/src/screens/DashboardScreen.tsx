@@ -44,6 +44,40 @@ function Section({ title, children }: { title: string; children: React.ReactNode
   );
 }
 
+/**
+ * Fill in anything the server did not send.
+ *
+ * The app and the server are deployed separately, so their versions drift: a
+ * phone can be a release ahead of the backend, or behind it. Every list here
+ * is charted with .map/.some, and one missing array is enough to crash the
+ * whole screen — which is exactly what happened when this screen started
+ * charting `byDay` before the backend serving it had been redeployed. Treat
+ * every collection as optional and an older backend simply renders fewer
+ * sections instead of taking the app down.
+ */
+function normalizeStats(raw: DashboardStatsDto): DashboardStatsDto {
+  const list = <T,>(v: T[] | undefined | null): T[] => (Array.isArray(v) ? v : []);
+  return {
+    ...raw,
+    totals: {
+      // Read through an optional view: the DTO says these are always present,
+      // but an older backend is the one case where they are not.
+      recordings: raw.totals?.recordings ?? 0,
+      evaluated: raw.totals?.evaluated ?? 0,
+      unevaluated: raw.totals?.unevaluated ?? 0,
+      inProgress: raw.totals?.inProgress ?? 0,
+      failed: raw.totals?.failed ?? 0,
+    },
+    byDay: list(raw.byDay),
+    byJob: list(raw.byJob),
+    byRole: list(raw.byRole),
+    byDepartment: list(raw.byDepartment),
+    bySubCategory: list(raw.bySubCategory),
+    categoryAverages: list(raw.categoryAverages),
+    scoreHistogram: list(raw.scoreHistogram),
+  };
+}
+
 export function DashboardScreen(): React.JSX.Element {
   const { version } = useRefresh();
   const [stats, setStats] = useState<DashboardStatsDto | null>(null);
@@ -52,7 +86,7 @@ export function DashboardScreen(): React.JSX.Element {
 
   const load = useCallback(async (): Promise<void> => {
     try {
-      setStats(await api.getDashboardStats());
+      setStats(normalizeStats(await api.getDashboardStats()));
       setError(null);
     } catch (err) {
       setError(err instanceof ApiRequestError ? err.message : String(err));
