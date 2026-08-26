@@ -1,0 +1,53 @@
+# systemd unit for the RecruitLens API.
+#
+# Install to /etc/systemd/system/recruitlens.service (setup.sh does this).
+# Secrets live in /etc/recruitlens/api.env, which is root-owned and 0600 — they
+# are deliberately NOT in this file, since this one is committed to the repo.
+
+[Unit]
+Description=RecruitLens API
+Documentation=https://github.com/zaahid-healthark/recruit-lens
+# network-online (not just network) so the first Neon connection does not race DNS.
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=recruitlens
+Group=recruitlens
+WorkingDirectory=/opt/recruitlens
+EnvironmentFile=/etc/recruitlens/api.env
+
+# tsx runs the TypeScript entrypoint directly — same as the Render deploy, so
+# there is no build artifact to keep in sync. npm workspaces hoist binaries to
+# the repo root, hence the path. Calling the binary rather than `npm run start`
+# keeps systemd's signals going to node itself instead of an npm wrapper.
+ExecStart=/opt/recruitlens/node_modules/.bin/tsx server/src/index.ts
+
+Restart=always
+RestartSec=5
+# Do not give up after the default 5 tries — a Neon blip should not require a
+# manual start hours later.
+StartLimitIntervalSec=0
+
+# Give ffmpeg time to finish a transcode of a 25-minute recording on shutdown.
+TimeoutStopSec=30
+KillSignal=SIGTERM
+
+# ── Hardening ──
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ProtectHome=true
+ProtectKernelTunables=true
+ProtectControlGroups=true
+RestrictSUIDSGID=true
+# The only paths the service may write to: uploaded audio and its transcodes.
+ReadWritePaths=/var/lib/recruitlens
+
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=recruitlens
+
+[Install]
+WantedBy=multi-user.target
