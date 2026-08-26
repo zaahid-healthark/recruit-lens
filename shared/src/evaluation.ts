@@ -25,11 +25,36 @@ export interface ScoreBand {
 
 /** Score-band descriptors included in the scoring prompt so scores stay consistent. */
 export const SCORE_BANDS: ScoreBand[] = [
-  { min: 0, max: 20, label: "0-20", descriptor: "Very poor — fundamental gaps, unable to engage" },
-  { min: 21, max: 40, label: "21-40", descriptor: "Poor — significant weaknesses outweigh strengths" },
-  { min: 41, max: 60, label: "41-60", descriptor: "Average — meets some expectations with clear gaps" },
-  { min: 61, max: 80, label: "61-80", descriptor: "Good — solid performance with minor weaknesses" },
-  { min: 81, max: 100, label: "81-100", descriptor: "Excellent — consistently strong, hire-caliber signals" },
+  {
+    min: 0,
+    max: 20,
+    label: "0-20",
+    descriptor: "No relevant capability shown — could not engage with the role at all",
+  },
+  {
+    min: 21,
+    max: 40,
+    label: "21-40",
+    descriptor: "Clearly below the bar — core gaps a hiring manager would reject on",
+  },
+  {
+    min: 41,
+    max: 60,
+    label: "41-60",
+    descriptor: "Borderline — some real capability, but gaps that need a second look",
+  },
+  {
+    min: 61,
+    max: 80,
+    label: "61-80",
+    descriptor: "MEETS THE BAR — a competent recruiter would advance this candidate",
+  },
+  {
+    min: 81,
+    max: 100,
+    label: "81-100",
+    descriptor: "Clearly above the bar — strong across the board",
+  },
 ];
 
 /**

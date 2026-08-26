@@ -2,7 +2,7 @@
   "expo": {
     "name": "Interview Evaluator",
     "slug": "interview-evaluator",
-    "version": "2.2.0",
+    "version": "2.3.0",
     "orientation": "portrait",
     "scheme": "interviewevaluator",
     "userInterfaceStyle": "light",
@@ -12,7 +12,7 @@
     ],
     "android": {
       "package": "com.healthark.interviewevaluator",
-      "versionCode": 11
+      "versionCode": 12
     },
     "plugins": [
       [

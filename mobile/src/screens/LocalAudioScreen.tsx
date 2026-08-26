@@ -6,6 +6,7 @@ import {
   Alert,
   FlatList,
   Pressable,
+  ScrollView,
   StyleSheet,
   Text,
   TextInput,
@@ -47,6 +48,16 @@ const REASON_HINT: Record<SkipReason, string> = {
 
 type FilterKey = "all" | SkipReason;
 
+type SortKey = "newest" | "oldest" | "longest" | "shortest" | "name";
+
+const SORTS: { key: SortKey; label: string; icon: keyof typeof Ionicons.glyphMap }[] = [
+  { key: "newest", label: "Newest", icon: "arrow-down" },
+  { key: "oldest", label: "Oldest", icon: "arrow-up" },
+  { key: "longest", label: "Longest", icon: "time-outline" },
+  { key: "shortest", label: "Shortest", icon: "flash-outline" },
+  { key: "name", label: "Name", icon: "text-outline" },
+];
+
 export function LocalAudioScreen(): React.JSX.Element {
   const navigation = useNavigation<{ navigate: (s: string) => void }>();
   const { folderUri, skipped, scanning, scanNow, importSkipped, deleteSkipped, lastScanSummary } =
@@ -54,6 +65,7 @@ export function LocalAudioScreen(): React.JSX.Element {
 
   const [query, setQuery] = useState("");
   const [filter, setFilter] = useState<FilterKey>("all");
+  const [sort, setSort] = useState<SortKey>("newest");
   const [namingUri, setNamingUri] = useState<string | null>(null);
   const [busyUri, setBusyUri] = useState<string | null>(null);
 
@@ -69,12 +81,30 @@ export function LocalAudioScreen(): React.JSX.Element {
 
   const visible = useMemo(() => {
     const q = query.trim().toLowerCase();
-    return relevant.filter(
+    const matched = relevant.filter(
       (f) =>
         (filter === "all" || f.reason === filter) &&
         (!q || f.name.toLowerCase().includes(q) || (f.suggestedCandidateName ?? "").toLowerCase().includes(q))
     );
-  }, [relevant, filter, query]);
+    // Copy before sorting: relevant is derived from context state, and sorting
+    // in place would mutate it.
+    return [...matched].sort((a, b) => {
+      switch (sort) {
+        case "oldest":
+          return a.seenAt.localeCompare(b.seenAt);
+        case "longest":
+          // Unreadable durations sink rather than sorting as zero-length, which
+          // would push them to the top of "shortest" and bury real hang-ups.
+          return (b.durationSeconds ?? -1) - (a.durationSeconds ?? -1);
+        case "shortest":
+          return (a.durationSeconds ?? Infinity) - (b.durationSeconds ?? Infinity);
+        case "name":
+          return a.name.localeCompare(b.name, undefined, { numeric: true });
+        default:
+          return b.seenAt.localeCompare(a.seenAt);
+      }
+    });
+  }, [relevant, filter, query, sort]);
 
   const filters: FilterKey[] = useMemo(
     () => ["all", ...(Object.keys(REASON_LABEL) as SkipReason[]).filter((r) => counts[r] > 0 && r !== "not_relevant")],
@@ -185,6 +215,29 @@ export function LocalAudioScreen(): React.JSX.Element {
             );
           })}
         </View>
+      ) : null}
+
+      {/* Hidden for a single item, where sorting is meaningless noise. */}
+      {relevant.length > 1 ? (
+        <ScrollView
+          horizontal
+          showsHorizontalScrollIndicator={false}
+          contentContainerStyle={styles.sortRow}
+        >
+          {SORTS.map((o) => {
+            const active = sort === o.key;
+            return (
+              <Pressable
+                key={o.key}
+                style={[styles.sortChip, active && styles.sortChipActive]}
+                onPress={() => setSort(o.key)}
+              >
+                <Ionicons name={o.icon} size={12} color={active ? "#FFFFFF" : colors.subtext} />
+                <Text style={[styles.sortLabel, active && styles.sortLabelActive]}>{o.label}</Text>
+              </Pressable>
+            );
+          })}
+        </ScrollView>
       ) : null}
 
       <FlatList
@@ -301,6 +354,20 @@ const styles = StyleSheet.create({
   chipActive: { backgroundColor: colors.primary, borderColor: colors.primary },
   chipLabel: { fontSize: 12, color: colors.text, fontWeight: "600" },
   chipLabelActive: { color: "#FFFFFF" },
+  sortRow: { gap: 8, paddingHorizontal: 16, paddingTop: 10 },
+  sortChip: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 5,
+    paddingHorizontal: 11,
+    paddingVertical: 6,
+    borderRadius: 999,
+    borderWidth: 1,
+    borderColor: colors.border,
+  },
+  sortChipActive: { backgroundColor: colors.primary, borderColor: colors.primary },
+  sortLabel: { fontSize: 11.5, color: colors.subtext, fontWeight: "600" },
+  sortLabelActive: { color: "#FFFFFF" },
   list: { padding: 16, gap: 12 },
   card: { backgroundColor: colors.card, borderRadius: 14, padding: 14, ...shadow },
   rowTop: { flexDirection: "row", alignItems: "center", gap: 10 },
