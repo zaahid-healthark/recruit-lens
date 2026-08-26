@@ -1,25 +1,31 @@
 import { Ionicons } from "@expo/vector-icons";
-import React, { createContext, useCallback, useContext, useMemo, useRef, useState } from "react";
+import React, { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from "react";
 import {
   Animated,
+  BackHandler,
   Dimensions,
   Easing,
-  Modal,
+  Platform,
   Pressable,
-  ScrollView,
+  StatusBar,
   StyleSheet,
   Text,
   View,
 } from "react-native";
-import { colors, shadow } from "../theme";
+import { colors } from "../theme";
 
 /**
- * Slide-in menu for the screens that do not deserve a permanent tab: settings,
- * the JD library, the not-useful list, and the manual dialer.
+ * Slide-in menu for the screens that do not deserve a permanent tab.
  *
- * Hand-rolled on Animated + Modal rather than @react-navigation/drawer, which
- * would pull in react-native-gesture-handler and react-native-reanimated — two
- * native modules, for one panel. This needs no new native code at all.
+ * Rendered as an absolutely-positioned overlay inside the app tree rather than
+ * in a Modal. A Modal has to mount a whole new native window before anything
+ * can animate, which on Android shows up as a stutter on every open — the
+ * panel is always mounted here, so opening is nothing but a transform that the
+ * native driver owns end to end.
+ *
+ * Deliberately not @react-navigation/drawer: that needs
+ * react-native-gesture-handler and react-native-reanimated, two native modules
+ * for one panel.
  */
 
 export type MenuDestination = "Dialer" | "Jobs" | "NotUseful" | "Settings";
@@ -37,36 +43,54 @@ export function useSideMenu(): MenuContextValue {
   return ctx;
 }
 
-const ITEMS: { key: MenuDestination; label: string; icon: keyof typeof Ionicons.glyphMap; hint: string }[] =
-  [
-    {
-      key: "Dialer",
-      label: "Call a candidate",
-      icon: "call-outline",
-      hint: "Dial from the app to attach a name and JD up front",
-    },
-    {
-      key: "Jobs",
-      label: "Job descriptions",
-      icon: "briefcase-outline",
-      hint: "Roles candidates are scored against",
-    },
-    {
-      key: "NotUseful",
-      label: "Not useful",
-      icon: "close-circle-outline",
-      hint: "Calls kept off the server",
-    },
-    {
-      key: "Settings",
-      label: "Settings",
-      icon: "settings-outline",
-      hint: "Watched folder and auto-send rules",
-    },
-  ];
+interface Item {
+  key: MenuDestination;
+  label: string;
+  icon: keyof typeof Ionicons.glyphMap;
+  hint: string;
+}
 
-const PANEL_WIDTH = Math.min(320, Dimensions.get("window").width * 0.84);
-const ANIM_MS = 220;
+const GROUPS: { title: string; items: Item[] }[] = [
+  {
+    title: "Work",
+    items: [
+      {
+        key: "Dialer",
+        label: "Call a candidate",
+        icon: "call-outline",
+        hint: "Attach a name and JD up front",
+      },
+      {
+        key: "Jobs",
+        label: "Job descriptions",
+        icon: "briefcase-outline",
+        hint: "Roles candidates are scored against",
+      },
+    ],
+  },
+  {
+    title: "Manage",
+    items: [
+      {
+        key: "NotUseful",
+        label: "Not useful",
+        icon: "close-circle-outline",
+        hint: "Calls kept off the server",
+      },
+      {
+        key: "Settings",
+        label: "Settings",
+        icon: "settings-outline",
+        hint: "Watched folder and sending rules",
+      },
+    ],
+  },
+];
+
+const SCREEN_W = Dimensions.get("window").width;
+const PANEL_W = Math.min(316, SCREEN_W * 0.82);
+const OPEN_MS = 260;
+const CLOSE_MS = 200;
 
 export function SideMenuProvider({
   onNavigate,
@@ -75,86 +99,120 @@ export function SideMenuProvider({
   onNavigate: (to: MenuDestination) => void;
   children: React.ReactNode;
 }): React.JSX.Element {
-  const [visible, setVisible] = useState(false);
-  // Kept off state so the slide is driven natively rather than by re-render.
-  const slide = useRef(new Animated.Value(-PANEL_WIDTH)).current;
-  const fade = useRef(new Animated.Value(0)).current;
+  const [mounted, setMounted] = useState(false);
+  const progress = useRef(new Animated.Value(0)).current;
 
   const animate = useCallback(
-    (to: "in" | "out", done?: () => void): void => {
-      Animated.parallel([
-        Animated.timing(slide, {
-          toValue: to === "in" ? 0 : -PANEL_WIDTH,
-          duration: ANIM_MS,
-          easing: to === "in" ? Easing.out(Easing.cubic) : Easing.in(Easing.cubic),
-          useNativeDriver: true,
-        }),
-        Animated.timing(fade, {
-          toValue: to === "in" ? 1 : 0,
-          duration: ANIM_MS,
-          useNativeDriver: true,
-        }),
-      ]).start(({ finished }) => finished && done?.());
+    (to: 0 | 1, done?: () => void): void => {
+      Animated.timing(progress, {
+        toValue: to,
+        duration: to === 1 ? OPEN_MS : CLOSE_MS,
+        // Decelerate on the way in, accelerate on the way out — the panel
+        // arrives gently and leaves briskly, which reads as responsive.
+        easing: to === 1 ? Easing.bezier(0.16, 1, 0.3, 1) : Easing.bezier(0.4, 0, 1, 1),
+        useNativeDriver: true,
+      }).start(({ finished }) => finished && done?.());
     },
-    [slide, fade]
+    [progress]
   );
 
   const open = useCallback((): void => {
-    setVisible(true);
-    // One frame so the Modal is mounted before the panel starts moving.
-    requestAnimationFrame(() => animate("in"));
+    setMounted(true);
+    animate(1);
   }, [animate]);
 
   const close = useCallback((): void => {
-    animate("out", () => setVisible(false));
+    animate(0, () => setMounted(false));
   }, [animate]);
 
-  const go = (to: MenuDestination): void => {
-    // Close first so the panel is not still on screen behind the push.
-    animate("out", () => {
-      setVisible(false);
+  const go = useCallback(
+    (to: MenuDestination): void => {
+      // Navigate immediately and let the panel close behind it; waiting for the
+      // animation first makes every tap feel like it lagged.
       onNavigate(to);
+      animate(0, () => setMounted(false));
+    },
+    [animate, onNavigate]
+  );
+
+  // Android back should close the menu before it pops a screen.
+  useEffect(() => {
+    if (!mounted) return;
+    const sub = BackHandler.addEventListener("hardwareBackPress", () => {
+      close();
+      return true;
     });
-  };
+    return () => sub.remove();
+  }, [mounted, close]);
 
   const value = useMemo(() => ({ open, close }), [open, close]);
 
+  const translateX = progress.interpolate({
+    inputRange: [0, 1],
+    outputRange: [-PANEL_W - 8, 0], // extra px hides the shadow when closed
+  });
+
   return (
     <MenuContext.Provider value={value}>
-      {children}
-      <Modal visible={visible} transparent animationType="none" onRequestClose={close}>
-        <View style={styles.root}>
-          <Animated.View style={[styles.scrim, { opacity: fade }]}>
-            <Pressable style={StyleSheet.absoluteFill} onPress={close} accessibilityLabel="Close menu" />
+      <View style={styles.host}>
+        {children}
+
+        {/* Always mounted; pointerEvents is what makes it inert when closed,
+            so no native view is created or destroyed on open. */}
+        <View
+          style={StyleSheet.absoluteFill}
+          pointerEvents={mounted ? "auto" : "none"}
+          accessibilityElementsHidden={!mounted}
+        >
+          <Animated.View style={[styles.scrim, { opacity: progress }]}>
+            <Pressable
+              style={StyleSheet.absoluteFill}
+              onPress={close}
+              accessibilityLabel="Close menu"
+            />
           </Animated.View>
 
-          <Animated.View style={[styles.panel, { transform: [{ translateX: slide }] }]}>
-            <View style={styles.header}>
-              <Text style={styles.title}>RecruitLens</Text>
-              <Pressable onPress={close} hitSlop={10} accessibilityLabel="Close menu">
-                <Ionicons name="close" size={22} color={colors.subtext} />
+          <Animated.View style={[styles.panel, { transform: [{ translateX }] }]}>
+            <View style={styles.brand}>
+              <View style={styles.brandMark}>
+                <Ionicons name="mic" size={18} color="#FFFFFF" />
+              </View>
+              <View style={{ flex: 1 }}>
+                <Text style={styles.brandName}>RecruitLens</Text>
+                <Text style={styles.brandSub}>Interview evaluation</Text>
+              </View>
+              <Pressable onPress={close} hitSlop={12} accessibilityLabel="Close menu">
+                <Ionicons name="close" size={21} color={colors.subtext} />
               </Pressable>
             </View>
 
-            <ScrollView>
-              {ITEMS.map((item) => (
-                <Pressable key={item.key} style={styles.item} onPress={() => go(item.key)}>
-                  <View style={styles.itemIcon}>
-                    <Ionicons name={item.icon} size={19} color={colors.primary} />
-                  </View>
-                  <View style={{ flex: 1 }}>
-                    <Text style={styles.itemLabel}>{item.label}</Text>
-                    <Text style={styles.itemHint} numberOfLines={1}>
-                      {item.hint}
-                    </Text>
-                  </View>
-                  <Ionicons name="chevron-forward" size={16} color={colors.subtext} />
-                </Pressable>
-              ))}
-            </ScrollView>
+            {GROUPS.map((group) => (
+              <View key={group.title} style={styles.group}>
+                <Text style={styles.groupTitle}>{group.title.toUpperCase()}</Text>
+                {group.items.map((item) => (
+                  <Pressable
+                    key={item.key}
+                    style={({ pressed }) => [styles.item, pressed && styles.itemPressed]}
+                    onPress={() => go(item.key)}
+                    android_ripple={{ color: colors.border }}
+                  >
+                    <View style={styles.itemIcon}>
+                      <Ionicons name={item.icon} size={18} color={colors.primary} />
+                    </View>
+                    <View style={{ flex: 1 }}>
+                      <Text style={styles.itemLabel}>{item.label}</Text>
+                      <Text style={styles.itemHint} numberOfLines={1}>
+                        {item.hint}
+                      </Text>
+                    </View>
+                    <Ionicons name="chevron-forward" size={15} color={colors.border} />
+                  </Pressable>
+                ))}
+              </View>
+            ))}
           </Animated.View>
         </View>
-      </Modal>
+      </View>
     </MenuContext.Provider>
   );
 }
@@ -163,72 +221,80 @@ export function SideMenuProvider({
 export function MenuButton(): React.JSX.Element {
   const { open } = useSideMenu();
   return (
-    <Pressable onPress={open} hitSlop={12} style={styles.menuButton} accessibilityLabel="Open menu">
+    <Pressable onPress={open} hitSlop={14} style={styles.menuButton} accessibilityLabel="Open menu">
       <Ionicons name="menu" size={23} color={colors.text} />
     </Pressable>
   );
 }
 
+const STATUS_H = Platform.OS === "android" ? (StatusBar.currentHeight ?? 24) : 44;
+
 const styles = StyleSheet.create({
-  root: {
-    flex: 1,
-  },
+  host: { flex: 1 },
   scrim: {
     ...StyleSheet.absoluteFillObject,
-    backgroundColor: "rgba(17,24,39,0.45)",
+    backgroundColor: "rgba(15,23,42,0.5)",
   },
   panel: {
     position: "absolute",
     top: 0,
     bottom: 0,
     left: 0,
-    width: PANEL_WIDTH,
+    width: PANEL_W,
     backgroundColor: colors.card,
-    paddingTop: 52,
-    ...shadow,
+    paddingTop: STATUS_H + 14,
+    // Rounded on the free edge only; the other side meets the screen edge.
+    borderTopRightRadius: 20,
+    borderBottomRightRadius: 20,
+    elevation: 16,
+    shadowColor: "#0F172A",
+    shadowOpacity: 0.28,
+    shadowRadius: 20,
+    shadowOffset: { width: 4, height: 0 },
   },
-  header: {
+  brand: {
     flexDirection: "row",
     alignItems: "center",
+    gap: 12,
     paddingHorizontal: 18,
-    paddingBottom: 14,
-    borderBottomWidth: StyleSheet.hairlineWidth,
-    borderBottomColor: colors.border,
+    paddingBottom: 18,
   },
-  title: {
-    flex: 1,
-    fontSize: 17,
+  brandMark: {
+    width: 38,
+    height: 38,
+    borderRadius: 12,
+    backgroundColor: colors.primary,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  brandName: { fontSize: 16.5, fontWeight: "800", color: colors.text },
+  brandSub: { fontSize: 11.5, color: colors.subtext, marginTop: 1 },
+  group: { paddingTop: 6 },
+  groupTitle: {
+    fontSize: 10.5,
     fontWeight: "800",
-    color: colors.text,
+    color: colors.subtext,
+    letterSpacing: 0.8,
+    paddingHorizontal: 18,
+    paddingBottom: 6,
   },
   item: {
     flexDirection: "row",
     alignItems: "center",
     gap: 12,
     paddingHorizontal: 18,
-    paddingVertical: 15,
-    borderBottomWidth: StyleSheet.hairlineWidth,
-    borderBottomColor: colors.border,
+    paddingVertical: 12,
   },
+  itemPressed: { backgroundColor: colors.background },
   itemIcon: {
-    width: 34,
-    height: 34,
-    borderRadius: 17,
+    width: 36,
+    height: 36,
+    borderRadius: 10,
     alignItems: "center",
     justifyContent: "center",
     backgroundColor: colors.background,
   },
-  itemLabel: {
-    fontSize: 14.5,
-    fontWeight: "700",
-    color: colors.text,
-  },
-  itemHint: {
-    fontSize: 11.5,
-    color: colors.subtext,
-    marginTop: 2,
-  },
-  menuButton: {
-    paddingHorizontal: 4,
-  },
+  itemLabel: { fontSize: 14, fontWeight: "700", color: colors.text },
+  itemHint: { fontSize: 11, color: colors.subtext, marginTop: 2 },
+  menuButton: { paddingHorizontal: 4 },
 });

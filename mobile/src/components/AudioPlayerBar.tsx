@@ -23,6 +23,15 @@ import { formatDuration } from "../utils/format";
 /** How far the skip buttons jump. */
 const SKIP_SECONDS = 15;
 /**
+ * Speed steps.
+ *
+ * This is the one way to get through a long recording faster that works on
+ * EVERY format — unlike seeking, which Android cannot do on the AMR files a
+ * call recorder produces. Pitch correction keeps a voice sounding like a voice
+ * at 2x rather than a chipmunk.
+ */
+const SPEEDS = [1, 1.5, 2] as const;
+/**
  * How long to wait before declaring a source unavailable.
  *
  * Generous because the server transcodes long recordings into a seekable
@@ -173,6 +182,13 @@ export function AudioPlayerBar({
     player.play();
   };
 
+  const [speed, setSpeed] = React.useState<(typeof SPEEDS)[number]>(1);
+  const cycleSpeed = (): void => {
+    const next = SPEEDS[(SPEEDS.indexOf(speed) + 1) % SPEEDS.length];
+    setSpeed(next);
+    player.setPlaybackRate(next, "high");
+  };
+
   const skip = (delta: number): void => {
     if (!seekable) return;
     const target = Math.min(Math.max(status.currentTime + delta, 0), duration);
@@ -224,6 +240,19 @@ export function AudioPlayerBar({
             style={styles.skipButton}
           >
             <Ionicons name="play-forward" size={iconSize} color={colors.subtext} />
+          </Pressable>
+        ) : null}
+
+        {/* Speed is the one way to get through a long recording faster that
+            works on every format, including the ones Android cannot seek. */}
+        {status.isLoaded && !unavailable ? (
+          <Pressable
+            onPress={cycleSpeed}
+            hitSlop={8}
+            style={styles.speedPill}
+            accessibilityLabel={`Playback speed ${speed}x, tap to change`}
+          >
+            <Text style={styles.speedLabel}>{speed}×</Text>
           </Pressable>
         ) : null}
 
@@ -296,6 +325,19 @@ const styles = StyleSheet.create({
   },
   disabled: {
     backgroundColor: colors.border,
+  },
+  speedPill: {
+    paddingHorizontal: 9,
+    paddingVertical: 3,
+    borderRadius: 999,
+    borderWidth: 1,
+    borderColor: colors.border,
+  },
+  speedLabel: {
+    fontSize: 11,
+    fontWeight: "800",
+    color: colors.text,
+    fontVariant: ["tabular-nums"],
   },
   time: {
     flex: 1,

@@ -142,6 +142,11 @@ export interface DashboardStatsDto {
   byRole: { name: string; count: number }[];
   /** Candidate volume + mean score per job, for cross-candidate comparison. */
   byJob: { id: string; title: string; count: number; averageOverallScore: number | null }[];
+  /**
+   * Interviews imported per day, oldest first, covering a fixed recent window
+   * with zero-filled gaps — a quiet day is a data point, not a missing one.
+   */
+  byDay: { date: string; count: number }[];
   scoreHistogram: { band: string; count: number }[];
 }
 

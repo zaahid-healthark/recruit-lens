@@ -1,6 +1,12 @@
 import { DashboardStatsDto, MATRIX_CATEGORIES, SCORE_BANDS } from "@interview-evaluator/shared";
 import { prisma } from "../lib/prisma";
 
+/** "2026-08-26" in the server's local timezone. */
+function localDayKey(date: Date): string {
+  const p = (n: number): string => String(n).padStart(2, "0");
+  return `${date.getFullYear()}-${p(date.getMonth() + 1)}-${p(date.getDate())}`;
+}
+
 const TOP_N = 8;
 
 /** Aggregate stats for the Dashboard screen. Computed in JS — trivial at recruiter-library scale. */
@@ -112,8 +118,33 @@ export async function getDashboardStats(): Promise<DashboardStatsDto> {
     .sort((a, b) => b.count - a.count || a.title.localeCompare(b.title))
     .slice(0, TOP_N);
 
+  // Throughput over the recent window. Counted in local time so "today" means
+  // what the recruiter's phone shows, and zero-filled so a quiet day reads as
+  // a gap in the bar chart rather than vanishing from the axis.
+  const DAYS = 14;
+  const dayCounts = new Map<string, number>();
+  const startOfWindow = new Date();
+  startOfWindow.setHours(0, 0, 0, 0);
+  startOfWindow.setDate(startOfWindow.getDate() - (DAYS - 1));
+  for (let i = 0; i < DAYS; i++) {
+    const d = new Date(startOfWindow);
+    d.setDate(d.getDate() + i);
+    dayCounts.set(localDayKey(d), 0);
+  }
+  // Only the window is fetched, and only the one column needed to bucket it.
+  const recent = await prisma.recording.findMany({
+    where: { importedAt: { gte: startOfWindow } },
+    select: { importedAt: true },
+  });
+  for (const r of recent) {
+    const key = localDayKey(r.importedAt);
+    if (dayCounts.has(key)) dayCounts.set(key, (dayCounts.get(key) ?? 0) + 1);
+  }
+  const byDay = [...dayCounts.entries()].map(([date, count]) => ({ date, count }));
+
   return {
     totals,
+    byDay,
     averageOverallScore,
     categoryAverages,
     byDepartment,

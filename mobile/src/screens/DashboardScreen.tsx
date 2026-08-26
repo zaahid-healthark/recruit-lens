@@ -14,7 +14,7 @@ import { api, ApiRequestError } from "../api/client";
 import { EmptyState } from "../components/EmptyState";
 import { HorizontalBars, VerticalBarChart } from "../components/charts";
 import { useRefresh } from "../context/RefreshContext";
-import { colors, scoreColor, shadow } from "../theme";
+import { colors, shadow } from "../theme";
 
 interface StatCardProps {
   label: string;
@@ -97,44 +97,78 @@ export function DashboardScreen(): React.JSX.Element {
         />
       }
     >
-      {/* ── Totals ── */}
+      {/* ── Pipeline: the only numbers that ask for an action ── */}
       <View style={styles.statGrid}>
-        <StatCard label="Total recordings" value={stats.totals.recordings} icon="albums-outline" color={colors.primary} />
-        <StatCard label="Evaluated" value={stats.totals.evaluated} icon="checkmark-done-outline" color={colors.success} />
-        <StatCard label="Unevaluated" value={stats.totals.unevaluated + stats.totals.inProgress} icon="hourglass-outline" color={colors.warning} />
-        <StatCard label="Failed" value={stats.totals.failed} icon="alert-circle-outline" color={colors.danger} />
+        <StatCard
+          label="Waiting to evaluate"
+          value={stats.totals.unevaluated}
+          icon="hourglass-outline"
+          color={colors.warning}
+        />
+        <StatCard
+          label="In progress"
+          value={stats.totals.inProgress}
+          icon="sync-outline"
+          color={colors.primary}
+        />
+        <StatCard
+          label="Evaluated"
+          value={stats.totals.evaluated}
+          icon="checkmark-done-outline"
+          color={colors.success}
+        />
+        <StatCard
+          label="Failed"
+          value={stats.totals.failed}
+          icon="alert-circle-outline"
+          color={colors.danger}
+        />
       </View>
 
-      {/* ── Average overall score ── */}
-      <View style={[styles.sectionCard, styles.avgCard]}>
-        <View>
-          <Text style={styles.avgLabel}>Average overall score</Text>
-          <Text style={styles.avgHint}>across {stats.totals.evaluated} evaluated interview{stats.totals.evaluated === 1 ? "" : "s"}</Text>
-        </View>
-        <Text
-          style={[
-            styles.avgValue,
-            { color: stats.averageOverallScore != null ? scoreColor(stats.averageOverallScore) : colors.subtext },
-          ]}
-        >
-          {stats.averageOverallScore ?? "—"}
-        </Text>
-      </View>
+      {/* Throughput answers "are we actually screening people", which a score
+          average cannot. Shown even before anything is evaluated. */}
+      {stats.byDay.some((d) => d.count > 0) ? (
+        <Section title="Interviews imported (last 14 days)">
+          <VerticalBarChart
+            data={stats.byDay.map((d) => ({
+              // Day-of-month only; 14 full dates will not fit on a phone axis.
+              label: d.date.slice(8),
+              value: d.count,
+              color: colors.primary,
+            }))}
+          />
+        </Section>
+      ) : null}
 
       {stats.totals.evaluated === 0 ? (
         <EmptyState
           icon="stats-chart-outline"
           title="No evaluations yet"
-          subtitle="Evaluate recordings to populate the dashboard."
+          subtitle="Evaluate a recording to see which roles and departments your pipeline is filling."
         />
       ) : (
         <>
-          <Section title="Score distribution">
-            <VerticalBarChart
-              data={stats.scoreHistogram.map((b) => ({
-                label: b.band,
-                value: b.count,
-                color: colors.primary,
+          {/* Pipeline depth per open role — the one breakdown a recruiter acts
+              on. Count only: how a candidate scored belongs on their row, not
+              averaged across a job. */}
+          {stats.byJob.length > 0 ? (
+            <Section title="Candidates per job">
+              <HorizontalBars
+                data={stats.byJob.map((j, i) => ({
+                  label: j.title,
+                  value: j.count,
+                  color: palette[i % palette.length],
+                }))}
+              />
+            </Section>
+          ) : null}
+
+          <Section title="Roles being screened">
+            <HorizontalBars
+              data={stats.byRole.map((r, i) => ({
+                label: r.name,
+                value: r.count,
+                color: palette[i % palette.length],
               }))}
             />
           </Section>
@@ -148,53 +182,6 @@ export function DashboardScreen(): React.JSX.Element {
               }))}
             />
           </Section>
-
-          <Section title="Average score per category">
-            <HorizontalBars
-              maxValue={100}
-              data={stats.categoryAverages.map((c) => ({
-                label: c.name,
-                value: c.average,
-                color: scoreColor(c.average),
-              }))}
-            />
-          </Section>
-
-          <Section title="Top sub-categories">
-            <HorizontalBars
-              data={stats.bySubCategory.map((s, i) => ({
-                label: s.name,
-                value: s.count,
-                color: palette[i % palette.length],
-              }))}
-            />
-          </Section>
-
-          <Section title="Top roles / designations">
-            <HorizontalBars
-              data={stats.byRole.map((r, i) => ({
-                label: r.name,
-                value: r.count,
-                color: palette[i % palette.length],
-              }))}
-            />
-          </Section>
-
-          {/* Only meaningful once jobs exist; hidden entirely otherwise. */}
-          {stats.byJob.length > 0 ? (
-            <Section title="Candidates per job">
-              <HorizontalBars
-                data={stats.byJob.map((j, i) => ({
-                  label:
-                    j.averageOverallScore !== null
-                      ? `${j.title} (avg ${j.averageOverallScore})`
-                      : j.title,
-                  value: j.count,
-                  color: palette[i % palette.length],
-                }))}
-              />
-            </Section>
-          ) : null}
         </>
       )}
     </ScrollView>
@@ -261,24 +248,5 @@ const styles = StyleSheet.create({
     textTransform: "uppercase",
     letterSpacing: 0.4,
     marginBottom: 12,
-  },
-  avgCard: {
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "space-between",
-  },
-  avgLabel: {
-    fontSize: 14,
-    fontWeight: "700",
-    color: colors.text,
-  },
-  avgHint: {
-    fontSize: 11,
-    color: colors.subtext,
-    marginTop: 2,
-  },
-  avgValue: {
-    fontSize: 34,
-    fontWeight: "800",
   },
 });
