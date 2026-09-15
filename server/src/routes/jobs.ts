@@ -14,6 +14,7 @@ import {
   looksScanned,
   SUPPORTED_DOC_EXTENSIONS,
 } from "../services/documentText";
+import { getJobRanking } from "../services/ranking";
 
 /**
  * Job openings and their descriptions. A recording linked to a job is scored
@@ -117,6 +118,21 @@ jobsRouter.get(
     });
     if (!job) throw notFound("Job not found");
     res.json(toJobDto(job));
+  })
+);
+
+/**
+ * GET /jobs/:id/ranking — this job's candidates ranked against each other,
+ * with the reasoning behind each placement.
+ *
+ * Derived entirely from stored evaluations, so it costs nothing to call and
+ * returns the same answer every time — which is the point: an approve/reject
+ * decision has to be reproducible and explainable after the fact.
+ */
+jobsRouter.get(
+  "/:id/ranking",
+  asyncHandler(async (req, res) => {
+    res.json(await getJobRanking(req.params.id));
   })
 );
 

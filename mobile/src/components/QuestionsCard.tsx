@@ -1,72 +1,76 @@
 import { Ionicons } from "@expo/vector-icons";
-import type { TechnicalAnswerVerdict, TechnicalAssessmentDto } from "@interview-evaluator/shared";
+import {
+  ANSWER_VERDICT_LABELS,
+  QUESTION_KIND_LABELS,
+  type AnswerVerdict,
+  type QuestionAssessmentDto,
+} from "@interview-evaluator/shared";
 import React from "react";
 import { StyleSheet, Text, View } from "react-native";
 import { colors, scoreColor, shadow } from "../theme";
 
 /**
- * The technical questions the recruiter actually asked, graded one by one.
+ * Every question the recruiter asked, graded one by one — technical,
+ * behavioural, situational alike.
  *
- * Rendered only when questions were asked — a call that stayed logistical
- * shows no card at all, rather than an empty one implying the candidate
- * dodged something. Unlike the JD card there is no "not asked" state here:
- * every row exists because a question was put to the candidate.
+ * Rendered only when questions were asked: a call that stayed logistical shows
+ * no card at all, rather than an empty one implying the candidate dodged
+ * something. Unlike the JD card there is no "not asked" state here — every row
+ * exists because a question was actually put to the candidate.
  */
 
 const VERDICT_META: Record<
-  TechnicalAnswerVerdict,
-  { label: string; icon: keyof typeof Ionicons.glyphMap; color: string; bg: string }
+  AnswerVerdict,
+  { icon: keyof typeof Ionicons.glyphMap; color: string; bg: string }
 > = {
-  correct: {
-    label: "Correct",
-    icon: "checkmark-circle",
-    color: colors.success,
-    bg: colors.successSoft,
-  },
-  partially_correct: {
-    label: "Partly correct",
-    icon: "remove-circle",
-    color: colors.warning,
-    bg: colors.warningSoft,
-  },
-  incorrect: {
-    label: "Incorrect",
-    icon: "close-circle",
-    color: colors.danger,
-    bg: colors.dangerSoft,
-  },
-  not_answered: {
-    label: "Could not answer",
-    icon: "help-circle",
-    color: colors.subtext,
-    bg: "#F3F4F6",
-  },
+  strong: { icon: "checkmark-circle", color: colors.success, bg: colors.successSoft },
+  adequate: { icon: "remove-circle", color: colors.warning, bg: colors.warningSoft },
+  weak: { icon: "close-circle", color: colors.danger, bg: colors.dangerSoft },
+  not_answered: { icon: "help-circle", color: colors.subtext, bg: "#F3F4F6" },
 };
 
 interface Props {
-  assessment: TechnicalAssessmentDto;
+  assessment: QuestionAssessmentDto;
 }
 
-export function TechnicalQaCard({ assessment }: Props): React.JSX.Element {
-  const correct = assessment.questions.filter((q) => q.verdict === "correct").length;
+export function QuestionsCard({ assessment }: Props): React.JSX.Element {
+  const strong = assessment.questions.filter((q) => q.verdict === "strong").length;
+  const headline = assessment.technicalScore ?? assessment.behaviouralScore;
 
   return (
     <View style={styles.card}>
       <View style={styles.header}>
         <View style={styles.iconWrap}>
-          <Ionicons name="terminal-outline" size={18} color={colors.primary} />
+          <Ionicons name="help-circle-outline" size={18} color={colors.primary} />
         </View>
         <View style={{ flex: 1 }}>
-          <Text style={styles.title}>Technical questions</Text>
+          <Text style={styles.title}>Questions asked</Text>
           <Text style={styles.subtitle}>
-            {correct} of {assessment.questions.length} answered well
+            {strong} of {assessment.questions.length} answered strongly
           </Text>
         </View>
-        <View style={[styles.scoreBadge, { backgroundColor: scoreColor(assessment.score) }]}>
-          <Text style={styles.scoreValue}>{assessment.score}</Text>
-          <Text style={styles.scoreLabel}>tech</Text>
-        </View>
+        {headline !== null ? (
+          <View style={[styles.scoreBadge, { backgroundColor: scoreColor(headline) }]}>
+            <Text style={styles.scoreValue}>{headline}</Text>
+            <Text style={styles.scoreLabel}>
+              {assessment.technicalScore !== null ? "tech" : "behav"}
+            </Text>
+          </View>
+        ) : null}
       </View>
+
+      {/* Both aggregates, when the recruiter covered both kinds — they bind
+          different matrix categories, so one number cannot stand for both. */}
+      {assessment.technicalScore !== null && assessment.behaviouralScore !== null ? (
+        <View style={styles.splitRow}>
+          <Text style={styles.splitItem}>
+            Technical <Text style={styles.bold}>{assessment.technicalScore}</Text>
+          </Text>
+          <Text style={styles.splitItem}>
+            Behavioural <Text style={styles.bold}>{assessment.behaviouralScore}</Text>
+          </Text>
+        </View>
+      ) : null}
 
       {assessment.summary ? <Text style={styles.summary}>{assessment.summary}</Text> : null}
 
@@ -80,8 +84,11 @@ export function TechnicalQaCard({ assessment }: Props): React.JSX.Element {
             </View>
             <View style={styles.badgeRow}>
               <View style={[styles.verdictChip, { backgroundColor: meta.bg }]}>
-                <Text style={[styles.verdictLabel, { color: meta.color }]}>{meta.label}</Text>
+                <Text style={[styles.verdictLabel, { color: meta.color }]}>
+                  {ANSWER_VERDICT_LABELS[q.verdict]}
+                </Text>
               </View>
+              <Text style={styles.kindLabel}>{QUESTION_KIND_LABELS[q.kind]}</Text>
               <Text style={[styles.qScore, { color: scoreColor(q.score) }]}>{q.score}/100</Text>
             </View>
             {q.answerSummary ? <Text style={styles.answer}>{q.answerSummary}</Text> : null}
@@ -149,6 +156,26 @@ const styles = StyleSheet.create({
     color: colors.text,
     lineHeight: 19,
     marginBottom: 4,
+  },
+  splitRow: {
+    flexDirection: "row",
+    gap: 16,
+    marginBottom: 8,
+  },
+  splitItem: {
+    fontSize: 12,
+    color: colors.subtext,
+  },
+  bold: {
+    fontWeight: "800",
+    color: colors.text,
+  },
+  kindLabel: {
+    fontSize: 11,
+    fontWeight: "700",
+    color: colors.subtext,
+    textTransform: "uppercase",
+    letterSpacing: 0.3,
   },
   qRow: {
     paddingTop: 12,

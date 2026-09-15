@@ -1,9 +1,10 @@
 import {
+  BEHAVIOURAL_CATEGORIES,
   JD_REQUIREMENT_VERDICTS,
   JdRequirementVerdict,
   LlmEvaluationResult,
   LlmJdMatchResult,
-  LlmTechnicalAssessment,
+  LlmQuestionAssessment,
   MATRIX_CATEGORIES,
   MIN_SCORED_CATEGORIES_FOR_OVERALL,
   TECHNICAL_CATEGORY,
@@ -141,42 +142,59 @@ function mockJdMatch(jobTitle: string, jdText: string, h: number): LlmJdMatchRes
 }
 
 /**
- * Technical Q&A for the mock. Every third recording gets none, so MOCK_AI
- * exercises both the "recruiter asked technical questions" report and the
+ * Graded Q&A for the mock. Every third recording gets none, so MOCK_AI
+ * exercises both the "recruiter asked real questions" report and the
  * "purely logistical call" one without needing two fixtures.
  */
-function mockTechnicalAssessment(role: string, h: number): LlmTechnicalAssessment | null {
+function mockQuestionAssessment(role: string, h: number): LlmQuestionAssessment | null {
   if (h % 3 === 0) return null;
   const questions = [
     {
       question: `How would you approach designing a pipeline for a ${role.toLowerCase()} workload?`,
+      kind: "technical" as const,
       answer_summary:
         "Described a staged pipeline with validation between steps and a rerun path for failures.",
-      verdict: "correct" as const,
+      verdict: "strong" as const,
       score: 78,
       evidence: `"I'd split it into stages so a failure only re-runs the step that broke." (mock quote)`,
     },
     {
       question: "What do you do when the source schema changes without warning?",
+      kind: "technical" as const,
       answer_summary:
         "Mentioned contract checks but could not say how they would be enforced in practice.",
-      verdict: "partially_correct" as const,
-      score: 52,
+      verdict: "adequate" as const,
+      score: 55,
       evidence: `"We'd catch it in testing, usually." (mock quote)`,
     },
     {
-      question: "Can you explain how you would tune that for a ten-times larger dataset?",
-      answer_summary: "Said they had not worked at that scale and did not want to guess.",
-      verdict: "not_answered" as const,
-      score: 18,
-      evidence: `"Honestly, I haven't worked at that scale — I'd be guessing." (mock quote)`,
+      question: "Tell me about a time you disagreed with a teammate on an approach.",
+      kind: "behavioural" as const,
+      answer_summary:
+        "Gave a real disagreement, described time-boxing an experiment for each option, and said what the results decided.",
+      verdict: "strong" as const,
+      score: 82,
+      evidence: `"I suggested we time-box a small experiment for each option and let the results decide." (mock quote)`,
     },
-  ].slice(0, 2 + (h % 2));
-  const score = Math.round(questions.reduce((s, q) => s + q.score, 0) / questions.length);
+    {
+      question: "What would you do if the nightly load failed an hour before a board report?",
+      kind: "situational" as const,
+      answer_summary: "Said they had not faced that and did not want to guess.",
+      verdict: "not_answered" as const,
+      score: 22,
+      evidence: `"Honestly, I haven't hit that — I'd be guessing." (mock quote)`,
+    },
+  ].slice(0, 3 + (h % 2));
+
+  const mean = (kinds: string[]): number | null => {
+    const hits = questions.filter((q) => kinds.includes(q.kind));
+    return hits.length ? Math.round(hits.reduce((s, q) => s + q.score, 0) / hits.length) : null;
+  };
   return {
     questions,
-    score,
-    summary: `Answered ${questions.filter((q) => q.verdict === "correct").length} of ${questions.length} technical questions well; depth drops off at larger scale. (mock)`,
+    technical_score: mean(["technical"]),
+    behavioural_score: mean(["behavioural", "situational"]),
+    summary: `Answered ${questions.filter((q) => q.verdict === "strong").length} of ${questions.length} questions strongly; weakest on situations outside their direct experience. (mock)`,
   };
 }
 
@@ -210,13 +228,21 @@ export function mockEvaluation(filename: string, overrides: MockOverrides = {}):
 
   const base = 48 + (h % 45); // 48-92 → spread across bands
   const offsets = [4, -5, 6, -8, 2];
-  const technical = mockTechnicalAssessment(role, h);
+  const qa = mockQuestionAssessment(role, h);
+  /** The graded answers a category is bound to, when any were asked. */
+  const boundScore = (name: string): number | null => {
+    if (!qa) return null;
+    if (name === TECHNICAL_CATEGORY) return qa.technical_score;
+    if ((BEHAVIOURAL_CATEGORIES as string[]).includes(name)) return qa.behavioural_score;
+    return null;
+  };
   const categories = MATRIX_CATEGORIES.map((name, i) => {
+    const bound = boundScore(name);
     // Some categories come back untested, the way a real screening call leaves
     // topics untouched — that is what exercises the "Not assessed" rendering.
-    // Technical Knowledge is exempt whenever questions were asked: graded
-    // answers are evidence, so it always carries a number then.
-    const untested = (h >> (i * 2)) % 5 === 0 && !(name === TECHNICAL_CATEGORY && technical);
+    // A category the graded answers bear on is exempt: the questions were
+    // asked, so there is evidence either way.
+    const untested = (h >> (i * 2)) % 5 === 0 && bound === null;
     if (untested) {
       return {
         name: name as string,
@@ -226,10 +252,10 @@ export function mockEvaluation(filename: string, overrides: MockOverrides = {}):
         recommendation: "Probe this directly next time; there is nothing to judge yet.",
       };
     }
+    // Matching the bound score exactly keeps the mock inside the same
+    // answer/matrix consistency rule the real schema enforces.
     const catScore =
-      name === TECHNICAL_CATEGORY && technical
-        ? technical.score
-        : Math.max(22, Math.min(97, base + offsets[i] + (((h >> (i * 3)) % 7) - 3)));
+      bound ?? Math.max(22, Math.min(97, base + offsets[i] + (((h >> (i * 3)) % 7) - 3)));
     return {
       name: name as string,
       score: catScore,
@@ -281,10 +307,10 @@ export function mockEvaluation(filename: string, overrides: MockOverrides = {}):
           } (mock evaluation)`,
     coverage_note:
       notAssessed > 0
-        ? `${notAssessed} of ${categories.length} areas were never tested in this call${technical ? "" : ", and no technical questions were asked"}. (mock)`
-        : `The call covered all five areas${technical ? ` and included ${technical.questions.length} technical questions` : ", though no technical questions were asked"}. (mock)`,
+        ? `${notAssessed} of ${categories.length} areas were never tested in this call${qa ? "" : ", and the recruiter asked nothing substantive"}. (mock)`
+        : `The call covered all five areas${qa ? ` and graded ${qa.questions.length} questions` : ", though the recruiter asked nothing substantive"}. (mock)`,
     categories,
-    technical_assessment: technical,
+    question_assessment: qa,
     strengths: pick(STRENGTH_POOL, 1),
     areas_for_improvement: pick(IMPROVEMENT_POOL, 2),
     recommendation,

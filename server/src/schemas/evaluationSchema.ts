@@ -1,13 +1,16 @@
 import {
+  ANSWER_VERDICTS,
+  BEHAVIOURAL_CATEGORIES,
   CLASSIFICATION_CONFIDENCE_LEVELS,
   JD_REQUIREMENT_VERDICTS,
   MATRIX_CATEGORIES,
   MIN_SCORED_CATEGORIES_FOR_OVERALL,
   OTHER_VALUE,
-  TECHNICAL_ANSWER_VERDICTS,
+  QUESTION_KINDS,
   TECHNICAL_CATEGORY,
 } from "@interview-evaluator/shared";
 import { z } from "zod";
+import { ANSWER_CONSISTENCY_TOLERANCE } from "../ai/prompts";
 import { DEPARTMENT_NAMES, TAXONOMY } from "../config/taxonomy";
 
 /** Models occasionally return floats — round, then require a 0-100 integer. */
@@ -66,25 +69,32 @@ const jdMatchSchema = z.object({
   requirements: z.array(jdRequirementSchema).min(1),
 });
 
-/**
- * One technical question the recruiter asked. `score` is required, not
- * optional: the question WAS asked, so the answer — including "I don't know" —
- * is evidence. Only untested topics are allowed to be null.
- */
-const technicalQuestionSchema = z.object({
-  question: z.string().min(1),
-  answer_summary: z.string().min(1),
-  verdict: z.preprocess(
+const enumish = <T extends readonly [string, ...string[]]>(values: T) =>
+  z.preprocess(
     (v) => (typeof v === "string" ? v.trim().toLowerCase().replace(/[\s-]+/g, "_") : v),
-    z.enum(TECHNICAL_ANSWER_VERDICTS)
-  ),
+    z.enum(values)
+  );
+
+/**
+ * One question the recruiter asked. `score` is required, not optional: the
+ * question WAS asked, so the answer — including "I don't know" — is evidence.
+ * Only untested topics are allowed to be null.
+ */
+const questionResultSchema = z.object({
+  question: z.string().min(1),
+  // Older rows (and the odd omission) predate the kind field; "technical" was
+  // the only kind that existed when per-question grading was introduced.
+  kind: enumish(QUESTION_KINDS).default("technical"),
+  answer_summary: z.string().min(1),
+  verdict: enumish(ANSWER_VERDICTS),
   score,
   evidence: z.string().default(""),
 });
 
-const technicalAssessmentSchema = z.object({
-  questions: z.array(technicalQuestionSchema).min(1),
-  score,
+const questionAssessmentSchema = z.object({
+  questions: z.array(questionResultSchema).min(1),
+  technical_score: optionalScore,
+  behavioural_score: optionalScore,
   summary: z.string().min(1),
 });
 
@@ -111,7 +121,7 @@ export const llmEvaluationSchema = z
     overall_summary: z.string().min(1),
     coverage_note: z.string().default(""),
     categories: z.array(categorySchema).length(MATRIX_CATEGORIES.length),
-    technical_assessment: technicalAssessmentSchema.nullish().default(null),
+    question_assessment: questionAssessmentSchema.nullish().default(null),
     strengths: z.array(z.string()).default([]),
     areas_for_improvement: z.array(z.string()).default([]),
     recommendation: z.string().min(1),
@@ -142,20 +152,45 @@ export const llmEvaluationSchema = z
         message: "categories must contain each matrix category exactly once",
       });
     }
-    // Graded answers to real questions ARE evidence, so a transcript that
-    // produced a technical assessment cannot also claim technical knowledge
-    // went untested. Worth the repair retry: the two halves of the output
-    // would otherwise contradict each other on the report.
-    if (val.technical_assessment) {
-      const technical = val.categories.find((c) => c.name === TECHNICAL_CATEGORY);
-      if (technical && technical.score === null) {
-        ctx.addIssue({
-          code: z.ZodIssueCode.custom,
-          path: ["categories"],
-          message:
-            `the recruiter asked technical questions, so "${TECHNICAL_CATEGORY}" must have a ` +
-            `numeric score reflecting those answers — it cannot be null`,
-        });
+    // The matrix must agree with the answers that were graded question by
+    // question. Without this the two halves of the report can contradict each
+    // other — every technical answer marked weak, yet a passing Technical
+    // Knowledge score — which is exactly how a bad candidate slips through and
+    // how a good one gets marked down. Worth the repair retry.
+    const qa = val.question_assessment;
+    if (qa) {
+      const bind = (categoryName: string, answerScore: number, kindLabel: string): void => {
+        const category = val.categories.find((c) => c.name === categoryName);
+        if (!category) return;
+        if (category.score === null) {
+          ctx.addIssue({
+            code: z.ZodIssueCode.custom,
+            path: ["categories"],
+            message:
+              `the recruiter asked ${kindLabel} questions, so "${categoryName}" must have a ` +
+              `numeric score reflecting those answers — it cannot be null`,
+          });
+          return;
+        }
+        if (Math.abs(category.score - answerScore) > ANSWER_CONSISTENCY_TOLERANCE) {
+          ctx.addIssue({
+            code: z.ZodIssueCode.custom,
+            path: ["categories"],
+            message:
+              `"${categoryName}" is ${category.score} but the ${kindLabel} answers scored ` +
+              `${answerScore}. A category may sit at most ${ANSWER_CONSISTENCY_TOLERANCE} points ` +
+              `from the graded answers that bear on it — reconcile them.`,
+          });
+        }
+      };
+
+      if (qa.technical_score !== null) {
+        bind(TECHNICAL_CATEGORY, qa.technical_score, "technical");
+      }
+      if (qa.behavioural_score !== null) {
+        for (const name of BEHAVIOURAL_CATEGORIES) {
+          bind(name, qa.behavioural_score, "behavioural or situational");
+        }
       }
     }
   });
@@ -233,13 +268,14 @@ export function normalizeLlmResult(raw: unknown): unknown {
   } else if (obj.jd_match === undefined) {
     obj.jd_match = null;
   }
-  // "No technical questions were asked" reaches us as null, as an omitted key,
-  // or as an empty questions array — collapse all three to null so downstream
-  // code has exactly one shape to check.
-  if (typeof obj.technical_assessment === "object" && obj.technical_assessment !== null) {
-    const tech: Record<string, unknown> = { ...(obj.technical_assessment as Record<string, unknown>) };
-    const questions = Array.isArray(tech.questions)
-      ? tech.questions.filter(
+  // "No questions were asked" reaches us as null, as an omitted key, or as an
+  // empty questions array — collapse all three to null so downstream code has
+  // exactly one shape to check.
+  const rawQa = obj.question_assessment ?? obj.technical_assessment;
+  if (typeof rawQa === "object" && rawQa !== null) {
+    const qa: Record<string, unknown> = { ...(rawQa as Record<string, unknown>) };
+    const questions = Array.isArray(qa.questions)
+      ? qa.questions.filter(
           (q) =>
             typeof q === "object" &&
             q !== null &&
@@ -247,10 +283,16 @@ export function normalizeLlmResult(raw: unknown): unknown {
             (q as { question: string }).question.trim().length > 0
         )
       : [];
-    obj.technical_assessment = questions.length > 0 ? { ...tech, questions } : null;
-  } else if (obj.technical_assessment === undefined) {
-    obj.technical_assessment = null;
+    // A model that still emits the old technical-only shape ({score}) has its
+    // aggregate read as the technical one rather than dropped on the floor.
+    if (qa.technical_score === undefined && typeof qa.score === "number") {
+      qa.technical_score = qa.score;
+    }
+    obj.question_assessment = questions.length > 0 ? { ...qa, questions } : null;
+  } else {
+    obj.question_assessment = null;
   }
+  delete obj.technical_assessment;
   return obj;
 }
 

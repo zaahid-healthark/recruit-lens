@@ -9,9 +9,11 @@ import {
   RecordingDetailDto,
   RecordingListItemDto,
   RecordingStatus,
-  TECHNICAL_ANSWER_VERDICTS,
-  TechnicalAnswerVerdict,
-  TechnicalAssessmentDto,
+  ANSWER_VERDICTS,
+  AnswerVerdict,
+  QUESTION_KINDS,
+  QuestionAssessmentDto,
+  QuestionKind,
   TranscriptDto,
 } from "@interview-evaluator/shared";
 import { Evaluation, Job, Recording, Transcript } from "@prisma/client";
@@ -46,17 +48,38 @@ function isVerdict(v: unknown): v is JdRequirementVerdict {
   return typeof v === "string" && (JD_REQUIREMENT_VERDICTS as readonly string[]).includes(v);
 }
 
-function isTechnicalVerdict(v: unknown): v is TechnicalAnswerVerdict {
-  return typeof v === "string" && (TECHNICAL_ANSWER_VERDICTS as readonly string[]).includes(v);
+/**
+ * Verdicts written before grading covered non-technical questions, when the
+ * vocabulary was correct/incorrect. Without this map a stored "correct" would
+ * fall through to the default and display as "Could not answer" — turning a
+ * candidate's best answer into their worst.
+ */
+const LEGACY_VERDICTS: Record<string, AnswerVerdict> = {
+  correct: "strong",
+  partially_correct: "adequate",
+  incorrect: "weak",
+};
+
+function toAnswerVerdict(v: unknown): AnswerVerdict {
+  if (typeof v !== "string") return "not_answered";
+  if ((ANSWER_VERDICTS as readonly string[]).includes(v)) return v as AnswerVerdict;
+  return LEGACY_VERDICTS[v] ?? "not_answered";
+}
+
+function isQuestionKind(v: unknown): v is QuestionKind {
+  return typeof v === "string" && (QUESTION_KINDS as readonly string[]).includes(v);
 }
 
 /**
- * Parse the stored technicalAssessmentJson defensively. A block with no
+ * Parse the stored questionAssessmentJson defensively. A block with no
  * readable questions collapses to null: "the recruiter asked nothing" and
  * "the stored rows were unreadable" should both render as no Q&A section
  * rather than as an empty one implying no questions were asked.
+ *
+ * Rows written before questions carried a kind, or before the aggregate was
+ * split by kind, are read as technical — the only kind that existed then.
  */
-function asTechnicalAssessment(value: unknown): TechnicalAssessmentDto | null {
+function asQuestionAssessment(value: unknown): QuestionAssessmentDto | null {
   if (typeof value !== "object" || value === null) return null;
   const v = value as Record<string, unknown>;
   const questions = Array.isArray(v.questions)
@@ -64,19 +87,20 @@ function asTechnicalAssessment(value: unknown): TechnicalAssessmentDto | null {
         .filter((q): q is Record<string, unknown> => typeof q === "object" && q !== null)
         .map((q) => ({
           question: typeof q.question === "string" ? q.question : "",
+          kind: isQuestionKind(q.kind) ? q.kind : ("technical" as QuestionKind),
           answerSummary: typeof q.answerSummary === "string" ? q.answerSummary : "",
-          verdict: isTechnicalVerdict(q.verdict)
-            ? q.verdict
-            : ("not_answered" as TechnicalAnswerVerdict),
+          verdict: toAnswerVerdict(q.verdict),
           score: typeof q.score === "number" ? q.score : 0,
           evidence: typeof q.evidence === "string" ? q.evidence : "",
         }))
         .filter((q) => q.question.length > 0)
     : [];
   if (questions.length === 0) return null;
+  const legacyScore = typeof v.score === "number" ? v.score : null;
   return {
     questions,
-    score: typeof v.score === "number" ? v.score : 0,
+    technicalScore: typeof v.technicalScore === "number" ? v.technicalScore : legacyScore,
+    behaviouralScore: typeof v.behaviouralScore === "number" ? v.behaviouralScore : null,
     summary: typeof v.summary === "string" ? v.summary : "",
   };
 }
@@ -153,7 +177,7 @@ export function toEvaluationDto(e: Evaluation): EvaluationDto {
     overallSummary: e.overallSummary,
     coverageNote: e.coverageNote,
     categories: asCategories(e.categoriesJson),
-    technicalAssessment: asTechnicalAssessment(e.technicalAssessmentJson),
+    questionAssessment: asQuestionAssessment(e.questionAssessmentJson),
     strengths: asStringArray(e.strengths),
     areasForImprovement: asStringArray(e.areasForImprovement),
     jdMatch: asJdMatch(e.jdMatchJson),

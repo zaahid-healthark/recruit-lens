@@ -13,6 +13,7 @@
     "seed": "prisma db seed",
     "studio": "prisma studio",
     "drive:sync": "tsx scripts/driveSyncAll.ts",
+    "score:check": "tsx scripts/scoringCheck.ts",
     "typecheck": "tsc --noEmit",
     "postinstall": "prisma generate"
   },

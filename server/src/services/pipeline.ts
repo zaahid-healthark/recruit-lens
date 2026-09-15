@@ -114,12 +114,14 @@ export async function evaluateRecording(recordingId: string): Promise<void> {
       categoriesJson: result.categories as unknown as Prisma.InputJsonValue,
       // Stored camelCase to match every other JSON column (and what the DTO
       // reader expects) — the snake_case shape belongs to the model contract.
-      technicalAssessmentJson: result.technical_assessment
+      questionAssessmentJson: result.question_assessment
         ? ({
-            score: result.technical_assessment.score,
-            summary: result.technical_assessment.summary,
-            questions: result.technical_assessment.questions.map((q) => ({
+            technicalScore: result.question_assessment.technical_score,
+            behaviouralScore: result.question_assessment.behavioural_score,
+            summary: result.question_assessment.summary,
+            questions: result.question_assessment.questions.map((q) => ({
               question: q.question,
+              kind: q.kind,
               answerSummary: q.answer_summary,
               verdict: q.verdict,
               score: q.score,
@@ -156,7 +158,7 @@ export async function evaluateRecording(recordingId: string): Promise<void> {
       `Recording ${recordingId} evaluated: ${result.department} › ${result.sub_category}, ` +
         `role "${result.role_designation}", score ${result.overall_score ?? "not assessed"}` +
         `${notAssessed > 0 ? ` (${notAssessed}/5 categories untested)` : ""}` +
-        `${result.technical_assessment ? `, ${result.technical_assessment.questions.length} technical Q&A` : ""}` +
+        `${result.question_assessment ? `, ${result.question_assessment.questions.length} questions graded` : ""}` +
         `${result.jd_match ? `, JD fit ${result.jd_match.fit_score ?? "not probed"} vs "${job?.title}"` : ""}.`
     );
   } catch (err) {

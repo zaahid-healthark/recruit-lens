@@ -100,9 +100,10 @@ model Evaluation {
   /// Array of { name, score, summary, evidence, recommendation } for the 5 matrix
   /// categories. `score` is null for a category the interview never tested.
   categoriesJson           Json
-  /// { questions: [{ question, answerSummary, verdict, score, evidence }], score, summary }
-  /// — null when the recruiter asked no technical questions.
-  technicalAssessmentJson  Json?
+  /// { questions: [{ question, kind, answerSummary, verdict, score, evidence }],
+  /// technicalScore, behaviouralScore, summary } — null when the recruiter
+  /// asked nothing substantive.
+  questionAssessmentJson   Json?
   /// string[]
   strengths                Json
   /// string[]

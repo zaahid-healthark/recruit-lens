@@ -20,7 +20,7 @@ import { JdMatchCard } from "../components/JdMatchCard";
 import { JobPicker } from "../components/JobPicker";
 import { ScoreBadge } from "../components/ScoreBadge";
 import { StatusPill } from "../components/StatusPill";
-import { TechnicalQaCard } from "../components/TechnicalQaCard";
+import { QuestionsCard } from "../components/QuestionsCard";
 import { useRefresh } from "../context/RefreshContext";
 import { useInterval } from "../hooks/useInterval";
 import type { RecordingsStackParamList } from "../navigation/RootNavigator";
@@ -346,9 +346,9 @@ export function RecordingDetailScreen(): React.JSX.Element {
             ) : null}
           </View>
 
-          {/* ── Technical Q&A (only when the recruiter actually asked) ── */}
-          {evaluation.technicalAssessment ? (
-            <TechnicalQaCard assessment={evaluation.technicalAssessment} />
+          {/* ── Graded Q&A (only when the recruiter actually asked) ── */}
+          {evaluation.questionAssessment ? (
+            <QuestionsCard assessment={evaluation.questionAssessment} />
           ) : null}
 
           {/* ── JD match (only when evaluated with a job attached) ── */}

@@ -20,6 +20,9 @@ export type MatrixCategoryName = (typeof MATRIX_CATEGORIES)[number];
  */
 export const TECHNICAL_CATEGORY: MatrixCategoryName = "Technical Knowledge";
 
+/** The categories that behavioural and situational answers bear on. */
+export const BEHAVIOURAL_CATEGORIES: MatrixCategoryName[] = ["Problem Solving", "Cultural Fit"];
+
 export const CLASSIFICATION_CONFIDENCE_LEVELS = ["high", "medium", "low"] as const;
 export type ClassificationConfidence = (typeof CLASSIFICATION_CONFIDENCE_LEVELS)[number];
 
@@ -45,6 +48,19 @@ export const NOT_ASSESSED_LABEL = "Not assessed";
  * in code after the model answers, not left to the model's judgement.
  */
 export const MIN_SCORED_CATEGORIES_FOR_OVERALL = 3;
+
+/**
+ * Where a candidate's deciding score puts them. These are the band edges from
+ * SCORE_BANDS, named: 61 is "meets the bar", 41 is where real capability
+ * starts. Kept here so the hire/no-hire line and the score bands can never
+ * drift apart.
+ */
+export const DECISION_THRESHOLDS = {
+  /** At or above this, a competent recruiter advances the candidate. */
+  advance: 61,
+  /** At or above this, there is real capability with gaps worth a second look. */
+  borderline: 41,
+} as const;
 
 export interface ScoreBand {
   min: number;
@@ -124,36 +140,61 @@ export interface LlmJdMatchResult {
 }
 
 /**
- * Technical questions the RECRUITER actually asked during the call.
+ * Every substantive question the RECRUITER actually asked, graded one at a
+ * time — technical, behavioural, situational, experience and motivation alike.
  *
- * Recruiters are not required to ask any — many screening calls are purely
+ * Recruiters are not required to ask any; some screening calls are purely
  * logistical. But when they do ask, those answers are the hardest evidence in
- * the whole transcript, and they must drive the Technical Knowledge score
- * rather than sit beside it as decoration.
+ * the whole transcript, and they must drive the matrix scores rather than sit
+ * beside them as decoration.
  */
-export const TECHNICAL_ANSWER_VERDICTS = [
-  "correct",
-  "partially_correct",
-  "incorrect",
-  "not_answered",
+export const QUESTION_KINDS = [
+  /** Role-specific knowledge or skill: a method, a tool, a trade-off, a calculation. */
+  "technical",
+  /** Past behaviour: a conflict, a failure, how they actually handled something. */
+  "behavioural",
+  /** Hypothetical: "what would you do if…". */
+  "situational",
+  /** Their own background: what they built, owned, or delivered. */
+  "experience",
+  /** Why this role, why leaving, what they want next. */
+  "motivation",
 ] as const;
 
-export type TechnicalAnswerVerdict = (typeof TECHNICAL_ANSWER_VERDICTS)[number];
+export type QuestionKind = (typeof QUESTION_KINDS)[number];
 
-export const TECHNICAL_VERDICT_LABELS: Record<TechnicalAnswerVerdict, string> = {
-  correct: "Correct",
-  partially_correct: "Partly correct",
-  incorrect: "Incorrect",
+export const QUESTION_KIND_LABELS: Record<QuestionKind, string> = {
+  technical: "Technical",
+  behavioural: "Behavioural",
+  situational: "Situational",
+  experience: "Experience",
+  motivation: "Motivation",
+};
+
+/**
+ * Verdicts span every kind of question, which is why they are not phrased as
+ * correct/incorrect: "tell me about a disagreement with a teammate" has no
+ * right answer, but it very obviously has strong and weak ones.
+ */
+export const ANSWER_VERDICTS = ["strong", "adequate", "weak", "not_answered"] as const;
+
+export type AnswerVerdict = (typeof ANSWER_VERDICTS)[number];
+
+export const ANSWER_VERDICT_LABELS: Record<AnswerVerdict, string> = {
+  strong: "Strong answer",
+  adequate: "Adequate",
+  weak: "Weak",
   /** Deflected, changed the subject, or said outright they did not know. */
   not_answered: "Could not answer",
 };
 
-export interface LlmTechnicalQuestion {
+export interface LlmQuestionResult {
   /** The question as asked, tightened to one sentence if the recruiter rambled. */
   question: string;
+  kind: QuestionKind;
   /** What the candidate actually said back, in a sentence or two. */
   answer_summary: string;
-  verdict: TechnicalAnswerVerdict;
+  verdict: AnswerVerdict;
   /**
    * 0-100 for THIS answer. Never null: the question was asked, so the answer
    * (including a non-answer) is evidence. See NOT_ASSESSED_LABEL.
@@ -162,11 +203,13 @@ export interface LlmTechnicalQuestion {
   evidence: string;
 }
 
-export interface LlmTechnicalAssessment {
-  /** Every technical question asked, in the order they were asked. */
-  questions: LlmTechnicalQuestion[];
-  /** Aggregate across the questions — what the candidate knows, on the record. */
-  score: number;
+export interface LlmQuestionAssessment {
+  /** Every substantive question asked, in the order they were asked. */
+  questions: LlmQuestionResult[];
+  /** Aggregate over the technical questions; null when none were asked. */
+  technical_score: number | null;
+  /** Aggregate over behavioural + situational questions; null when none. */
+  behavioural_score: number | null;
   summary: string;
 }
 
@@ -193,8 +236,8 @@ export interface LlmEvaluationResult {
   /** What this interview did and did not cover — the caveat on every score. */
   coverage_note: string;
   categories: LlmCategoryResult[];
-  /** Null when the recruiter asked no technical questions at all. */
-  technical_assessment: LlmTechnicalAssessment | null;
+  /** Null when the recruiter asked no substantive questions at all. */
+  question_assessment: LlmQuestionAssessment | null;
   strengths: string[];
   areas_for_improvement: string[];
   recommendation: string;

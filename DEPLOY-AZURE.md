@@ -221,6 +221,26 @@ Two things make it survive the path prefix, both deliberate:
   resolve against the domain root, land outside the proxied location block, and
   404 — the same trailing-slash trap as `proxy_pass`.
 
+## Checking the scoring itself
+
+The rubric decides who gets advanced, so it is testable like anything else:
+
+```bash
+npm run score:check -w server
+```
+
+This scores fixture transcripts written to provoke the two ways interview
+scoring goes wrong — a fluent candidate who says nothing concrete, and a terse
+one whose every answer is correct — and checks the verdict against what a
+recruiter would conclude. It needs `MOCK_AI=false` and a real `OPENAI_API_KEY`;
+it transcribes nothing, so a run costs a few cents. Add a fixture in
+`server/scripts/fixtures/scoringScenarios.ts` whenever a real call is scored
+wrongly, then fix the rubric in `server/src/ai/prompts.ts` until it passes.
+
+Ranking is separate and deterministic: `GET /jobs/:id/ranking` compares a job's
+candidates from stored evaluations only, so it costs nothing, returns the same
+answer every time, and can be re-read months later to explain a decision.
+
 ## Troubleshooting
 
 | Symptom | Cause |

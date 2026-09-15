@@ -204,6 +204,7 @@
         </div>
         <div class="spacer"></div>
         <button id="btn-home" class="btn-ghost btn-sm hidden">← New evaluation</button>
+        <button id="btn-rank" class="btn-ghost btn-sm hidden">Compare candidates</button>
         <button id="btn-key" class="btn-ghost btn-sm hidden">Key</button>
       </header>
 
@@ -297,6 +298,21 @@
         </div>
       </section>
 
+      <!-- ── Candidate ranking for one job ───────────────────────────── -->
+      <section id="view-ranking" class="hidden">
+        <div class="card">
+          <h2>Compare candidates</h2>
+          <p class="hint">
+            Everyone screened for one job, ranked against each other with the reasoning behind
+            each placement. Computed from the stored evaluations, so it costs nothing to open and
+            gives the same answer every time.
+          </p>
+          <label for="rank-job">Job</label>
+          <select id="rank-job"></select>
+        </div>
+        <div id="ranking"></div>
+      </section>
+
       <!-- ── Report ──────────────────────────────────────────────────── -->
       <section id="view-report" class="hidden">
         <div id="report"></div>
@@ -325,10 +341,11 @@
       try { apiKey = localStorage.getItem(KEY_STORAGE) || ""; } catch { /* private mode */ }
 
       const $ = (id) => document.getElementById(id);
-      const views = ["view-key", "view-upload", "view-progress", "view-report"];
+      const views = ["view-key", "view-upload", "view-progress", "view-report", "view-ranking"];
       function show(id) {
         views.forEach((v) => $(v).classList.toggle("hidden", v !== id));
-        $("btn-home").classList.toggle("hidden", id !== "view-report" && id !== "view-progress");
+        $("btn-home").classList.toggle("hidden", id === "view-key" || id === "view-upload");
+        $("btn-rank").classList.toggle("hidden", id === "view-key" || id === "view-ranking");
         $("btn-key").classList.toggle("hidden", id === "view-key");
         window.scrollTo(0, 0);
       }
@@ -591,11 +608,19 @@
         missing: ["Not met", "var(--danger)", "var(--danger-soft)"],
         not_discussed: ["Not asked", "var(--subtext)", "var(--bg)"],
       };
-      const TECH_META = {
-        correct: ["Correct", "var(--success)", "var(--success-soft)"],
-        partially_correct: ["Partly correct", "var(--warning)", "var(--warning-soft)"],
-        incorrect: ["Incorrect", "var(--danger)", "var(--danger-soft)"],
+      // Mirrors ANSWER_VERDICT_LABELS / QUESTION_KIND_LABELS in shared.
+      const ANSWER_META = {
+        strong: ["Strong answer", "var(--success)", "var(--success-soft)"],
+        adequate: ["Adequate", "var(--warning)", "var(--warning-soft)"],
+        weak: ["Weak", "var(--danger)", "var(--danger-soft)"],
         not_answered: ["Could not answer", "var(--subtext)", "var(--bg)"],
+      };
+      const KIND_LABELS = {
+        technical: "Technical",
+        behavioural: "Behavioural",
+        situational: "Situational",
+        experience: "Experience",
+        motivation: "Motivation",
       };
 
       function scoreBlock(score) {
@@ -644,23 +669,33 @@
         }
         html += "</div>";
 
-        // ── Technical Q&A — only when the recruiter actually asked ──
-        if (e.technicalAssessment) {
-          const t = e.technicalAssessment;
-          const good = t.questions.filter((q) => q.verdict === "correct").length;
+        // ── Graded Q&A — only when the recruiter actually asked something ──
+        if (e.questionAssessment) {
+          const qa = e.questionAssessment;
+          const strong = qa.questions.filter((q) => q.verdict === "strong").length;
+          const headline = qa.technicalScore !== null ? qa.technicalScore : qa.behaviouralScore;
+          const aggregates = []
+            .concat(qa.technicalScore !== null ? ["Technical <b>" + qa.technicalScore + "</b>"] : [])
+            .concat(qa.behaviouralScore !== null ? ["Behavioural <b>" + qa.behaviouralScore + "</b>"] : []);
           html +=
             '<div class="card"><div class="item-head" style="margin-bottom:10px">' +
-            "<div><h2>Technical questions</h2>" +
-            '<p class="muted">' + good + " of " + t.questions.length + " answered well</p></div>" +
-            '<div class="chip" style="background:' + scoreColor(t.score) + '">' + t.score + "</div></div>";
-          if (t.summary) html += '<p class="body" style="margin-top:0">' + esc(t.summary) + "</p>";
-          t.questions.forEach((q) => {
-            const m = TECH_META[q.verdict] || TECH_META.not_answered;
+            "<div><h2>Questions asked</h2>" +
+            '<p class="muted">' + strong + " of " + qa.questions.length + " answered strongly" +
+            (aggregates.length ? " · " + aggregates.join(" · ") : "") + "</p></div>" +
+            (headline !== null && headline !== undefined
+              ? '<div class="chip" style="background:' + scoreColor(headline) + '">' + headline + "</div>"
+              : "") +
+            "</div>";
+          if (qa.summary) html += '<p class="body" style="margin-top:0">' + esc(qa.summary) + "</p>";
+          qa.questions.forEach((q) => {
+            const m = ANSWER_META[q.verdict] || ANSWER_META.not_answered;
             html +=
               '<div class="item"><div class="item-head">' +
               '<div class="item-name">' + esc(q.question) + "</div>" +
               '<div class="chip" style="background:' + scoreColor(q.score) + '">' + q.score + "</div></div>" +
               '<span class="pill" style="color:' + m[1] + ";background:" + m[2] + '">' + m[0] + "</span>" +
+              '<span class="muted" style="margin-left:8px;font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.3px">' +
+              esc(KIND_LABELS[q.kind] || q.kind) + "</span>" +
               (q.answerSummary ? '<p class="body">' + esc(q.answerSummary) + "</p>" : "") +
               (q.evidence ? '<p class="evidence">' + esc(q.evidence) + "</p>" : "") +
               "</div>";
@@ -772,6 +807,119 @@
             btn.textContent = err.message;
           }
         });
+      }
+
+      // ── Ranking ───────────────────────────────────────────────────────
+      const DECISION_META = {
+        advance: ["Advance", "var(--success)", "var(--success-soft)"],
+        borderline: ["Borderline", "var(--warning)", "var(--warning-soft)"],
+        reject: ["Reject", "var(--danger)", "var(--danger-soft)"],
+        insufficient_evidence: ["Not enough evidence", "var(--subtext)", "var(--bg)"],
+      };
+
+      $("btn-rank").addEventListener("click", () => openRanking());
+
+      async function openRanking() {
+        show("view-ranking");
+        $("ranking").innerHTML = '<div class="card center"><p class="muted">Loading…</p></div>';
+        try {
+          const jobs = await api("/jobs");
+          const sel = $("rank-job");
+          if (!jobs.length) {
+            sel.innerHTML = "<option>No jobs yet</option>";
+            $("ranking").innerHTML =
+              '<div class="card"><p class="muted">Create a job description and screen a few ' +
+              "candidates against it, then come back here to compare them.</p></div>";
+            return;
+          }
+          const previous = sel.value;
+          sel.innerHTML = jobs
+            .map(
+              (j) =>
+                '<option value="' + j.id + '">' + esc(j.title) +
+                " (" + j.recordingCount + " screened)</option>"
+            )
+            .join("");
+          if (previous && jobs.some((j) => j.id === previous)) sel.value = previous;
+          loadRanking(sel.value);
+        } catch (err) {
+          if (err.status !== 401) {
+            $("ranking").innerHTML = '<div class="card"><div class="callout err">' + esc(err.message) + "</div></div>";
+          }
+        }
+      }
+      $("rank-job").addEventListener("change", (e) => loadRanking(e.target.value));
+
+      async function loadRanking(jobId) {
+        if (!jobId) return;
+        $("ranking").innerHTML = '<div class="card center"><p class="muted">Ranking…</p></div>';
+        try {
+          renderRanking(await api("/jobs/" + jobId + "/ranking"));
+        } catch (err) {
+          if (err.status !== 401) {
+            $("ranking").innerHTML = '<div class="card"><div class="callout err">' + esc(err.message) + "</div></div>";
+          }
+        }
+      }
+
+      function candidateCard(c, showRank) {
+        const m = DECISION_META[c.decision] || DECISION_META.insufficient_evidence;
+        const na = c.decidingScore === null || c.decidingScore === undefined;
+        const stats = []
+          .concat(c.fitScore !== null ? ["JD fit <b>" + c.fitScore + "</b>"] : [])
+          .concat(c.overallScore !== null ? ["overall <b>" + c.overallScore + "</b>"] : [])
+          .concat(c.technicalScore !== null ? ["technical <b>" + c.technicalScore + "</b>"] : [])
+          .concat(c.behaviouralScore !== null ? ["behavioural <b>" + c.behaviouralScore + "</b>"] : [])
+          .concat([c.questionsAsked + " question" + (c.questionsAsked === 1 ? "" : "s") + " asked"]);
+        return (
+          '<div class="card"><div class="score-wrap" style="align-items:flex-start">' +
+          (showRank
+            ? '<div class="mini" style="background:' + scoreColor(c.decidingScore) + ';width:44px;height:44px;font-size:15px">#' + c.rank + "</div>"
+            : '<div class="mini na" style="width:44px;height:44px">–</div>') +
+          '<div style="flex:1;min-width:220px">' +
+          '<div class="item-head"><div class="item-name" style="font-size:15px">' +
+          esc(c.candidateName || c.originalFilename) + "</div>" +
+          '<span class="pill" style="color:' + m[1] + ";background:" + m[2] + '">' + m[0] + "</span></div>" +
+          '<p class="muted" style="margin:4px 0 0">' + stats.join(" · ") + "</p></div></div>" +
+          '<ul class="bullets" style="margin-top:12px">' +
+          c.reasons.map((r) => "<li>" + esc(r) + "</li>").join("") + "</ul>" +
+          (c.aheadOfNext
+            ? '<div class="callout" style="margin-top:4px">' + esc(c.aheadOfNext) + "</div>"
+            : "") +
+          '<button class="btn-ghost btn-sm" data-open="' + c.recordingId + '" style="margin-top:12px">' +
+          "Open full report</button></div>"
+        );
+      }
+
+      function renderRanking(r) {
+        let html = "";
+        if (r.comparabilityNotes.length) {
+          html +=
+            '<div class="card"><h3>Before you read this</h3>' +
+            r.comparabilityNotes
+              .map((n) => '<div class="callout warn" style="margin-top:8px">' + esc(n) + "</div>")
+              .join("") + "</div>";
+        }
+        if (!r.ranked.length && !r.setAside.length) {
+          html += '<div class="card"><p class="muted">No candidates screened for this job yet.</p></div>';
+        }
+        html += r.ranked.map((c) => candidateCard(c, true)).join("");
+        if (r.setAside.length) {
+          html +=
+            '<div class="card"><h3>Set aside — not ranked, not rejected</h3>' +
+            '<p class="hint" style="margin:0">These interviews did not establish enough to judge ' +
+            "the candidate. That is a gap in the interview, not a mark against them — re-interview " +
+            "before deciding.</p></div>" +
+            r.setAside.map((c) => candidateCard(c, false)).join("");
+        }
+        $("ranking").innerHTML = html;
+        $("ranking").querySelectorAll("[data-open]").forEach((b) =>
+          b.addEventListener("click", async () => {
+            try {
+              renderReport(await api("/recordings/" + b.dataset.open));
+            } catch (err) { /* 401 already handled */ }
+          })
+        );
       }
 
       // ── Recent list ───────────────────────────────────────────────────
