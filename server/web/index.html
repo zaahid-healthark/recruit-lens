@@ -14,221 +14,281 @@
       keeps deployment to "git pull" — no build step, no second service.
     -->
     <style>
+      /*
+        Palette note: green / amber / red carry MEANING here — they are score
+        bands, and a reader has to be able to trust that a green chip means a
+        good score rather than a brand colour. So the accent stays well away
+        from all three. A deep slate-navy does that, and warm neutrals keep the
+        whole thing from reading like a default admin template.
+      */
       :root {
         color-scheme: light;
-        --bg: #f4f6fa;
+        --bg: #f5f4f1;
         --card: #ffffff;
-        --text: #111827;
-        --subtext: #6b7280;
-        --border: #e5e7eb;
-        --primary: #4f46e5;
-        --primary-soft: #eef2ff;
-        --danger: #dc2626;
-        --danger-soft: #fee2e2;
-        --success: #16a34a;
-        --success-soft: #dcfce7;
-        --warning: #d97706;
-        --warning-soft: #fef3c7;
-        --info: #075985;
-        --info-soft: #e0f2fe;
+        --inset: #faf9f7;
+        --text: #191b1f;
+        --subtext: #6c7076;
+        --faint: #9a9ea4;
+        --border: #e4e2dd;
+        --border-strong: #d2cfc8;
+        --primary: #1e3a5f;
+        --primary-hover: #294f7d;
+        --primary-soft: #eaeff5;
+        --on-primary: #ffffff;
+        --success: #15803d;
+        --success-soft: #dcf5e3;
+        --warning: #b45309;
+        --warning-soft: #fdf0d5;
+        --danger: #b91c1c;
+        --danger-soft: #fbe3e3;
+        --info: #0c4a6e;
+        --info-soft: #e3f0f8;
         --muted: #9ca3af;
-        --shadow: 0 1px 3px rgba(17, 24, 39, 0.08), 0 4px 16px rgba(17, 24, 39, 0.04);
+        --ring: rgba(30, 58, 95, 0.32);
       }
       @media (prefers-color-scheme: dark) {
         :root {
           color-scheme: dark;
-          --bg: #0f1420;
-          --card: #171d2b;
-          --text: #e5e7eb;
-          --subtext: #9ca3af;
-          --border: #2a3143;
-          --primary: #818cf8;
-          --primary-soft: #232a45;
-          --danger-soft: #3b1d22;
+          --bg: #131519;
+          --card: #1a1d22;
+          --inset: #202329;
+          --text: #e9e8e5;
+          --subtext: #9aa0a8;
+          --faint: #71777f;
+          --border: #2a2e35;
+          --border-strong: #3a3f48;
+          --primary: #8fb3dd;
+          --primary-hover: #a8c6e9;
+          --primary-soft: #1e2833;
+          --on-primary: #11161d;
+          --success: #4ade80;
           --success-soft: #16301f;
-          --warning-soft: #362a12;
+          --warning: #fbbf24;
+          --warning-soft: #352a12;
+          --danger: #f87171;
+          --danger-soft: #3a1d1d;
           --info: #7dd3fc;
           --info-soft: #14293a;
-          --shadow: 0 1px 3px rgba(0, 0, 0, 0.4);
+          --ring: rgba(143, 179, 221, 0.4);
         }
       }
 
       * { box-sizing: border-box; }
+      html { -webkit-text-size-adjust: 100%; }
       body {
         margin: 0;
         background: var(--bg);
         color: var(--text);
-        font: 14px/1.55 -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial,
-          sans-serif;
+        font: 15px/1.6 ui-sans-serif, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto,
+          "Helvetica Neue", Arial, sans-serif;
         -webkit-font-smoothing: antialiased;
       }
-      .shell { max-width: 1000px; margin: 0 auto; padding: 0 16px 64px; }
-      header {
-        display: flex; align-items: center; gap: 12px;
-        padding: 18px 0 20px;
+      /* Scores are read down a column; tabular figures stop them jittering. */
+      .score b, .chip, .mini, .rec-title { font-variant-numeric: tabular-nums; }
+
+      /* App bar */
+      .appbar {
+        position: sticky; top: 0; z-index: 20;
+        background: var(--card); border-bottom: 1px solid var(--border);
       }
+      .appbar-inner {
+        max-width: 940px; margin: 0 auto; padding: 0 20px;
+        display: flex; align-items: center; gap: 22px; min-height: 58px; flex-wrap: wrap;
+      }
+      .brand { display: flex; align-items: center; gap: 10px; }
       .logo {
-        width: 34px; height: 34px; border-radius: 9px; flex: none;
-        background: var(--primary); color: #fff;
-        display: grid; place-items: center; font-weight: 800; font-size: 15px;
+        width: 28px; height: 28px; border-radius: 7px; flex: none;
+        background: var(--primary); color: var(--on-primary);
+        display: grid; place-items: center; font-weight: 700; font-size: 14px;
       }
-      .brand { font-size: 16px; font-weight: 800; letter-spacing: -0.01em; }
-      .brand small { display: block; font-size: 11.5px; font-weight: 500; color: var(--subtext); }
+      .brand-name { font-size: 15px; font-weight: 700; letter-spacing: -0.015em; }
+      .tabs { display: flex; gap: 2px; }
+      .tabs button {
+        padding: 7px 12px; font-size: 13.5px; font-weight: 600; border-radius: 7px;
+        border: none; background: none; color: var(--subtext);
+      }
+      .tabs button:hover { background: var(--inset); color: var(--text); }
+      .tabs button.on { background: var(--primary-soft); color: var(--primary); }
       .spacer { flex: 1; }
+
+      .shell { max-width: 940px; margin: 0 auto; padding: 26px 20px 80px; }
 
       .card {
         background: var(--card); border: 1px solid var(--border);
-        border-radius: 14px; padding: 18px; margin-bottom: 14px; box-shadow: var(--shadow);
+        border-radius: 12px; padding: 22px; margin-bottom: 16px;
       }
-      h2 { font-size: 15px; font-weight: 800; margin: 0 0 4px; }
+      .page-title { font-size: 21px; font-weight: 700; letter-spacing: -0.02em; margin: 0 0 6px; }
+      h2 { font-size: 16px; font-weight: 700; letter-spacing: -0.01em; margin: 0 0 4px; }
       h3 {
-        font-size: 12px; font-weight: 800; margin: 0 0 10px;
-        text-transform: uppercase; letter-spacing: 0.5px; color: var(--subtext);
+        font-size: 11.5px; font-weight: 700; margin: 0 0 12px;
+        text-transform: uppercase; letter-spacing: 0.7px; color: var(--faint);
       }
-      .hint { font-size: 12.5px; color: var(--subtext); margin: 0 0 14px; line-height: 1.5; }
+      .hint { font-size: 13.5px; color: var(--subtext); margin: 0 0 18px; }
+      .muted { color: var(--subtext); font-size: 13px; }
+      .faint { color: var(--faint); font-size: 12.5px; }
 
-      label { display: block; font-size: 12.5px; font-weight: 700; margin: 0 0 6px; }
+      label { display: block; font-size: 13px; font-weight: 600; margin: 0 0 6px; }
       input[type="text"], input[type="password"], textarea, select {
-        width: 100%; padding: 10px 12px; font: inherit; color: var(--text);
-        background: var(--bg); border: 1px solid var(--border); border-radius: 9px;
+        width: 100%; padding: 10px 12px; font: inherit; font-size: 14px; color: var(--text);
+        background: var(--inset); border: 1px solid var(--border); border-radius: 8px;
       }
-      textarea { min-height: 150px; resize: vertical; line-height: 1.5; }
-      input:focus, textarea:focus, select:focus { outline: 2px solid var(--primary); outline-offset: -1px; }
-      .field { margin-bottom: 14px; }
+      textarea { min-height: 150px; resize: vertical; line-height: 1.6; }
+      input::placeholder, textarea::placeholder { color: var(--faint); }
+      input:focus, textarea:focus, select:focus {
+        outline: none; border-color: var(--primary); box-shadow: 0 0 0 3px var(--ring);
+      }
+      .field { margin-bottom: 16px; }
 
       button {
-        font: inherit; font-weight: 700; cursor: pointer;
-        border-radius: 10px; padding: 11px 16px; border: 1px solid transparent;
+        font: inherit; font-size: 14px; font-weight: 600; cursor: pointer;
+        border-radius: 8px; padding: 10px 16px; border: 1px solid transparent;
+        transition: background 0.12s, border-color 0.12s;
       }
-      button:disabled { opacity: 0.5; cursor: not-allowed; }
-      .btn-primary { background: var(--primary); color: #fff; }
-      .btn-ghost { background: transparent; color: var(--text); border-color: var(--border); }
-      .btn-sm { padding: 7px 12px; font-size: 12.5px; border-radius: 8px; }
+      button:disabled { opacity: 0.45; cursor: not-allowed; }
+      .btn-primary { background: var(--primary); color: var(--on-primary); }
+      .btn-primary:not(:disabled):hover { background: var(--primary-hover); }
+      .btn-ghost { background: var(--card); color: var(--text); border-color: var(--border-strong); }
+      .btn-ghost:not(:disabled):hover { background: var(--inset); }
+      .btn-sm { padding: 7px 12px; font-size: 13px; border-radius: 7px; }
       .row { display: flex; gap: 10px; flex-wrap: wrap; }
 
-      /* Numbered steps — the upload flow reads as a sequence, not a wall of fields */
-      .step { display: flex; gap: 14px; padding: 20px 0; border-top: 1px solid var(--border); }
-      .step:first-of-type { border-top: none; padding-top: 2px; }
-      .step:last-of-type { padding-bottom: 2px; }
+      .step { display: flex; gap: 16px; padding: 22px 0; border-top: 1px solid var(--border); }
+      .step:first-of-type { border-top: none; padding-top: 4px; }
+      .step:last-of-type { padding-bottom: 4px; }
       .step-n {
-        width: 26px; height: 26px; border-radius: 50%; flex: none;
+        width: 24px; height: 24px; border-radius: 50%; flex: none; margin-top: 1px;
         background: var(--primary-soft); color: var(--primary);
-        display: grid; place-items: center; font-weight: 800; font-size: 12.5px;
+        display: grid; place-items: center; font-weight: 700; font-size: 12px;
       }
       .step-body { flex: 1; min-width: 0; }
-      .step-title { font-size: 14.5px; font-weight: 800; margin-bottom: 2px; }
-      .step-hint { font-size: 12.5px; color: var(--subtext); margin: 0 0 12px; line-height: 1.5; }
-      .optional { font-weight: 600; color: var(--subtext); font-size: 12px; }
+      .step-title { font-size: 15px; font-weight: 700; letter-spacing: -0.01em; margin-bottom: 3px; }
+      .step-hint { font-size: 13.5px; color: var(--subtext); margin: 0 0 14px; }
+      .optional { font-weight: 500; color: var(--faint); font-size: 13px; }
 
-      /* Segmented control for the job-description mode */
-      .seg { display: flex; gap: 6px; flex-wrap: wrap; margin-bottom: 12px; }
-      .seg button {
-        padding: 7px 13px; font-size: 12.5px; font-weight: 700; border-radius: 8px;
-        border: 1px solid var(--border); background: var(--card); color: var(--subtext);
+      .seg {
+        display: inline-flex; gap: 3px; padding: 3px; margin-bottom: 14px; flex-wrap: wrap;
+        background: var(--inset); border: 1px solid var(--border); border-radius: 9px;
       }
-      .seg button.on { background: var(--primary); border-color: var(--primary); color: #fff; }
+      .seg button {
+        padding: 6px 13px; font-size: 13px; font-weight: 600; border-radius: 6px;
+        border: 1px solid transparent; background: none; color: var(--subtext);
+      }
+      .seg button:hover { color: var(--text); }
+      .seg button.on { background: var(--card); color: var(--text); border-color: var(--border); }
 
-      /* Drop zone */
       .drop {
-        border: 2px dashed var(--border); border-radius: 12px; padding: 26px 18px;
-        text-align: center; cursor: pointer; background: var(--bg);
+        border: 1.5px dashed var(--border-strong); border-radius: 10px; padding: 30px 18px;
+        text-align: center; cursor: pointer; background: var(--inset);
         transition: border-color 0.15s, background 0.15s;
       }
       .drop:hover, .drop.over { border-color: var(--primary); background: var(--primary-soft); }
-      .drop strong { display: block; font-size: 14px; margin-bottom: 3px; }
-      .drop span { font-size: 12.5px; color: var(--subtext); }
+      .drop strong { display: block; font-size: 14.5px; font-weight: 700; margin-bottom: 4px; }
+      .drop span { font-size: 13px; color: var(--subtext); }
       .drop.has-file { border-style: solid; border-color: var(--primary); background: var(--primary-soft); }
 
-      /* Score badge */
-      .score-wrap { display: flex; align-items: center; gap: 18px; flex-wrap: wrap; }
+      .score-wrap { display: flex; align-items: flex-start; gap: 20px; flex-wrap: wrap; }
       .score {
-        width: 84px; height: 84px; border-radius: 50%; flex: none;
+        width: 78px; height: 78px; border-radius: 50%; flex: none;
         display: grid; place-content: center; text-align: center; color: #fff;
       }
-      .score b { font-size: 26px; line-height: 1; display: block; }
-      .score span { font-size: 10px; font-weight: 700; opacity: 0.9; }
-      .score.na b { font-size: 20px; }
+      .score b { font-size: 25px; line-height: 1.1; display: block; font-weight: 700; }
+      .score span { font-size: 9.5px; font-weight: 700; opacity: 0.92; letter-spacing: 0.3px; }
+      .score.na b { font-size: 19px; }
 
       .pill {
-        display: inline-flex; align-items: center; gap: 5px;
-        border-radius: 999px; padding: 3px 10px; font-size: 11.5px; font-weight: 700;
+        display: inline-flex; align-items: center;
+        border-radius: 5px; padding: 3px 9px; font-size: 12px; font-weight: 700;
       }
       .callout {
-        display: flex; gap: 8px; border-radius: 10px; padding: 11px 12px;
-        background: var(--info-soft); color: var(--info); font-size: 12.5px; line-height: 1.5;
+        display: flex; gap: 9px; border-radius: 8px; padding: 12px 13px;
+        background: var(--info-soft); color: var(--info); font-size: 13px; line-height: 1.55;
         margin-top: 14px;
       }
       .callout.warn { background: var(--warning-soft); color: var(--warning); }
       .callout.err { background: var(--danger-soft); color: var(--danger); }
 
-      /* Category / requirement / question rows */
-      .item { padding: 14px 0; border-top: 1px solid var(--border); }
+      .item { padding: 16px 0; border-top: 1px solid var(--border); }
       .item:first-of-type { border-top: none; padding-top: 4px; }
-      .item-head { display: flex; align-items: flex-start; gap: 10px; justify-content: space-between; }
-      .item-name { font-size: 13.5px; font-weight: 700; flex: 1; }
+      .item-head { display: flex; align-items: flex-start; gap: 12px; justify-content: space-between; }
+      .item-name { font-size: 14px; font-weight: 700; flex: 1; }
       .chip {
-        flex: none; border-radius: 8px; padding: 3px 9px; font-size: 12px; font-weight: 800; color: #fff;
+        flex: none; border-radius: 6px; padding: 3px 9px; font-size: 12.5px;
+        font-weight: 700; color: #fff;
       }
-      .chip.na { background: var(--muted); font-size: 11px; }
-      .body { font-size: 13px; color: var(--text); margin: 7px 0 0; line-height: 1.55; }
+      .chip.na { background: var(--muted); font-size: 11.5px; }
+      .body { font-size: 13.5px; color: var(--text); margin: 8px 0 0; line-height: 1.6; }
       .evidence {
-        font-size: 12.5px; color: var(--subtext); font-style: italic;
-        margin: 7px 0 0; padding-left: 11px; border-left: 2px solid var(--border); line-height: 1.55;
+        font-size: 13px; color: var(--subtext); font-style: italic;
+        margin: 8px 0 0; padding-left: 12px; border-left: 2px solid var(--border-strong);
+        line-height: 1.6;
       }
-      .muted { color: var(--subtext); font-size: 12.5px; }
+      ul.bullets { margin: 0; padding-left: 20px; }
+      ul.bullets li { margin-bottom: 6px; font-size: 13.5px; line-height: 1.6; }
 
-      ul.bullets { margin: 0; padding-left: 18px; }
-      ul.bullets li { margin-bottom: 5px; font-size: 13px; line-height: 1.5; }
-
-      /* Recent list */
       .rec {
-        display: flex; align-items: center; gap: 12px; width: 100%; text-align: left;
-        padding: 11px 4px; border: none; border-top: 1px solid var(--border);
-        background: none; color: var(--text); border-radius: 0;
+        display: flex; align-items: center; gap: 14px; width: 100%; text-align: left;
+        padding: 13px 8px; border: none; border-top: 1px solid var(--border);
+        background: none; color: var(--text); border-radius: 0; font-weight: 400;
       }
       .rec:first-of-type { border-top: none; }
-      .rec:hover { background: var(--primary-soft); }
+      .rec:hover { background: var(--inset); }
       .rec-main { flex: 1; min-width: 0; }
-      .rec-title { font-size: 13.5px; font-weight: 700; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-      .rec-meta { font-size: 11.5px; color: var(--subtext); margin-top: 1px; }
+      .rec-title { font-size: 14px; font-weight: 700; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+      .rec-meta { font-size: 12.5px; color: var(--subtext); margin-top: 2px; }
       .mini {
-        width: 38px; height: 38px; border-radius: 50%; flex: none; color: #fff;
-        display: grid; place-content: center; font-size: 13px; font-weight: 800;
+        width: 36px; height: 36px; border-radius: 50%; flex: none; color: #fff;
+        display: grid; place-content: center; font-size: 13px; font-weight: 700;
       }
       .mini.na { font-size: 15px; background: var(--muted); }
 
-      details { margin-top: 10px; }
-      summary { cursor: pointer; font-size: 12.5px; font-weight: 700; color: var(--primary); }
-      pre.transcript {
-        white-space: pre-wrap; word-wrap: break-word; font-size: 12.5px; line-height: 1.65;
-        background: var(--bg); border: 1px solid var(--border); border-radius: 10px;
-        padding: 14px; margin-top: 10px; max-height: 420px; overflow-y: auto;
+      details { margin-top: 12px; }
+      summary { cursor: pointer; font-size: 13px; font-weight: 600; color: var(--primary); }
+      summary:hover { text-decoration: underline; }
+      pre.transcript, pre.jdtext {
+        white-space: pre-wrap; word-wrap: break-word; font-size: 13px; line-height: 1.7;
+        font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+        background: var(--inset); border: 1px solid var(--border); border-radius: 8px;
+        padding: 14px; margin-top: 10px; max-height: 420px; overflow-y: auto; color: var(--text);
       }
-      audio { width: 100%; margin-top: 10px; }
+      pre.jdtext { font-family: inherit; font-size: 13.5px; max-height: 320px; }
+      audio { width: 100%; margin-top: 12px; }
       .hidden { display: none !important; }
       .spin {
-        width: 15px; height: 15px; border: 2px solid rgba(255, 255, 255, 0.35);
-        border-top-color: #fff; border-radius: 50%; display: inline-block;
-        animation: spin 0.7s linear infinite; vertical-align: -3px; margin-right: 7px;
+        width: 14px; height: 14px; border: 2px solid rgba(255, 255, 255, 0.35);
+        border-top-color: currentColor; border-radius: 50%; display: inline-block;
+        animation: spin 0.7s linear infinite; vertical-align: -2px; margin-right: 8px;
       }
       @keyframes spin { to { transform: rotate(360deg); } }
-      .center { text-align: center; padding: 30px 0; }
+      .center { text-align: center; padding: 36px 0; }
+      .empty { text-align: center; padding: 40px 20px; color: var(--subtext); font-size: 13.5px; }
+
+      @media (max-width: 560px) {
+        .appbar-inner { gap: 12px; min-height: 52px; padding: 8px 16px; }
+        .shell { padding: 20px 16px 72px; }
+        .card { padding: 18px; }
+        .step { gap: 12px; }
+      }
     </style>
   </head>
 
   <body>
-    <div class="shell">
-      <header>
-        <div class="logo">R</div>
+    <div class="appbar">
+      <div class="appbar-inner">
         <div class="brand">
-          RecruitLens
-          <small>Upload a call, get a scored report</small>
+          <div class="logo">R</div>
+          <span class="brand-name">RecruitLens</span>
         </div>
+        <nav class="tabs" id="tabs">
+          <button type="button" data-view="view-upload">Evaluate</button>
+          <button type="button" data-view="view-jobs">Jobs</button>
+          <button type="button" data-view="view-ranking">Compare</button>
+        </nav>
         <div class="spacer"></div>
-        <button id="btn-home" class="btn-ghost btn-sm hidden">← New evaluation</button>
-        <button id="btn-rank" class="btn-ghost btn-sm hidden">Compare candidates</button>
         <button id="btn-key" class="btn-ghost btn-sm hidden">Key</button>
-      </header>
+      </div>
+    </div>
+
+    <div class="shell">
 
       <!-- ── Access key gate ─────────────────────────────────────────── -->
       <section id="view-key" class="hidden">
@@ -293,6 +353,7 @@
 
               <div id="jd-existing">
                 <select id="job-select"></select>
+                <div id="jd-preview"></div>
               </div>
 
               <div id="jd-new" class="hidden">
@@ -362,6 +423,18 @@
       </section>
 
       <!-- ── Candidate ranking for one job ───────────────────────────── -->
+      <!-- ── Saved job descriptions ──────────────────────────────────── -->
+      <section id="view-jobs" class="hidden">
+        <div class="card">
+          <h2>Job descriptions</h2>
+          <p class="hint" style="margin: 0">
+            Every JD you have saved. Open one to read it in full, edit the text, or archive it —
+            archived jobs keep their candidates and history but drop out of the picker.
+          </p>
+        </div>
+        <div id="jobs-list"></div>
+      </section>
+
       <section id="view-ranking" class="hidden">
         <div class="card">
           <h2>Compare candidates</h2>
@@ -404,14 +477,43 @@
       try { apiKey = localStorage.getItem(KEY_STORAGE) || ""; } catch { /* private mode */ }
 
       const $ = (id) => document.getElementById(id);
-      const views = ["view-key", "view-upload", "view-progress", "view-report", "view-ranking"];
+      const views = [
+        "view-key",
+        "view-upload",
+        "view-progress",
+        "view-report",
+        "view-ranking",
+        "view-jobs",
+      ];
+      /** Which tab owns each view — a report belongs under Evaluate. */
+      const TAB_OF = {
+        "view-upload": "view-upload",
+        "view-progress": "view-upload",
+        "view-report": "view-upload",
+        "view-jobs": "view-jobs",
+        "view-ranking": "view-ranking",
+      };
       function show(id) {
         views.forEach((v) => $(v).classList.toggle("hidden", v !== id));
-        $("btn-home").classList.toggle("hidden", id === "view-key" || id === "view-upload");
-        $("btn-rank").classList.toggle("hidden", id === "view-key" || id === "view-ranking");
-        $("btn-key").classList.toggle("hidden", id === "view-key");
+        const signedIn = id !== "view-key";
+        $("tabs").classList.toggle("hidden", !signedIn);
+        $("btn-key").classList.toggle("hidden", !signedIn);
+        $("tabs")
+          .querySelectorAll("button")
+          .forEach((b) => b.classList.toggle("on", b.dataset.view === TAB_OF[id]));
         window.scrollTo(0, 0);
       }
+
+      $("tabs").addEventListener("click", (e) => {
+        const btn = e.target.closest("button[data-view]");
+        if (!btn) return;
+        const view = btn.dataset.view;
+        // Clicking Evaluate from a finished report starts a fresh one rather
+        // than dropping you back into the last candidate's form.
+        if (view === "view-upload") { resetForm(); show("view-upload"); loadRecent(); }
+        else if (view === "view-jobs") openJobs();
+        else if (view === "view-ranking") openRanking();
+      });
 
       /** Escape anything that came from the model, the filesystem, or a user. */
       function esc(s) {
@@ -487,7 +589,6 @@
         $("key-error").classList.add("hidden");
         show("view-key");
       });
-      $("btn-home").addEventListener("click", () => { resetForm(); start(); });
 
       // ── Upload form ───────────────────────────────────────────────────
       let chosenFile = null;
@@ -527,9 +628,10 @@
         $("job-jd").value = "";
         $("instructions").value = "";
         $("jd-file-status").textContent = "";
-        $("job-select").value = "";
+        if ($("job-select").options.length) $("job-select").selectedIndex = 0;
         setJdMode("existing");
         $("upload-error").classList.add("hidden");
+        renderJdPreview();
         updateJdCount();
         updateInstrCount();
         refreshSubmit();
@@ -583,13 +685,19 @@
 
       function refreshSubmit() {
         const jobOk =
-          jdMode !== "new" ||
-          ($("job-title").value.trim().length > 0 && $("job-jd").value.trim().length >= MIN_JD_CHARS);
+          jdMode === "none"
+            ? true
+            : jdMode === "existing"
+              // "Saved job" with nothing selected would upload with no JD at
+              // all while looking like a JD was attached — refuse instead.
+              ? !!$("job-select").value
+              : $("job-title").value.trim().length > 0 &&
+                $("job-jd").value.trim().length >= MIN_JD_CHARS;
         const instrOk = $("instructions").value.trim().length <= MAX_INSTRUCTION_CHARS;
         $("submit").disabled = !chosenFile || !jobOk || !instrOk;
       }
 
-      $("job-select").addEventListener("change", refreshSubmit);
+      $("job-select").addEventListener("change", () => { renderJdPreview(); refreshSubmit(); });
       $("job-title").addEventListener("input", refreshSubmit);
       $("job-jd").addEventListener("input", () => { updateJdCount(); refreshSubmit(); });
       $("instructions").addEventListener("input", () => { updateInstrCount(); refreshSubmit(); });
@@ -983,6 +1091,158 @@
         });
       }
 
+      // ── Saved job descriptions ────────────────────────────────────────
+      /** Cached so the picker can preview a JD without another round trip. */
+      let jobCache = [];
+
+      /**
+       * Show the selected job's description under the picker.
+       *
+       * Choosing a JD by title alone is choosing blind — two openings for the
+       * same role often differ only in the seniority buried in the text, and
+       * that difference decides every requirement verdict downstream.
+       */
+      function renderJdPreview() {
+        const box = $("jd-preview");
+        const job = jobCache.find((j) => j.id === $("job-select").value);
+        if (!job) { box.innerHTML = ""; return; }
+        const words = job.jdText.trim().split(/\s+/).length;
+        box.innerHTML =
+          "<details><summary>Read this description (" + words + " words)</summary>" +
+          '<pre class="jdtext">' + esc(job.jdText) + "</pre></details>";
+      }
+
+      async function openJobs() {
+        show("view-jobs");
+        $("jobs-list").innerHTML = '<div class="card center"><p class="muted">Loading…</p></div>';
+        try {
+          const jobs = await api("/jobs?includeArchived=true");
+          if (!jobs.length) {
+            $("jobs-list").innerHTML =
+              '<div class="card"><p class="empty">No job descriptions saved yet.<br />' +
+              "Add one from the Evaluate tab when you upload a call.</p></div>";
+            return;
+          }
+          $("jobs-list").innerHTML = jobs.map(jobCard).join("");
+          wireJobCards();
+        } catch (err) {
+          if (err.status !== 401) {
+            $("jobs-list").innerHTML =
+              '<div class="card"><div class="callout err">' + esc(err.message) + "</div></div>";
+          }
+        }
+      }
+
+      function jobCard(j) {
+        const words = j.jdText.trim().split(/\s+/).length;
+        const avg = j.averageOverallScore;
+        return (
+          '<div class="card" data-job="' + j.id + '">' +
+          '<div class="item-head">' +
+          '<div style="flex:1;min-width:0">' +
+          '<h2 style="margin:0">' + esc(j.title) +
+          (j.archived ? ' <span class="pill" style="background:var(--inset);color:var(--faint)">Archived</span>' : "") +
+          "</h2>" +
+          '<p class="muted" style="margin:3px 0 0">' +
+          j.recordingCount + " candidate" + (j.recordingCount === 1 ? "" : "s") +
+          (avg !== null ? " · average " + avg : "") +
+          " · " + words + " words" +
+          "</p></div>" +
+          (avg !== null
+            ? '<div class="mini" style="background:' + scoreColor(avg) + '">' + avg + "</div>"
+            : "") +
+          "</div>" +
+          '<pre class="jdtext">' + esc(j.jdText) + "</pre>" +
+          '<div class="row" style="margin-top:12px">' +
+          '<button class="btn-ghost btn-sm" data-edit="' + j.id + '">Edit text</button>' +
+          '<button class="btn-ghost btn-sm" data-archive="' + j.id + '">' +
+          (j.archived ? "Restore" : "Archive") + "</button>" +
+          (j.recordingCount > 0
+            ? '<button class="btn-ghost btn-sm" data-compare="' + j.id + '">Compare candidates</button>'
+            : "") +
+          '<span class="muted" data-status="' + j.id + '" style="align-self:center"></span>' +
+          "</div></div>"
+        );
+      }
+
+      function wireJobCards() {
+        const list = $("jobs-list");
+
+        list.querySelectorAll("[data-edit]").forEach((b) =>
+          b.addEventListener("click", () => {
+            const card = b.closest("[data-job]");
+            const pre = card.querySelector("pre.jdtext");
+            if (b.textContent === "Save") {
+              const text = card.querySelector("textarea").value.trim();
+              saveJd(card.dataset.job, text, b, card);
+              return;
+            }
+            // Swap the read-only text for an editable copy, in place.
+            const ta = document.createElement("textarea");
+            ta.value = pre.textContent;
+            ta.style.minHeight = "220px";
+            pre.replaceWith(ta);
+            b.textContent = "Save";
+            b.classList.remove("btn-ghost");
+            b.classList.add("btn-primary");
+          })
+        );
+
+        list.querySelectorAll("[data-archive]").forEach((b) =>
+          b.addEventListener("click", async () => {
+            b.disabled = true;
+            try {
+              const archived = b.textContent === "Archive";
+              await api("/jobs/" + b.dataset.archive, {
+                method: "PATCH",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ archived }),
+              });
+              openJobs();
+              loadJobs(); // the picker's list changed too
+            } catch (err) {
+              b.disabled = false;
+              if (err.status !== 401) {
+                list.querySelector('[data-status="' + b.dataset.archive + '"]').textContent = err.message;
+              }
+            }
+          })
+        );
+
+        list.querySelectorAll("[data-compare]").forEach((b) =>
+          b.addEventListener("click", () => {
+            openRanking(b.dataset.compare);
+          })
+        );
+      }
+
+      async function saveJd(id, text, btn, card) {
+        const status = card.querySelector("[data-status]");
+        btn.disabled = true;
+        status.textContent = "Saving…";
+        try {
+          await api("/jobs/" + id, {
+            method: "PATCH",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ jdText: text }),
+          });
+          status.textContent =
+            "Saved. Existing candidates keep their old scores — re-evaluate them to use this text.";
+          btn.textContent = "Edit text";
+          btn.classList.add("btn-ghost");
+          btn.classList.remove("btn-primary");
+          btn.disabled = false;
+          const pre = document.createElement("pre");
+          pre.className = "jdtext";
+          pre.textContent = text;
+          card.querySelector("textarea").replaceWith(pre);
+          loadJobs(); // keep the picker's cache in step
+        } catch (err) {
+          btn.disabled = false;
+          if (err.status !== 401) status.textContent = err.message;
+        }
+      }
+
       // ── Ranking ───────────────────────────────────────────────────────
       const DECISION_META = {
         advance: ["Advance", "var(--success)", "var(--success-soft)"],
@@ -991,9 +1251,8 @@
         insufficient_evidence: ["Not enough evidence", "var(--subtext)", "var(--bg)"],
       };
 
-      $("btn-rank").addEventListener("click", () => openRanking());
 
-      async function openRanking() {
+      async function openRanking(preselectJobId) {
         show("view-ranking");
         $("ranking").innerHTML = '<div class="card center"><p class="muted">Loading…</p></div>';
         try {
@@ -1006,7 +1265,7 @@
               "candidates against it, then come back here to compare them.</p></div>";
             return;
           }
-          const previous = sel.value;
+          const previous = preselectJobId || sel.value;
           sel.innerHTML = jobs
             .map(
               (j) =>
@@ -1143,6 +1402,7 @@
       async function loadJobs() {
         try {
           const jobs = await api("/jobs");
+          jobCache = jobs;
           const sel = $("job-select");
           if (!jobs.length) {
             // Nothing saved yet, so "Saved job" would be an empty dropdown —
@@ -1158,6 +1418,7 @@
                 (j.recordingCount ? " (" + j.recordingCount + " screened)" : "") + "</option>"
             )
             .join("");
+          renderJdPreview();
           refreshSubmit();
         } catch (err) { /* 401 already handled */ }
       }
