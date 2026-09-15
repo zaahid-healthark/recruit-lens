@@ -20,6 +20,7 @@ import { JdMatchCard } from "../components/JdMatchCard";
 import { JobPicker } from "../components/JobPicker";
 import { ScoreBadge } from "../components/ScoreBadge";
 import { StatusPill } from "../components/StatusPill";
+import { TechnicalQaCard } from "../components/TechnicalQaCard";
 import { useRefresh } from "../context/RefreshContext";
 import { useInterval } from "../hooks/useInterval";
 import type { RecordingsStackParamList } from "../navigation/RootNavigator";
@@ -335,7 +336,20 @@ export function RecordingDetailScreen(): React.JSX.Element {
             <ScoreBadge score={evaluation.overallScore} size="large" />
             <Text style={styles.recommendation}>{evaluation.recommendation}</Text>
             <Text style={styles.overallSummary}>{evaluation.overallSummary}</Text>
+            {/* What the call did and did not cover — the caveat every score
+                above is read with, so it sits with them rather than below. */}
+            {evaluation.coverageNote ? (
+              <View style={styles.coverageBox}>
+                <Ionicons name="information-circle-outline" size={15} color={colors.info} />
+                <Text style={styles.coverageText}>{evaluation.coverageNote}</Text>
+              </View>
+            ) : null}
           </View>
+
+          {/* ── Technical Q&A (only when the recruiter actually asked) ── */}
+          {evaluation.technicalAssessment ? (
+            <TechnicalQaCard assessment={evaluation.technicalAssessment} />
+          ) : null}
 
           {/* ── JD match (only when evaluated with a job attached) ── */}
           {evaluation.jdMatch ? (
@@ -383,7 +397,11 @@ export function RecordingDetailScreen(): React.JSX.Element {
                 <View
                   style={[styles.categoryScore, { backgroundColor: scoreColor(category.score) }]}
                 >
-                  <Text style={styles.categoryScoreText}>{category.score}</Text>
+                  {/* "Not assessed" spelled out, never a number: a score here
+                      would claim the interview tested something it did not. */}
+                  <Text style={styles.categoryScoreText}>
+                    {category.score ?? "Not assessed"}
+                  </Text>
                 </View>
               </View>
               <Text style={styles.categorySummary}>{category.summary}</Text>
@@ -643,6 +661,20 @@ const styles = StyleSheet.create({
     color: colors.subtext,
     textAlign: "center",
     lineHeight: 19,
+  },
+  coverageBox: {
+    flexDirection: "row",
+    gap: 7,
+    backgroundColor: "#E0F2FE",
+    borderRadius: 9,
+    padding: 10,
+    marginTop: 12,
+  },
+  coverageText: {
+    flex: 1,
+    fontSize: 12,
+    color: "#075985",
+    lineHeight: 17,
   },
   sectionTitle: {
     fontSize: 13,

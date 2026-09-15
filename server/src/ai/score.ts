@@ -1,6 +1,7 @@
 import { env } from "../config/env";
 import { log } from "../lib/logger";
 import {
+  applyScoringGuards,
   llmEvaluationSchemaFor,
   normalizeLlmResult,
   ParsedLlmEvaluation,
@@ -63,7 +64,10 @@ async function callChat(messages: ChatMessage[]): Promise<string> {
 
 function parseAndValidate(content: string, hasJob: boolean): ParsedLlmEvaluation {
   const json = JSON.parse(stripJsonFences(content)) as unknown;
-  return llmEvaluationSchemaFor(hasJob).parse(normalizeLlmResult(json));
+  const parsed = llmEvaluationSchemaFor(hasJob).parse(normalizeLlmResult(json));
+  // The prompt states the withholding rules; this enforces them. A model that
+  // scores an untested category anyway must not reach the report.
+  return applyScoringGuards(parsed);
 }
 
 /**

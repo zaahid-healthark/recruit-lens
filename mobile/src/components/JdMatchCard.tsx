@@ -66,8 +66,8 @@ export function JdMatchCard({ jdMatch, jobTitle }: Props): React.JSX.Element {
           ) : null}
         </View>
         <View style={[styles.fitBadge, { backgroundColor: scoreColor(jdMatch.fitScore) }]}>
-          <Text style={styles.fitScore}>{jdMatch.fitScore}</Text>
-          <Text style={styles.fitLabel}>fit</Text>
+          <Text style={styles.fitScore}>{jdMatch.fitScore ?? "—"}</Text>
+          <Text style={styles.fitLabel}>{jdMatch.fitScore === null ? "no data" : "fit"}</Text>
         </View>
       </View>
 

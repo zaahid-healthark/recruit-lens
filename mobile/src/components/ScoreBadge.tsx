@@ -3,7 +3,8 @@ import { StyleSheet, Text, View } from "react-native";
 import { scoreColor } from "../theme";
 
 interface Props {
-  score: number;
+  /** Null when the interview covered too little to score — shown as "—". */
+  score: number | null;
   size?: "small" | "large";
 }
 
@@ -18,8 +19,12 @@ export function ScoreBadge({ score, size = "small" }: Props): React.JSX.Element 
         { width: dim, height: dim, borderRadius: dim / 2, backgroundColor: scoreColor(score) },
       ]}
     >
-      <Text style={[styles.text, { fontSize }]}>{score}</Text>
-      {size === "large" ? <Text style={styles.outOf}>/ 100</Text> : null}
+      <Text style={[styles.text, { fontSize }]}>{score ?? "—"}</Text>
+      {/* "/ 100" under a dash would imply a score of zero out of a hundred. */}
+      {size === "large" && score !== null ? <Text style={styles.outOf}>/ 100</Text> : null}
+      {size === "large" && score === null ? (
+        <Text style={styles.outOf}>not scored</Text>
+      ) : null}
     </View>
   );
 }

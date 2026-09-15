@@ -186,6 +186,41 @@ sudo systemctl restart recruitlens     # restart
 sudo certbot renew --dry-run           # Option B only: prove renewal works
 ```
 
+### Updating an existing deployment
+
+```bash
+cd <the cloned repo>
+git checkout -- package-lock.json   # npm install rewrites it; discard before pulling
+git pull
+npm install
+npm run migrate:deploy -w server    # only when the pull added a migration
+sudo systemctl restart recruitlens
+```
+
+## The browser app
+
+The backend serves a browser client itself, from `server/web/`, so there is no
+second thing to deploy and no static host to pay for. Behind the Option A proxy
+it lands at:
+
+```
+https://curie.healthark.ai/interview/api/app/
+```
+
+Upload a recording, optionally attach a job description, and the scored report
+appears on the page. It asks once for the `API_KEY` and keeps it in that browser
+only — the same shared secret the mobile app sends.
+
+Two things make it survive the path prefix, both deliberate:
+
+- **It derives the API root from its own URL**, so the prefix never has to be
+  configured anywhere and the same file also works at a bare
+  `http://<host>:<port>/app/` with no proxy at all.
+- **It is a single self-contained HTML file**, and every redirect to it is
+  relative. A separate `styles.css`, or an absolute `Location: /app/`, would
+  resolve against the domain root, land outside the proxied location block, and
+  404 — the same trailing-slash trap as `proxy_pass`.
+
 ## Troubleshooting
 
 | Symptom | Cause |
@@ -196,6 +231,9 @@ sudo certbot renew --dry-run           # Option B only: prove renewal works
 | Requests reach the frontend instead of the API | Base URL has a trailing slash, producing `//recordings`. The app strips it, but an older APK may not. |
 | Everything 401s | `API_KEY` on the VM does not match `EXPO_PUBLIC_API_KEY` baked into the APK. |
 | Service will not start | `sudo journalctl -u recruitlens -n 50` — usually a bad `DATABASE_URL`. |
+| Browser app 404s | Visit the URL **with** its trailing slash (`/interview/api/app/`). Without one the server issues a relative redirect to add it; an old build that redirected absolutely would land on `https://<host>/app/`, outside the proxied block. |
+| Browser app says the key was rejected | `API_KEY` on the VM changed. Click **Key** in the header and re-enter it. |
+| Report shows "Not assessed" everywhere | Working as intended: the call never covered those areas. A score there would be invented. |
 | Port already in use | Something else holds the port. `sudo ss -ltnp \| grep 4100`, then change `PORT` and the `proxy_pass` port together. |
 | Certificate issuance fails (Option B) | Port 80 closed, or DNS not yet pointing at the VM. |
 

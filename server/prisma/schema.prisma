@@ -91,10 +91,18 @@ model Evaluation {
   subCategory              String
   classificationConfidence String
   classificationRationale  String
-  overallScore             Int
+  /// Null when the interview covered too little to score the candidate at all —
+  /// a thin call must not be reported as a mediocre one.
+  overallScore             Int?
   overallSummary           String
-  /// Array of { name, score, summary, evidence, recommendation } for the 5 matrix categories
+  /// What the interview did and did not cover; the caveat on every score above.
+  coverageNote             String?
+  /// Array of { name, score, summary, evidence, recommendation } for the 5 matrix
+  /// categories. `score` is null for a category the interview never tested.
   categoriesJson           Json
+  /// { questions: [{ question, answerSummary, verdict, score, evidence }], score, summary }
+  /// — null when the recruiter asked no technical questions.
+  technicalAssessmentJson  Json?
   /// string[]
   strengths                Json
   /// string[]

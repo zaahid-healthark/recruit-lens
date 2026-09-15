@@ -20,7 +20,10 @@ export const colors = {
 };
 
 /** Score → band color (matches the 5 scoring bands). */
-export function scoreColor(score: number): string {
+export function scoreColor(score: number | null): string {
+  // No score is not a bad score: grey it out rather than paint it red, which
+  // would read as "the candidate failed" when nobody actually asked.
+  if (score === null) return "#9CA3AF";
   if (score >= 81) return "#16A34A";
   if (score >= 61) return "#65A30D";
   if (score >= 41) return "#D97706";

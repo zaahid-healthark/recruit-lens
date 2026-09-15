@@ -2,7 +2,7 @@
  * REST API DTOs (camelCase, dates as ISO strings) shared by server and mobile.
  */
 
-import type { JdRequirementVerdict } from "./evaluation";
+import type { JdRequirementVerdict, TechnicalAnswerVerdict } from "./evaluation";
 
 export const RECORDING_STATUSES = [
   "UNEVALUATED",
@@ -48,22 +48,44 @@ export interface JdRequirementDto {
 
 /** JD-match block; null when the recording was evaluated without a job. */
 export interface JdMatchDto {
-  fitScore: number;
+  /** Null when the interview probed none of the requirements. */
+  fitScore: number | null;
   verdictSummary: string;
   requirements: JdRequirementDto[];
 }
 
 export interface EvaluationCategoryDto {
   name: string;
-  score: number;
+  /** Null means the interview never tested this — NOT a low score. */
+  score: number | null;
   summary: string;
   evidence: string;
   recommendation: string;
 }
 
+/** One technical question the recruiter asked, and how the candidate answered. */
+export interface TechnicalQuestionDto {
+  question: string;
+  answerSummary: string;
+  verdict: TechnicalAnswerVerdict;
+  score: number;
+  evidence: string;
+}
+
+/**
+ * Technical Q&A block; null when the recruiter asked no technical questions.
+ * When present it is the primary evidence behind the Technical Knowledge score.
+ */
+export interface TechnicalAssessmentDto {
+  questions: TechnicalQuestionDto[];
+  score: number;
+  summary: string;
+}
+
 /** Compact evaluation info embedded in list rows. */
 export interface EvaluationSummaryDto {
-  overallScore: number;
+  /** Null when the call covered too little to score the candidate at all. */
+  overallScore: number | null;
   roleDesignation: string;
   department: string;
   subCategory: string;
@@ -74,7 +96,11 @@ export interface EvaluationSummaryDto {
 export interface EvaluationDto extends EvaluationSummaryDto {
   classificationRationale: string;
   overallSummary: string;
+  /** What the interview did and did not cover — the caveat on every score. */
+  coverageNote: string | null;
   categories: EvaluationCategoryDto[];
+  /** null when the recruiter asked no technical questions. */
+  technicalAssessment: TechnicalAssessmentDto | null;
   strengths: string[];
   areasForImprovement: string[];
   /** null when this evaluation ran without a job attached. */
@@ -136,7 +162,8 @@ export interface DashboardStatsDto {
     failed: number;
   };
   averageOverallScore: number | null;
-  categoryAverages: { name: string; average: number }[];
+  /** `average` is null for a category no interview has actually tested yet. */
+  categoryAverages: { name: string; average: number | null }[];
   byDepartment: { name: string; count: number }[];
   bySubCategory: { name: string; department: string; count: number }[];
   byRole: { name: string; count: number }[];

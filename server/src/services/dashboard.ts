@@ -32,8 +32,14 @@ export async function getDashboardStats(): Promise<DashboardStatsDto> {
     },
   });
 
-  const averageOverallScore = evaluations.length
-    ? Math.round(evaluations.reduce((s, e) => s + e.overallScore, 0) / evaluations.length)
+  // Only evaluations that produced a score count toward the mean. A call too
+  // thin to score is excluded rather than folded in as a zero — averaging in
+  // "we don't know" would drag the whole library down.
+  const overallScores = evaluations
+    .map((e) => e.overallScore)
+    .filter((s): s is number => typeof s === "number");
+  const averageOverallScore = overallScores.length
+    ? Math.round(overallScores.reduce((s, v) => s + v, 0) / overallScores.length)
     : null;
 
   // Average per matrix category (categoriesJson: [{ name, score, ... }])
@@ -48,9 +54,11 @@ export async function getDashboardStats(): Promise<DashboardStatsDto> {
       catTotals.set(c.name, t);
     }
   }
+  // null, not 0: a category no interview has tested yet has no average, and
+  // charting it as zero would read as "everyone scores badly here".
   const categoryAverages = MATRIX_CATEGORIES.map((name) => {
     const t = catTotals.get(name);
-    return { name: name as string, average: t && t.n > 0 ? Math.round(t.sum / t.n) : 0 };
+    return { name: name as string, average: t && t.n > 0 ? Math.round(t.sum / t.n) : null };
   });
 
   // Distribution by department
@@ -84,11 +92,12 @@ export async function getDashboardStats(): Promise<DashboardStatsDto> {
   }
   const byRole = [...roleCounts.values()].sort((a, b) => b.count - a.count).slice(0, TOP_N);
 
-  // Score histogram over the shared bands (0-20, 21-40, …)
+  // Score histogram over the shared bands (0-20, 21-40, …). Built from the
+  // filtered list: an unscored evaluation has no band, and `null >= 0` is true
+  // in JS, so leaving them in would silently pile them into the bottom band.
   const scoreHistogram = SCORE_BANDS.map((band) => ({
     band: band.label,
-    count: evaluations.filter((e) => e.overallScore >= band.min && e.overallScore <= band.max)
-      .length,
+    count: overallScores.filter((s) => s >= band.min && s <= band.max).length,
   }));
 
   // Candidate volume + mean score per job. Counts every linked recording

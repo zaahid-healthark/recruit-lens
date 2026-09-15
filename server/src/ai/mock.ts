@@ -3,7 +3,10 @@ import {
   JdRequirementVerdict,
   LlmEvaluationResult,
   LlmJdMatchResult,
+  LlmTechnicalAssessment,
   MATRIX_CATEGORIES,
+  MIN_SCORED_CATEGORIES_FOR_OVERALL,
+  TECHNICAL_CATEGORY,
 } from "@interview-evaluator/shared";
 import { DEPARTMENT_NAMES, TAXONOMY } from "../config/taxonomy";
 
@@ -106,7 +109,7 @@ const MOCK_EVIDENCE: Record<JdRequirementVerdict, string> = {
   not_discussed: "This never came up in the interview — the interviewer did not probe it. (mock)",
 };
 
-function mockJdMatch(jobTitle: string, jdText: string, h: number, base: number): LlmJdMatchResult {
+function mockJdMatch(jobTitle: string, jdText: string, h: number): LlmJdMatchResult {
   const requirements = extractMockRequirements(jdText).map((requirement, i) => {
     const verdict: JdRequirementVerdict =
       JD_REQUIREMENT_VERDICTS[(h >> (i * 2)) % JD_REQUIREMENT_VERDICTS.length];
@@ -120,11 +123,12 @@ function mockJdMatch(jobTitle: string, jdText: string, h: number, base: number):
     not_discussed: 0,
   };
   // "not_discussed" is excluded from the mean rather than counted as a failure,
-  // mirroring what the real prompt instructs the model to do.
+  // mirroring what the real prompt instructs the model to do. An interview that
+  // probed nothing yields no fit score at all — never a number.
   const fitScore =
     scored.length > 0
       ? Math.round(scored.reduce((sum, r) => sum + weight[r.verdict], 0) / scored.length)
-      : base;
+      : null;
   const blindSpots = requirements.length - scored.length;
   return {
     fit_score: fitScore,
@@ -133,6 +137,46 @@ function mockJdMatch(jobTitle: string, jdText: string, h: number, base: number):
       `${blindSpots > 0 ? `, and ${blindSpots} were never discussed in the interview` : ""}. ` +
       "Depth on the core stack is adequate; the gaps are coachable. (mock evaluation)",
     requirements,
+  };
+}
+
+/**
+ * Technical Q&A for the mock. Every third recording gets none, so MOCK_AI
+ * exercises both the "recruiter asked technical questions" report and the
+ * "purely logistical call" one without needing two fixtures.
+ */
+function mockTechnicalAssessment(role: string, h: number): LlmTechnicalAssessment | null {
+  if (h % 3 === 0) return null;
+  const questions = [
+    {
+      question: `How would you approach designing a pipeline for a ${role.toLowerCase()} workload?`,
+      answer_summary:
+        "Described a staged pipeline with validation between steps and a rerun path for failures.",
+      verdict: "correct" as const,
+      score: 78,
+      evidence: `"I'd split it into stages so a failure only re-runs the step that broke." (mock quote)`,
+    },
+    {
+      question: "What do you do when the source schema changes without warning?",
+      answer_summary:
+        "Mentioned contract checks but could not say how they would be enforced in practice.",
+      verdict: "partially_correct" as const,
+      score: 52,
+      evidence: `"We'd catch it in testing, usually." (mock quote)`,
+    },
+    {
+      question: "Can you explain how you would tune that for a ten-times larger dataset?",
+      answer_summary: "Said they had not worked at that scale and did not want to guess.",
+      verdict: "not_answered" as const,
+      score: 18,
+      evidence: `"Honestly, I haven't worked at that scale — I'd be guessing." (mock quote)`,
+    },
+  ].slice(0, 2 + (h % 2));
+  const score = Math.round(questions.reduce((s, q) => s + q.score, 0) / questions.length);
+  return {
+    questions,
+    score,
+    summary: `Answered ${questions.filter((q) => q.verdict === "correct").length} of ${questions.length} technical questions well; depth drops off at larger scale. (mock)`,
   };
 }
 
@@ -166,8 +210,26 @@ export function mockEvaluation(filename: string, overrides: MockOverrides = {}):
 
   const base = 48 + (h % 45); // 48-92 → spread across bands
   const offsets = [4, -5, 6, -8, 2];
+  const technical = mockTechnicalAssessment(role, h);
   const categories = MATRIX_CATEGORIES.map((name, i) => {
-    const catScore = Math.max(22, Math.min(97, base + offsets[i] + (((h >> (i * 3)) % 7) - 3)));
+    // Some categories come back untested, the way a real screening call leaves
+    // topics untouched — that is what exercises the "Not assessed" rendering.
+    // Technical Knowledge is exempt whenever questions were asked: graded
+    // answers are evidence, so it always carries a number then.
+    const untested = (h >> (i * 2)) % 5 === 0 && !(name === TECHNICAL_CATEGORY && technical);
+    if (untested) {
+      return {
+        name: name as string,
+        score: null,
+        summary: `${name} never came up — worth asking about in the next round. (mock)`,
+        evidence: "The interview did not cover this at all. (mock)",
+        recommendation: "Probe this directly next time; there is nothing to judge yet.",
+      };
+    }
+    const catScore =
+      name === TECHNICAL_CATEGORY && technical
+        ? technical.score
+        : Math.max(22, Math.min(97, base + offsets[i] + (((h >> (i * 3)) % 7) - 3)));
     return {
       name: name as string,
       score: catScore,
@@ -179,15 +241,25 @@ export function mockEvaluation(filename: string, overrides: MockOverrides = {}):
           : "Targeted practice with concrete, quantified examples would lift this area.",
     };
   });
-  const overall = Math.round(categories.reduce((s, c) => s + c.score, 0) / categories.length);
+
+  // Averaged over what was actually tested, and withheld entirely when too
+  // little was — the same rule applyScoringGuards enforces on real output.
+  const scored = categories.filter((c): c is typeof c & { score: number } => c.score !== null);
+  const notAssessed = categories.length - scored.length;
+  const overall =
+    scored.length >= MIN_SCORED_CATEGORIES_FOR_OVERALL
+      ? Math.round(scored.reduce((s, c) => s + c.score, 0) / scored.length)
+      : null;
   const recommendation =
-    overall >= 80
-      ? "Strong hire — consistently strong signals across the matrix."
-      : overall >= 65
-        ? "Hire — solid performance; minor gaps are coachable."
-        : overall >= 50
-          ? "Maybe — mixed signals; consider a focused follow-up round."
-          : "No hire — core expectations for the role were not met.";
+    overall === null
+      ? "Insufficient evidence — this call did not cover enough to judge the candidate. (mock)"
+      : overall >= 80
+        ? "Strong hire — consistently strong signals across the matrix."
+        : overall >= 65
+          ? "Hire — solid performance; minor gaps are coachable."
+          : overall >= 50
+            ? "Maybe — mixed signals; consider a focused follow-up round."
+            : "No hire — core expectations for the role were not met.";
 
   const pick = (pool: string[], offset: number): string[] =>
     [0, 1, 2].map((i) => pool[(h + offset + i) % pool.length]);
@@ -199,17 +271,23 @@ export function mockEvaluation(filename: string, overrides: MockOverrides = {}):
     classification_confidence: (["high", "medium", "high"] as const)[h % 3],
     classification_rationale: `The discussion centered on ${subCategory.toLowerCase()} responsibilities consistent with a ${role} opening. (mock)`,
     overall_score: overall,
-    overall_summary: `The candidate interviewed for a ${role} position and scored ${overall}/100 overall. ${
-      overall >= 65
-        ? "Communication and problem framing stood out; depth was adequate for the level."
-        : "Responses lacked the depth and specificity expected at this level."
-    } (mock evaluation)`,
+    overall_summary:
+      overall === null
+        ? `The candidate interviewed for a ${role} position, but the call covered too little to score them overall. (mock evaluation)`
+        : `The candidate interviewed for a ${role} position and scored ${overall}/100 overall. ${
+            overall >= 65
+              ? "Communication and problem framing stood out; depth was adequate for the level."
+              : "Responses lacked the depth and specificity expected at this level."
+          } (mock evaluation)`,
+    coverage_note:
+      notAssessed > 0
+        ? `${notAssessed} of ${categories.length} areas were never tested in this call${technical ? "" : ", and no technical questions were asked"}. (mock)`
+        : `The call covered all five areas${technical ? ` and included ${technical.questions.length} technical questions` : ", though no technical questions were asked"}. (mock)`,
     categories,
+    technical_assessment: technical,
     strengths: pick(STRENGTH_POOL, 1),
     areas_for_improvement: pick(IMPROVEMENT_POOL, 2),
     recommendation,
-    jd_match: overrides.job
-      ? mockJdMatch(overrides.job.title, overrides.job.jdText, h, base)
-      : null,
+    jd_match: overrides.job ? mockJdMatch(overrides.job.title, overrides.job.jdText, h) : null,
   };
 }

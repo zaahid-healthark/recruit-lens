@@ -1,0 +1,848 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>RecruitLens — Interview Evaluation</title>
+    <!--
+      Deliberately ONE self-contained file, with no external CSS or JS.
+
+      This page is served by the backend itself and mounted behind nginx at a
+      path prefix (/interview/api/app/). A separate "styles.css" would resolve
+      against that prefix and 404 the moment someone opened the page without
+      its trailing slash. Inlining removes the whole class of problem, and
+      keeps deployment to "git pull" — no build step, no second service.
+    -->
+    <style>
+      :root {
+        color-scheme: light;
+        --bg: #f4f6fa;
+        --card: #ffffff;
+        --text: #111827;
+        --subtext: #6b7280;
+        --border: #e5e7eb;
+        --primary: #4f46e5;
+        --primary-soft: #eef2ff;
+        --danger: #dc2626;
+        --danger-soft: #fee2e2;
+        --success: #16a34a;
+        --success-soft: #dcfce7;
+        --warning: #d97706;
+        --warning-soft: #fef3c7;
+        --info: #075985;
+        --info-soft: #e0f2fe;
+        --muted: #9ca3af;
+        --shadow: 0 1px 3px rgba(17, 24, 39, 0.08), 0 4px 16px rgba(17, 24, 39, 0.04);
+      }
+      @media (prefers-color-scheme: dark) {
+        :root {
+          color-scheme: dark;
+          --bg: #0f1420;
+          --card: #171d2b;
+          --text: #e5e7eb;
+          --subtext: #9ca3af;
+          --border: #2a3143;
+          --primary: #818cf8;
+          --primary-soft: #232a45;
+          --danger-soft: #3b1d22;
+          --success-soft: #16301f;
+          --warning-soft: #362a12;
+          --info: #7dd3fc;
+          --info-soft: #14293a;
+          --shadow: 0 1px 3px rgba(0, 0, 0, 0.4);
+        }
+      }
+
+      * { box-sizing: border-box; }
+      body {
+        margin: 0;
+        background: var(--bg);
+        color: var(--text);
+        font: 14px/1.55 -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial,
+          sans-serif;
+        -webkit-font-smoothing: antialiased;
+      }
+      .shell { max-width: 1000px; margin: 0 auto; padding: 0 16px 64px; }
+      header {
+        display: flex; align-items: center; gap: 12px;
+        padding: 18px 0 20px;
+      }
+      .logo {
+        width: 34px; height: 34px; border-radius: 9px; flex: none;
+        background: var(--primary); color: #fff;
+        display: grid; place-items: center; font-weight: 800; font-size: 15px;
+      }
+      .brand { font-size: 16px; font-weight: 800; letter-spacing: -0.01em; }
+      .brand small { display: block; font-size: 11.5px; font-weight: 500; color: var(--subtext); }
+      .spacer { flex: 1; }
+
+      .card {
+        background: var(--card); border: 1px solid var(--border);
+        border-radius: 14px; padding: 18px; margin-bottom: 14px; box-shadow: var(--shadow);
+      }
+      h2 { font-size: 15px; font-weight: 800; margin: 0 0 4px; }
+      h3 {
+        font-size: 12px; font-weight: 800; margin: 0 0 10px;
+        text-transform: uppercase; letter-spacing: 0.5px; color: var(--subtext);
+      }
+      .hint { font-size: 12.5px; color: var(--subtext); margin: 0 0 14px; line-height: 1.5; }
+
+      label { display: block; font-size: 12.5px; font-weight: 700; margin: 0 0 6px; }
+      input[type="text"], input[type="password"], textarea, select {
+        width: 100%; padding: 10px 12px; font: inherit; color: var(--text);
+        background: var(--bg); border: 1px solid var(--border); border-radius: 9px;
+      }
+      textarea { min-height: 150px; resize: vertical; line-height: 1.5; }
+      input:focus, textarea:focus, select:focus { outline: 2px solid var(--primary); outline-offset: -1px; }
+      .field { margin-bottom: 14px; }
+
+      button {
+        font: inherit; font-weight: 700; cursor: pointer;
+        border-radius: 10px; padding: 11px 16px; border: 1px solid transparent;
+      }
+      button:disabled { opacity: 0.5; cursor: not-allowed; }
+      .btn-primary { background: var(--primary); color: #fff; }
+      .btn-ghost { background: transparent; color: var(--text); border-color: var(--border); }
+      .btn-sm { padding: 7px 12px; font-size: 12.5px; border-radius: 8px; }
+      .row { display: flex; gap: 10px; flex-wrap: wrap; }
+
+      /* Drop zone */
+      .drop {
+        border: 2px dashed var(--border); border-radius: 12px; padding: 26px 18px;
+        text-align: center; cursor: pointer; background: var(--bg);
+        transition: border-color 0.15s, background 0.15s;
+      }
+      .drop:hover, .drop.over { border-color: var(--primary); background: var(--primary-soft); }
+      .drop strong { display: block; font-size: 14px; margin-bottom: 3px; }
+      .drop span { font-size: 12.5px; color: var(--subtext); }
+      .drop.has-file { border-style: solid; border-color: var(--primary); background: var(--primary-soft); }
+
+      /* Score badge */
+      .score-wrap { display: flex; align-items: center; gap: 18px; flex-wrap: wrap; }
+      .score {
+        width: 84px; height: 84px; border-radius: 50%; flex: none;
+        display: grid; place-content: center; text-align: center; color: #fff;
+      }
+      .score b { font-size: 26px; line-height: 1; display: block; }
+      .score span { font-size: 10px; font-weight: 700; opacity: 0.9; }
+      .score.na b { font-size: 20px; }
+
+      .pill {
+        display: inline-flex; align-items: center; gap: 5px;
+        border-radius: 999px; padding: 3px 10px; font-size: 11.5px; font-weight: 700;
+      }
+      .callout {
+        display: flex; gap: 8px; border-radius: 10px; padding: 11px 12px;
+        background: var(--info-soft); color: var(--info); font-size: 12.5px; line-height: 1.5;
+        margin-top: 14px;
+      }
+      .callout.warn { background: var(--warning-soft); color: var(--warning); }
+      .callout.err { background: var(--danger-soft); color: var(--danger); }
+
+      /* Category / requirement / question rows */
+      .item { padding: 14px 0; border-top: 1px solid var(--border); }
+      .item:first-of-type { border-top: none; padding-top: 4px; }
+      .item-head { display: flex; align-items: flex-start; gap: 10px; justify-content: space-between; }
+      .item-name { font-size: 13.5px; font-weight: 700; flex: 1; }
+      .chip {
+        flex: none; border-radius: 8px; padding: 3px 9px; font-size: 12px; font-weight: 800; color: #fff;
+      }
+      .chip.na { background: var(--muted); font-size: 11px; }
+      .body { font-size: 13px; color: var(--text); margin: 7px 0 0; line-height: 1.55; }
+      .evidence {
+        font-size: 12.5px; color: var(--subtext); font-style: italic;
+        margin: 7px 0 0; padding-left: 11px; border-left: 2px solid var(--border); line-height: 1.55;
+      }
+      .muted { color: var(--subtext); font-size: 12.5px; }
+
+      ul.bullets { margin: 0; padding-left: 18px; }
+      ul.bullets li { margin-bottom: 5px; font-size: 13px; line-height: 1.5; }
+
+      /* Recent list */
+      .rec {
+        display: flex; align-items: center; gap: 12px; width: 100%; text-align: left;
+        padding: 11px 4px; border: none; border-top: 1px solid var(--border);
+        background: none; color: var(--text); border-radius: 0;
+      }
+      .rec:first-of-type { border-top: none; }
+      .rec:hover { background: var(--primary-soft); }
+      .rec-main { flex: 1; min-width: 0; }
+      .rec-title { font-size: 13.5px; font-weight: 700; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+      .rec-meta { font-size: 11.5px; color: var(--subtext); margin-top: 1px; }
+      .mini {
+        width: 38px; height: 38px; border-radius: 50%; flex: none; color: #fff;
+        display: grid; place-content: center; font-size: 13px; font-weight: 800;
+      }
+      .mini.na { font-size: 15px; background: var(--muted); }
+
+      details { margin-top: 10px; }
+      summary { cursor: pointer; font-size: 12.5px; font-weight: 700; color: var(--primary); }
+      pre.transcript {
+        white-space: pre-wrap; word-wrap: break-word; font-size: 12.5px; line-height: 1.65;
+        background: var(--bg); border: 1px solid var(--border); border-radius: 10px;
+        padding: 14px; margin-top: 10px; max-height: 420px; overflow-y: auto;
+      }
+      audio { width: 100%; margin-top: 10px; }
+      .hidden { display: none !important; }
+      .spin {
+        width: 15px; height: 15px; border: 2px solid rgba(255, 255, 255, 0.35);
+        border-top-color: #fff; border-radius: 50%; display: inline-block;
+        animation: spin 0.7s linear infinite; vertical-align: -3px; margin-right: 7px;
+      }
+      @keyframes spin { to { transform: rotate(360deg); } }
+      .center { text-align: center; padding: 30px 0; }
+    </style>
+  </head>
+
+  <body>
+    <div class="shell">
+      <header>
+        <div class="logo">R</div>
+        <div class="brand">
+          RecruitLens
+          <small>Upload a call, get a scored report</small>
+        </div>
+        <div class="spacer"></div>
+        <button id="btn-home" class="btn-ghost btn-sm hidden">← New evaluation</button>
+        <button id="btn-key" class="btn-ghost btn-sm hidden">Key</button>
+      </header>
+
+      <!-- ── Access key gate ─────────────────────────────────────────── -->
+      <section id="view-key" class="hidden">
+        <div class="card">
+          <h2>Enter your access key</h2>
+          <p class="hint">
+            This page talks to your own RecruitLens backend. Paste the API key the server was
+            configured with — it is kept in this browser only and sent with each request.
+          </p>
+          <div class="field">
+            <label for="key-input">API key</label>
+            <input id="key-input" type="password" autocomplete="off" spellcheck="false" />
+          </div>
+          <div id="key-error" class="callout err hidden"></div>
+          <button id="key-save" class="btn-primary">Continue</button>
+        </div>
+      </section>
+
+      <!-- ── Upload + recent ─────────────────────────────────────────── -->
+      <section id="view-upload" class="hidden">
+        <div class="card">
+          <h2>Evaluate an interview</h2>
+          <p class="hint">
+            Upload the recording of a screening call. It is transcribed, scored against the job
+            description if you attach one, and every technical question the recruiter asked is
+            graded individually.
+          </p>
+
+          <div class="field">
+            <div id="drop" class="drop">
+              <strong id="drop-title">Choose an audio file</strong>
+              <span id="drop-sub">or drag it here — MP3, M4A, WAV, AMR, OGG, 3GP</span>
+            </div>
+            <input id="file-input" type="file" accept="audio/*,.amr,.awb,.3gp,.3gpp,.m4a,.opus" class="hidden" />
+          </div>
+
+          <div class="field">
+            <label for="candidate">Candidate name <span class="muted">(optional)</span></label>
+            <input id="candidate" type="text" placeholder="e.g. Priya Sharma" />
+          </div>
+
+          <div class="field">
+            <label for="job-select">Screen against a job description</label>
+            <select id="job-select">
+              <option value="">No job — generic evaluation</option>
+            </select>
+            <p class="hint" style="margin: 7px 0 0">
+              With a JD attached, every requirement is checked off individually and the candidate
+              gets a fit score for this specific role.
+            </p>
+          </div>
+
+          <!-- New-JD sub-form -->
+          <div id="new-job" class="card hidden" style="margin: 0 0 14px; background: var(--bg)">
+            <h3>New job description</h3>
+            <div class="field">
+              <label for="job-title">Job title</label>
+              <input id="job-title" type="text" placeholder="e.g. Senior Data Engineer" />
+            </div>
+            <div class="field">
+              <label>Description</label>
+              <div class="row" style="margin-bottom: 8px">
+                <button id="jd-file-btn" class="btn-ghost btn-sm" type="button">
+                  Load from PDF / Word
+                </button>
+                <span id="jd-file-status" class="muted" style="align-self: center"></span>
+              </div>
+              <input id="jd-file-input" type="file" accept=".pdf,.docx,.doc,.txt,.md" class="hidden" />
+              <textarea id="job-jd" placeholder="…or paste the description here — requirements, skills, experience"></textarea>
+              <p id="jd-count" class="hint" style="margin: 6px 0 0"></p>
+            </div>
+          </div>
+
+          <div id="upload-error" class="callout err hidden"></div>
+          <button id="submit" class="btn-primary" disabled>Upload &amp; evaluate</button>
+        </div>
+
+        <div class="card">
+          <h3>Recent evaluations</h3>
+          <div id="recent"><p class="muted">Loading…</p></div>
+        </div>
+      </section>
+
+      <!-- ── Progress ────────────────────────────────────────────────── -->
+      <section id="view-progress" class="hidden">
+        <div class="card center">
+          <p id="progress-title" style="font-size: 15px; font-weight: 800; margin: 0 0 6px"></p>
+          <p id="progress-sub" class="muted" style="margin: 0"></p>
+        </div>
+      </section>
+
+      <!-- ── Report ──────────────────────────────────────────────────── -->
+      <section id="view-report" class="hidden">
+        <div id="report"></div>
+      </section>
+    </div>
+
+    <script>
+      "use strict";
+
+      /**
+       * The API root, derived from this page's own URL.
+       *
+       * The page is served by the backend at <prefix>/app/, where <prefix> is
+       * whatever nginx mounts it under ("/interview/api" in production, nothing
+       * on a bare localhost:8005). Deriving it here means one file works behind
+       * any prefix, with or without the trailing slash, and no build step ever
+       * has to bake a URL in.
+       */
+      const API = (() => {
+        const p = location.pathname.replace(/\/index\.html$/, "").replace(/\/app\/?$/, "");
+        return location.origin + p;
+      })();
+
+      const KEY_STORAGE = "recruitlens.apiKey";
+      let apiKey = "";
+      try { apiKey = localStorage.getItem(KEY_STORAGE) || ""; } catch { /* private mode */ }
+
+      const $ = (id) => document.getElementById(id);
+      const views = ["view-key", "view-upload", "view-progress", "view-report"];
+      function show(id) {
+        views.forEach((v) => $(v).classList.toggle("hidden", v !== id));
+        $("btn-home").classList.toggle("hidden", id !== "view-report" && id !== "view-progress");
+        $("btn-key").classList.toggle("hidden", id === "view-key");
+        window.scrollTo(0, 0);
+      }
+
+      /** Escape anything that came from the model, the filesystem, or a user. */
+      function esc(s) {
+        return String(s ?? "").replace(/[&<>"']/g, (c) =>
+          ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[c]
+        );
+      }
+
+      /** Mirrors SCORE_BANDS in shared/src/evaluation.ts. */
+      function scoreColor(score) {
+        if (score === null || score === undefined) return "var(--muted)";
+        if (score >= 81) return "#16a34a";
+        if (score >= 61) return "#65a30d";
+        if (score >= 41) return "#d97706";
+        if (score >= 21) return "#ea580c";
+        return "#dc2626";
+      }
+
+      class ApiError extends Error {
+        constructor(message, status) { super(message); this.status = status; }
+      }
+
+      async function api(path, init = {}) {
+        const res = await fetch(API + path, {
+          ...init,
+          headers: { "x-api-key": apiKey, ...(init.headers || {}) },
+        });
+        if (res.status === 401) {
+          // The stored key is wrong or the server's changed — make them re-enter
+          // it rather than leaving every later call failing mysteriously.
+          try { localStorage.removeItem(KEY_STORAGE); } catch {}
+          apiKey = "";
+          show("view-key");
+          $("key-error").textContent = "That key was rejected. Check it and try again.";
+          $("key-error").classList.remove("hidden");
+          throw new ApiError("Unauthorized", 401);
+        }
+        if (!res.ok) {
+          let msg = "Request failed (HTTP " + res.status + ")";
+          try {
+            const body = await res.json();
+            if (body && body.error && body.error.message) msg = body.error.message;
+          } catch { /* not JSON */ }
+          throw new ApiError(msg, res.status);
+        }
+        return res.status === 204 ? null : res.json();
+      }
+
+      // ── Key gate ──────────────────────────────────────────────────────
+      $("key-save").addEventListener("click", async () => {
+        const value = $("key-input").value.trim();
+        if (!value) return;
+        apiKey = value;
+        try {
+          // Prove the key works before storing it, so a typo surfaces here
+          // rather than as a broken upload later.
+          await api("/jobs");
+          try { localStorage.setItem(KEY_STORAGE, value); } catch {}
+          $("key-error").classList.add("hidden");
+          start();
+        } catch (err) {
+          if (err.status !== 401) {
+            $("key-error").textContent = err.message;
+            $("key-error").classList.remove("hidden");
+          }
+        }
+      });
+      $("key-input").addEventListener("keydown", (e) => {
+        if (e.key === "Enter") $("key-save").click();
+      });
+      $("btn-key").addEventListener("click", () => {
+        $("key-input").value = apiKey;
+        $("key-error").classList.add("hidden");
+        show("view-key");
+      });
+      $("btn-home").addEventListener("click", () => { resetForm(); start(); });
+
+      // ── Upload form ───────────────────────────────────────────────────
+      let chosenFile = null;
+
+      const drop = $("drop");
+      drop.addEventListener("click", () => $("file-input").click());
+      drop.addEventListener("dragover", (e) => { e.preventDefault(); drop.classList.add("over"); });
+      drop.addEventListener("dragleave", () => drop.classList.remove("over"));
+      drop.addEventListener("drop", (e) => {
+        e.preventDefault();
+        drop.classList.remove("over");
+        if (e.dataTransfer.files.length) setFile(e.dataTransfer.files[0]);
+      });
+      $("file-input").addEventListener("change", (e) => {
+        if (e.target.files.length) setFile(e.target.files[0]);
+      });
+
+      function setFile(file) {
+        chosenFile = file;
+        drop.classList.add("has-file");
+        $("drop-title").textContent = file.name;
+        const mb = file.size / (1024 * 1024);
+        $("drop-sub").textContent =
+          (mb < 1 ? Math.round(file.size / 1024) + " KB" : mb.toFixed(1) + " MB") +
+          " — click to choose a different file";
+        refreshSubmit();
+      }
+
+      function resetForm() {
+        chosenFile = null;
+        $("file-input").value = "";
+        drop.classList.remove("has-file");
+        $("drop-title").textContent = "Choose an audio file";
+        $("drop-sub").textContent = "or drag it here — MP3, M4A, WAV, AMR, OGG, 3GP";
+        $("candidate").value = "";
+        $("job-title").value = "";
+        $("job-jd").value = "";
+        $("jd-file-status").textContent = "";
+        $("job-select").value = "";
+        $("new-job").classList.add("hidden");
+        $("upload-error").classList.add("hidden");
+        updateJdCount();
+        refreshSubmit();
+      }
+
+      /** Mirrors MIN_JD_CHARS in server/src/routes/jobs.ts. */
+      const MIN_JD_CHARS = 40;
+      const creatingJob = () => $("job-select").value === "__new__";
+
+      function updateJdCount() {
+        const n = $("job-jd").value.trim().length;
+        $("jd-count").textContent =
+          n === 0
+            ? ""
+            : n < MIN_JD_CHARS
+              ? MIN_JD_CHARS - n + " more characters needed — requirements are extracted from this text."
+              : "Each requirement will be checked off individually against the candidate.";
+      }
+
+      function refreshSubmit() {
+        const jobOk =
+          !creatingJob() ||
+          ($("job-title").value.trim().length > 0 && $("job-jd").value.trim().length >= MIN_JD_CHARS);
+        $("submit").disabled = !chosenFile || !jobOk;
+      }
+
+      $("job-select").addEventListener("change", () => {
+        $("new-job").classList.toggle("hidden", !creatingJob());
+        refreshSubmit();
+      });
+      $("job-title").addEventListener("input", refreshSubmit);
+      $("job-jd").addEventListener("input", () => { updateJdCount(); refreshSubmit(); });
+
+      // JD from a document — the server extracts the text; nothing is stored.
+      $("jd-file-btn").addEventListener("click", () => $("jd-file-input").click());
+      $("jd-file-input").addEventListener("change", async (e) => {
+        const file = e.target.files[0];
+        if (!file) return;
+        $("jd-file-status").textContent = "Reading " + file.name + "…";
+        try {
+          const form = new FormData();
+          form.append("file", file);
+          const out = await api("/jobs/extract-text", { method: "POST", body: form });
+          $("job-jd").value = out.text;
+          $("jd-file-status").textContent =
+            "Loaded" + (out.pages ? " " + out.pages + " page" + (out.pages === 1 ? "" : "s") : "") +
+            " — check it below before saving.";
+          if (!$("job-title").value.trim()) {
+            $("job-title").value = file.name.replace(/\.[^.]+$/, "");
+          }
+          updateJdCount();
+          refreshSubmit();
+        } catch (err) {
+          $("jd-file-status").textContent = err.message;
+        } finally {
+          e.target.value = "";
+        }
+      });
+
+      $("submit").addEventListener("click", async () => {
+        if (!chosenFile) return;
+        const btn = $("submit");
+        btn.disabled = true;
+        $("upload-error").classList.add("hidden");
+        try {
+          let jobId = $("job-select").value;
+          if (jobId === "__new__") {
+            btn.innerHTML = '<span class="spin"></span>Saving job description…';
+            const job = await api("/jobs", {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({
+                title: $("job-title").value.trim(),
+                jdText: $("job-jd").value.trim(),
+              }),
+            });
+            jobId = job.id;
+          }
+
+          btn.innerHTML = '<span class="spin"></span>Uploading…';
+          show("view-progress");
+          $("progress-title").textContent = "Uploading the recording…";
+          $("progress-sub").textContent =
+            "The server checks the audio before accepting it, which takes a moment for a long call.";
+
+          const form = new FormData();
+          form.append("file", chosenFile);
+          const name = $("candidate").value.trim();
+          if (name) form.append("candidateName", name);
+          if (jobId) form.append("jobId", jobId);
+
+          const rec = await api("/recordings", { method: "POST", body: form });
+          await api("/recordings/" + rec.id + "/evaluate", { method: "POST" });
+          pollUntilDone(rec.id);
+        } catch (err) {
+          show("view-upload");
+          $("upload-error").textContent = err.message;
+          $("upload-error").classList.remove("hidden");
+        } finally {
+          btn.innerHTML = "Upload &amp; evaluate";
+          refreshSubmit();
+        }
+      });
+
+      // ── Progress polling ──────────────────────────────────────────────
+      const STATUS_TEXT = {
+        UNEVALUATED: ["Queued…", "Waiting for the evaluation to start."],
+        TRANSCRIBING: ["Transcribing the audio…", "This is the slow step — a long call takes a few minutes."],
+        SCORING: ["Scoring the interview…", "Reading the whole transcript before judging anything."],
+      };
+
+      async function pollUntilDone(id) {
+        show("view-progress");
+        for (;;) {
+          let rec;
+          try {
+            rec = await api("/recordings/" + id);
+          } catch (err) {
+            if (err.status === 401) return;
+            $("progress-title").textContent = "Lost contact with the server";
+            $("progress-sub").textContent = err.message + " — retrying…";
+            await new Promise((r) => setTimeout(r, 5000));
+            continue;
+          }
+          if (rec.status === "EVALUATED" || rec.status === "FAILED") {
+            renderReport(rec);
+            loadRecent();
+            return;
+          }
+          const text = STATUS_TEXT[rec.status] || ["Working…", ""];
+          $("progress-title").textContent = text[0];
+          $("progress-sub").textContent = text[1];
+          await new Promise((r) => setTimeout(r, 3000));
+        }
+      }
+
+      // ── Report ────────────────────────────────────────────────────────
+      const VERDICT_META = {
+        met: ["Met", "var(--success)", "var(--success-soft)"],
+        partial: ["Partially met", "var(--warning)", "var(--warning-soft)"],
+        missing: ["Not met", "var(--danger)", "var(--danger-soft)"],
+        not_discussed: ["Not asked", "var(--subtext)", "var(--bg)"],
+      };
+      const TECH_META = {
+        correct: ["Correct", "var(--success)", "var(--success-soft)"],
+        partially_correct: ["Partly correct", "var(--warning)", "var(--warning-soft)"],
+        incorrect: ["Incorrect", "var(--danger)", "var(--danger-soft)"],
+        not_answered: ["Could not answer", "var(--subtext)", "var(--bg)"],
+      };
+
+      function scoreBlock(score) {
+        const na = score === null || score === undefined;
+        return (
+          '<div class="score' + (na ? " na" : "") + '" style="background:' + scoreColor(score) + '">' +
+          "<b>" + (na ? "—" : score) + "</b><span>" + (na ? "not scored" : "/ 100") + "</span></div>"
+        );
+      }
+
+      function renderReport(rec) {
+        const e = rec.evaluation;
+        const title = rec.candidateName || rec.originalFilename;
+        let html =
+          '<div class="card"><h2>' + esc(title) + "</h2>" +
+          '<p class="muted">' +
+          esc(rec.originalFilename) +
+          (rec.job ? " · screened for " + esc(rec.job.title) : "") +
+          (rec.durationSeconds
+            ? " · " + Math.floor(rec.durationSeconds / 60) + "m " + (rec.durationSeconds % 60) + "s"
+            : "") +
+          "</p>" +
+          '<button class="btn-ghost btn-sm" id="load-audio" style="margin-top:12px">▶ Load audio</button>' +
+          '<div id="audio-slot"></div></div>';
+
+        if (rec.status === "FAILED" || !e) {
+          html +=
+            '<div class="card"><div class="callout err">' +
+            esc(rec.errorMessage || "This recording could not be evaluated.") +
+            "</div></div>";
+          $("report").innerHTML = html;
+          wireAudio(rec.id);
+          show("view-report");
+          return;
+        }
+
+        // ── Verdict ──
+        html +=
+          '<div class="card"><div class="score-wrap">' +
+          scoreBlock(e.overallScore) +
+          '<div style="flex:1;min-width:220px">' +
+          '<p style="font-size:15px;font-weight:800;margin:0 0 6px">' + esc(e.recommendation) + "</p>" +
+          '<p class="body" style="margin:0">' + esc(e.overallSummary) + "</p></div></div>";
+        if (e.coverageNote) {
+          html += '<div class="callout">' + esc(e.coverageNote) + "</div>";
+        }
+        html += "</div>";
+
+        // ── Technical Q&A — only when the recruiter actually asked ──
+        if (e.technicalAssessment) {
+          const t = e.technicalAssessment;
+          const good = t.questions.filter((q) => q.verdict === "correct").length;
+          html +=
+            '<div class="card"><div class="item-head" style="margin-bottom:10px">' +
+            "<div><h2>Technical questions</h2>" +
+            '<p class="muted">' + good + " of " + t.questions.length + " answered well</p></div>" +
+            '<div class="chip" style="background:' + scoreColor(t.score) + '">' + t.score + "</div></div>";
+          if (t.summary) html += '<p class="body" style="margin-top:0">' + esc(t.summary) + "</p>";
+          t.questions.forEach((q) => {
+            const m = TECH_META[q.verdict] || TECH_META.not_answered;
+            html +=
+              '<div class="item"><div class="item-head">' +
+              '<div class="item-name">' + esc(q.question) + "</div>" +
+              '<div class="chip" style="background:' + scoreColor(q.score) + '">' + q.score + "</div></div>" +
+              '<span class="pill" style="color:' + m[1] + ";background:" + m[2] + '">' + m[0] + "</span>" +
+              (q.answerSummary ? '<p class="body">' + esc(q.answerSummary) + "</p>" : "") +
+              (q.evidence ? '<p class="evidence">' + esc(q.evidence) + "</p>" : "") +
+              "</div>";
+          });
+          html += "</div>";
+        }
+
+        // ── JD match ──
+        if (e.jdMatch) {
+          const j = e.jdMatch;
+          const notAsked = j.requirements.filter((r) => r.verdict === "not_discussed").length;
+          html +=
+            '<div class="card"><div class="item-head" style="margin-bottom:10px">' +
+            "<div><h2>Job description match</h2>" +
+            '<p class="muted">' + esc(rec.job ? rec.job.title : "") + "</p></div>" +
+            '<div class="chip' + (j.fitScore === null ? " na" : "") + '" style="background:' +
+            scoreColor(j.fitScore) + '">' + (j.fitScore === null ? "No data" : j.fitScore + " fit") +
+            "</div></div>";
+          if (j.verdictSummary) html += '<p class="body" style="margin-top:0">' + esc(j.verdictSummary) + "</p>";
+          if (notAsked > 0) {
+            html +=
+              '<div class="callout">' + notAsked + " requirement" + (notAsked === 1 ? "" : "s") +
+              " never came up in this interview — worth probing in the next round.</div>";
+          }
+          const order = ["met", "partial", "missing", "not_discussed"];
+          [...j.requirements]
+            .sort((a, b) => order.indexOf(a.verdict) - order.indexOf(b.verdict))
+            .forEach((r) => {
+              const m = VERDICT_META[r.verdict] || VERDICT_META.not_discussed;
+              html +=
+                '<div class="item"><div class="item-name">' + esc(r.requirement) + "</div>" +
+                '<span class="pill" style="color:' + m[1] + ";background:" + m[2] + '">' + m[0] + "</span>" +
+                (r.evidence ? '<p class="evidence">' + esc(r.evidence) + "</p>" : "") +
+                "</div>";
+            });
+          html += "</div>";
+        }
+
+        // ── Matrix ──
+        html += '<div class="card"><h2 style="margin-bottom:12px">Scoring matrix</h2>';
+        e.categories.forEach((c) => {
+          const na = c.score === null;
+          html +=
+            '<div class="item"><div class="item-head">' +
+            '<div class="item-name">' + esc(c.name) + "</div>" +
+            '<div class="chip' + (na ? " na" : "") + '" style="background:' + scoreColor(c.score) + '">' +
+            (na ? "Not assessed" : c.score) + "</div></div>" +
+            (c.summary ? '<p class="body">' + esc(c.summary) + "</p>" : "") +
+            (c.evidence ? '<p class="evidence">' + esc(c.evidence) + "</p>" : "") +
+            "</div>";
+        });
+        html += "</div>";
+
+        // ── Strengths / improvements ──
+        if (e.strengths.length || e.areasForImprovement.length) {
+          html += '<div class="card">';
+          if (e.strengths.length) {
+            html +=
+              "<h3>Strengths</h3><ul class='bullets'>" +
+              e.strengths.map((s) => "<li>" + esc(s) + "</li>").join("") + "</ul>";
+          }
+          if (e.areasForImprovement.length) {
+            html +=
+              "<h3 style='margin-top:16px'>Areas for improvement</h3><ul class='bullets'>" +
+              e.areasForImprovement.map((s) => "<li>" + esc(s) + "</li>").join("") + "</ul>";
+          }
+          html += "</div>";
+        }
+
+        // ── Classification + transcript ──
+        html +=
+          '<div class="card"><h3>Classification</h3>' +
+          '<p class="body" style="margin-top:0"><b>' + esc(e.roleDesignation) + "</b> · " +
+          esc(e.department) + " › " + esc(e.subCategory) +
+          ' <span class="muted">(' + esc(e.classificationConfidence) + " confidence)</span></p>" +
+          (e.classificationRationale ? '<p class="muted">' + esc(e.classificationRationale) + "</p>" : "") +
+          (rec.transcript
+            ? "<details><summary>Show full transcript</summary>" +
+              '<pre class="transcript">' + esc(rec.transcript.text) + "</pre></details>"
+            : "") +
+          '<p class="muted" style="margin-top:12px">Model: ' + esc(e.model) + "</p></div>";
+
+        $("report").innerHTML = html;
+        wireAudio(rec.id);
+        show("view-report");
+      }
+
+      /**
+       * Playback is opt-in behind a button. The audio endpoint needs the API
+       * key as a header, which an <audio src> cannot send, so the file has to
+       * be fetched into a blob — and pulling a 25-minute recording down on
+       * every report view would be wasteful when most visits only read scores.
+       */
+      function wireAudio(id) {
+        const btn = $("load-audio");
+        if (!btn) return;
+        btn.addEventListener("click", async () => {
+          btn.disabled = true;
+          btn.textContent = "Loading audio…";
+          try {
+            const res = await fetch(API + "/recordings/" + id + "/audio", {
+              headers: { "x-api-key": apiKey },
+            });
+            if (!res.ok) throw new Error("Audio is no longer stored on the server.");
+            const url = URL.createObjectURL(await res.blob());
+            $("audio-slot").innerHTML = '<audio controls src="' + url + '"></audio>';
+            btn.classList.add("hidden");
+          } catch (err) {
+            btn.textContent = err.message;
+          }
+        });
+      }
+
+      // ── Recent list ───────────────────────────────────────────────────
+      async function loadRecent() {
+        try {
+          const list = await api("/recordings");
+          if (!list.length) {
+            $("recent").innerHTML = '<p class="muted">Nothing evaluated yet.</p>';
+            return;
+          }
+          $("recent").innerHTML = list
+            .slice(0, 12)
+            .map((r) => {
+              const s = r.evaluationSummary;
+              const score = s ? s.overallScore : null;
+              const na = score === null || score === undefined;
+              const when = new Date(r.importedAt).toLocaleDateString(undefined, {
+                day: "numeric", month: "short",
+              });
+              return (
+                '<button class="rec" data-id="' + r.id + '">' +
+                '<div class="mini' + (na ? " na" : "") + '" style="background:' + scoreColor(score) + '">' +
+                (na ? "—" : score) + "</div>" +
+                '<div class="rec-main"><div class="rec-title">' +
+                esc(r.candidateName || r.originalFilename) + "</div>" +
+                '<div class="rec-meta">' + when +
+                (r.job ? " · " + esc(r.job.title) : "") +
+                (r.status !== "EVALUATED" ? " · " + r.status.toLowerCase() : "") +
+                "</div></div></button>"
+              );
+            })
+            .join("");
+          $("recent").querySelectorAll(".rec").forEach((b) =>
+            b.addEventListener("click", async () => {
+              try {
+                const rec = await api("/recordings/" + b.dataset.id);
+                if (rec.status === "TRANSCRIBING" || rec.status === "SCORING") pollUntilDone(rec.id);
+                else renderReport(rec);
+              } catch (err) { /* 401 already handled */ }
+            })
+          );
+        } catch (err) {
+          if (err.status !== 401) $("recent").innerHTML = '<p class="muted">' + esc(err.message) + "</p>";
+        }
+      }
+
+      async function loadJobs() {
+        try {
+          const jobs = await api("/jobs");
+          const sel = $("job-select");
+          sel.innerHTML =
+            '<option value="">No job — generic evaluation</option>' +
+            jobs
+              .map(
+                (j) =>
+                  '<option value="' + j.id + '">' + esc(j.title) +
+                  (j.recordingCount ? " (" + j.recordingCount + " screened)" : "") + "</option>"
+              )
+              .join("") +
+            '<option value="__new__">＋ Add a new job description…</option>';
+        } catch (err) { /* 401 already handled */ }
+      }
+
+      function start() {
+        show("view-upload");
+        loadJobs();
+        loadRecent();
+      }
+
+      if (apiKey) start();
+      else show("view-key");
+    </script>
+  </body>
+</html>

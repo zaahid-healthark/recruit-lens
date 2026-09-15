@@ -9,6 +9,9 @@ import {
   RecordingDetailDto,
   RecordingListItemDto,
   RecordingStatus,
+  TECHNICAL_ANSWER_VERDICTS,
+  TechnicalAnswerVerdict,
+  TechnicalAssessmentDto,
   TranscriptDto,
 } from "@interview-evaluator/shared";
 import { Evaluation, Job, Recording, Transcript } from "@prisma/client";
@@ -17,13 +20,22 @@ function asStringArray(value: unknown): string[] {
   return Array.isArray(value) ? value.filter((v): v is string => typeof v === "string") : [];
 }
 
+/**
+ * A missing score stays missing. Coercing it to 0 would turn "the interview
+ * never tested this" into "the candidate scored zero" — the exact confusion
+ * the nullable scores exist to prevent.
+ */
+function asScore(value: unknown): number | null {
+  return typeof value === "number" && Number.isFinite(value) ? value : null;
+}
+
 function asCategories(value: unknown): EvaluationCategoryDto[] {
   if (!Array.isArray(value)) return [];
   return value
     .filter((c): c is Record<string, unknown> => typeof c === "object" && c !== null)
     .map((c) => ({
       name: typeof c.name === "string" ? c.name : "",
-      score: typeof c.score === "number" ? c.score : 0,
+      score: asScore(c.score),
       summary: typeof c.summary === "string" ? c.summary : "",
       evidence: typeof c.evidence === "string" ? c.evidence : "",
       recommendation: typeof c.recommendation === "string" ? c.recommendation : "",
@@ -34,6 +46,41 @@ function isVerdict(v: unknown): v is JdRequirementVerdict {
   return typeof v === "string" && (JD_REQUIREMENT_VERDICTS as readonly string[]).includes(v);
 }
 
+function isTechnicalVerdict(v: unknown): v is TechnicalAnswerVerdict {
+  return typeof v === "string" && (TECHNICAL_ANSWER_VERDICTS as readonly string[]).includes(v);
+}
+
+/**
+ * Parse the stored technicalAssessmentJson defensively. A block with no
+ * readable questions collapses to null: "the recruiter asked nothing" and
+ * "the stored rows were unreadable" should both render as no Q&A section
+ * rather than as an empty one implying no questions were asked.
+ */
+function asTechnicalAssessment(value: unknown): TechnicalAssessmentDto | null {
+  if (typeof value !== "object" || value === null) return null;
+  const v = value as Record<string, unknown>;
+  const questions = Array.isArray(v.questions)
+    ? v.questions
+        .filter((q): q is Record<string, unknown> => typeof q === "object" && q !== null)
+        .map((q) => ({
+          question: typeof q.question === "string" ? q.question : "",
+          answerSummary: typeof q.answerSummary === "string" ? q.answerSummary : "",
+          verdict: isTechnicalVerdict(q.verdict)
+            ? q.verdict
+            : ("not_answered" as TechnicalAnswerVerdict),
+          score: typeof q.score === "number" ? q.score : 0,
+          evidence: typeof q.evidence === "string" ? q.evidence : "",
+        }))
+        .filter((q) => q.question.length > 0)
+    : [];
+  if (questions.length === 0) return null;
+  return {
+    questions,
+    score: typeof v.score === "number" ? v.score : 0,
+    summary: typeof v.summary === "string" ? v.summary : "",
+  };
+}
+
 /**
  * Parse the stored jdMatchJson defensively — it is model-produced JSON that
  * was validated on the way in, but an older row (or a hand-edited one) must
@@ -42,7 +89,9 @@ function isVerdict(v: unknown): v is JdRequirementVerdict {
 function asJdMatch(value: unknown): JdMatchDto | null {
   if (typeof value !== "object" || value === null) return null;
   const v = value as Record<string, unknown>;
-  if (typeof v.fitScore !== "number") return null;
+  // The requirements are the substance; a null fitScore is a legitimate
+  // verdict ("nothing was probed"), so only a block with no requirements at
+  // all is treated as absent.
   const requirements = Array.isArray(v.requirements)
     ? v.requirements
         .filter((r): r is Record<string, unknown> => typeof r === "object" && r !== null)
@@ -53,15 +102,19 @@ function asJdMatch(value: unknown): JdMatchDto | null {
         }))
         .filter((r) => r.requirement.length > 0)
     : [];
+  if (requirements.length === 0) return null;
   return {
-    fitScore: v.fitScore,
+    fitScore: asScore(v.fitScore),
     verdictSummary: typeof v.verdictSummary === "string" ? v.verdictSummary : "",
     requirements,
   };
 }
 
 export function toJobDto(
-  j: Job & { recordings?: { evaluation: { overallScore: number } | null }[]; _count?: { recordings: number } }
+  j: Job & {
+    recordings?: { evaluation: { overallScore: number | null } | null }[];
+    _count?: { recordings: number };
+  }
 ): JobDto {
   const scores = (j.recordings ?? [])
     .map((r) => r.evaluation?.overallScore)
@@ -98,7 +151,9 @@ export function toEvaluationDto(e: Evaluation): EvaluationDto {
     ...toEvaluationSummaryDto(e),
     classificationRationale: e.classificationRationale,
     overallSummary: e.overallSummary,
+    coverageNote: e.coverageNote,
     categories: asCategories(e.categoriesJson),
+    technicalAssessment: asTechnicalAssessment(e.technicalAssessmentJson),
     strengths: asStringArray(e.strengths),
     areasForImprovement: asStringArray(e.areasForImprovement),
     jdMatch: asJdMatch(e.jdMatchJson),

@@ -110,7 +110,23 @@ export async function evaluateRecording(recordingId: string): Promise<void> {
       classificationRationale: result.classification_rationale,
       overallScore: result.overall_score,
       overallSummary: result.overall_summary,
+      coverageNote: result.coverage_note || null,
       categoriesJson: result.categories as unknown as Prisma.InputJsonValue,
+      // Stored camelCase to match every other JSON column (and what the DTO
+      // reader expects) — the snake_case shape belongs to the model contract.
+      technicalAssessmentJson: result.technical_assessment
+        ? ({
+            score: result.technical_assessment.score,
+            summary: result.technical_assessment.summary,
+            questions: result.technical_assessment.questions.map((q) => ({
+              question: q.question,
+              answerSummary: q.answer_summary,
+              verdict: q.verdict,
+              score: q.score,
+              evidence: q.evidence,
+            })),
+          } as unknown as Prisma.InputJsonValue)
+        : Prisma.DbNull,
       strengths: result.strengths,
       areasForImprovement: result.areas_for_improvement,
       recommendation: result.recommendation,
@@ -135,10 +151,13 @@ export async function evaluateRecording(recordingId: string): Promise<void> {
       data: { status: "EVALUATED", errorMessage: null },
     });
     syncRecordingToDrive(recordingId); // mirror transcript + scores to Drive (best-effort)
+    const notAssessed = result.categories.filter((c) => c.score === null).length;
     log.info(
       `Recording ${recordingId} evaluated: ${result.department} › ${result.sub_category}, ` +
-        `role "${result.role_designation}", score ${result.overall_score}` +
-        `${result.jd_match ? `, JD fit ${result.jd_match.fit_score} vs "${job?.title}"` : ""}.`
+        `role "${result.role_designation}", score ${result.overall_score ?? "not assessed"}` +
+        `${notAssessed > 0 ? ` (${notAssessed}/5 categories untested)` : ""}` +
+        `${result.technical_assessment ? `, ${result.technical_assessment.questions.length} technical Q&A` : ""}` +
+        `${result.jd_match ? `, JD fit ${result.jd_match.fit_score ?? "not probed"} vs "${job?.title}"` : ""}.`
     );
   } catch (err) {
     const message = (err instanceof Error ? err.message : String(err)).slice(0, 800);

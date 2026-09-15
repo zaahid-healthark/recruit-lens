@@ -2,7 +2,10 @@ import {
   CLASSIFICATION_CONFIDENCE_LEVELS,
   JD_REQUIREMENT_VERDICTS,
   MATRIX_CATEGORIES,
+  MIN_SCORED_CATEGORIES_FOR_OVERALL,
   OTHER_VALUE,
+  TECHNICAL_ANSWER_VERDICTS,
+  TECHNICAL_CATEGORY,
 } from "@interview-evaluator/shared";
 import { z } from "zod";
 import { DEPARTMENT_NAMES, TAXONOMY } from "../config/taxonomy";
@@ -13,9 +16,34 @@ const score = z.preprocess(
   z.number().int().min(0).max(100)
 );
 
+/**
+ * A score the model is allowed to withhold, meaning "the interview never
+ * tested this".
+ *
+ * Models spell that several ways — null, "null", "N/A", "not assessed", an
+ * empty string — and every one of them means the same thing. Normalizing them
+ * all to null here keeps a well-intentioned answer from failing validation and
+ * burning the single repair retry on a formatting quibble.
+ */
+const optionalScore = z.preprocess(
+  (v) => {
+    if (v === null || v === undefined) return null;
+    if (typeof v === "string") {
+      const t = v.trim().toLowerCase();
+      if (["", "null", "none", "n/a", "na", "not assessed", "not_assessed"].includes(t)) {
+        return null;
+      }
+      const n = Number(t);
+      return Number.isFinite(n) ? Math.round(n) : v;
+    }
+    return typeof v === "number" ? Math.round(v) : v;
+  },
+  z.number().int().min(0).max(100).nullable()
+);
+
 const categorySchema = z.object({
   name: z.enum(MATRIX_CATEGORIES),
-  score,
+  score: optionalScore,
   summary: z.string().min(1),
   evidence: z.string().min(1),
   recommendation: z.string().min(1),
@@ -31,11 +59,33 @@ const jdRequirementSchema = z.object({
 });
 
 const jdMatchSchema = z.object({
-  fit_score: score,
+  fit_score: optionalScore,
   verdict_summary: z.string().min(1),
   // A JD with zero extractable requirements means the paste was junk — reject
   // rather than store an empty match that reads like "nothing required".
   requirements: z.array(jdRequirementSchema).min(1),
+});
+
+/**
+ * One technical question the recruiter asked. `score` is required, not
+ * optional: the question WAS asked, so the answer — including "I don't know" —
+ * is evidence. Only untested topics are allowed to be null.
+ */
+const technicalQuestionSchema = z.object({
+  question: z.string().min(1),
+  answer_summary: z.string().min(1),
+  verdict: z.preprocess(
+    (v) => (typeof v === "string" ? v.trim().toLowerCase().replace(/[\s-]+/g, "_") : v),
+    z.enum(TECHNICAL_ANSWER_VERDICTS)
+  ),
+  score,
+  evidence: z.string().default(""),
+});
+
+const technicalAssessmentSchema = z.object({
+  questions: z.array(technicalQuestionSchema).min(1),
+  score,
+  summary: z.string().min(1),
 });
 
 /**
@@ -57,9 +107,11 @@ export const llmEvaluationSchema = z
       z.enum(CLASSIFICATION_CONFIDENCE_LEVELS)
     ),
     classification_rationale: z.string().default(""),
-    overall_score: score,
+    overall_score: optionalScore,
     overall_summary: z.string().min(1),
+    coverage_note: z.string().default(""),
     categories: z.array(categorySchema).length(MATRIX_CATEGORIES.length),
+    technical_assessment: technicalAssessmentSchema.nullish().default(null),
     strengths: z.array(z.string()).default([]),
     areas_for_improvement: z.array(z.string()).default([]),
     recommendation: z.string().min(1),
@@ -89,6 +141,22 @@ export const llmEvaluationSchema = z
         path: ["categories"],
         message: "categories must contain each matrix category exactly once",
       });
+    }
+    // Graded answers to real questions ARE evidence, so a transcript that
+    // produced a technical assessment cannot also claim technical knowledge
+    // went untested. Worth the repair retry: the two halves of the output
+    // would otherwise contradict each other on the report.
+    if (val.technical_assessment) {
+      const technical = val.categories.find((c) => c.name === TECHNICAL_CATEGORY);
+      if (technical && technical.score === null) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          path: ["categories"],
+          message:
+            `the recruiter asked technical questions, so "${TECHNICAL_CATEGORY}" must have a ` +
+            `numeric score reflecting those answers — it cannot be null`,
+        });
+      }
     }
   });
 
@@ -165,5 +233,56 @@ export function normalizeLlmResult(raw: unknown): unknown {
   } else if (obj.jd_match === undefined) {
     obj.jd_match = null;
   }
+  // "No technical questions were asked" reaches us as null, as an omitted key,
+  // or as an empty questions array — collapse all three to null so downstream
+  // code has exactly one shape to check.
+  if (typeof obj.technical_assessment === "object" && obj.technical_assessment !== null) {
+    const tech: Record<string, unknown> = { ...(obj.technical_assessment as Record<string, unknown>) };
+    const questions = Array.isArray(tech.questions)
+      ? tech.questions.filter(
+          (q) =>
+            typeof q === "object" &&
+            q !== null &&
+            typeof (q as { question?: unknown }).question === "string" &&
+            (q as { question: string }).question.trim().length > 0
+        )
+      : [];
+    obj.technical_assessment = questions.length > 0 ? { ...tech, questions } : null;
+  } else if (obj.technical_assessment === undefined) {
+    obj.technical_assessment = null;
+  }
   return obj;
+}
+
+/**
+ * Post-validation guards for the rules that are too important to leave to the
+ * model's judgement. Applied to already-valid output, so nothing here can fail
+ * an evaluation — each rule only ever withholds a number the evidence does not
+ * support.
+ */
+export function applyScoringGuards(result: ParsedLlmEvaluation): ParsedLlmEvaluation {
+  const scored = result.categories.filter((c) => c.score !== null).length;
+
+  // Too little of the candidate is on record to put one number on them. The
+  // model is told this rule, but a stated rule is a hope; this is the check.
+  if (scored < MIN_SCORED_CATEGORIES_FOR_OVERALL && result.overall_score !== null) {
+    result.overall_score = null;
+  }
+
+  // An overall score with no recommendation to match reads as a verdict the
+  // evidence cannot support, so the recommendation is restated to agree.
+  if (result.overall_score === null && !/^\s*insufficient/i.test(result.recommendation)) {
+    result.recommendation =
+      "Insufficient evidence — this call did not cover enough to judge the candidate. " +
+      "A follow-up round is needed before any decision.";
+  }
+
+  // A JD nobody probed produces no fit evidence; 0 would read as a bad
+  // candidate rather than as an interview that never asked.
+  if (result.jd_match) {
+    const probed = result.jd_match.requirements.some((r) => r.verdict !== "not_discussed");
+    if (!probed) result.jd_match.fit_score = null;
+  }
+
+  return result;
 }
