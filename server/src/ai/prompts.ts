@@ -1,6 +1,7 @@
 import {
   BEHAVIOURAL_CATEGORIES,
   MATRIX_CATEGORIES,
+  PRIMARY_CATEGORY,
   MIN_SCORED_CATEGORIES_FOR_OVERALL,
   SCORE_BANDS,
   TECHNICAL_CATEGORY,
@@ -117,6 +118,30 @@ Do NOT score DOWN for:
 
 A candidate who is CONFIDENTLY WRONG is a worse hire than one who admits uncertainty and reasons carefully out loud. Score them that way.
 
+COMMUNICATING IN ENGLISH — THE HEAVIEST CATEGORY
+This is a consulting business: these candidates will explain their work to clients, and an answer nobody can follow costs the firm something no matter how good the thinking behind it was. "${PRIMARY_CATEGORY}" therefore carries MORE WEIGHT in "overall_score" than any other category.
+
+Judge how clearly they make themselves UNDERSTOOD — never how they sound. Everything you need is in the transcript:
+- Structure — does an answer go somewhere? A point made, supported and closed beats one that circles.
+- Directness — do they answer the question actually asked, or an adjacent one they would rather answer?
+- Precision — can they name the specific thing (the tool, the number, the step), or only gesture at it?
+- Coherence — do the sentences connect? Can you follow the thread without re-reading it?
+- Economy — do they land the point, or bury it after a long preamble?
+- Comprehension — did they understand the questions? Needing one rephrased is normal; needing several is evidence.
+- Recovery — when an answer came out muddled, did they notice and repair it ("what I mean is…"), or leave it standing?
+
+Hard evidence of a real communication failure, which outweighs your own impression of the text:
+- The recruiter asked them to repeat or clarify something.
+- The recruiter misunderstood an answer and had to be corrected.
+- The recruiter re-asked a question because the first answer missed it.
+Quote these when you find them. They are the difference between "I found this hard to read" and "the person on the call did not follow it".
+
+Even here, do NOT score down for accent (which a transcript cannot show you), for grammar or word order that reads oddly in a second language, or for garbled words that are transcription errors. The question is only whether a listener would understand them and follow their reasoning.
+
+Hold these two side by side, because they are the whole distinction:
+- Heavy non-native phrasing, but answers precisely, in order, and to the question asked → communicates WELL.
+- Effortless native fluency, but talks for two minutes without landing a point → communicates BADLY.
+
 GRADE EVERY QUESTION THE RECRUITER ASKED
 Separately from the matrix, list EVERY substantive question the recruiter put to the candidate, in the order asked, and grade the answer to each. Technical questions are not special here — behavioural and situational answers are graded the same way, because a recruiter judges a candidate on every answer given.
 
@@ -171,7 +196,7 @@ Both directions need evidence, and this is the calibration that matters most:
 - Score BELOW 61 only where the transcript positively shows the candidate falling short: a wrong answer, a gap they conceded, an unclear explanation of something they claim to know. Silence is not weakness — silence is null.
 - Score ABOVE 80 only where the candidate DEMONSTRATED depth: specifics, a trade-off they can defend, a concrete outcome they owned. If you cannot point to a moment that would convince a sceptical hiring manager, it is not above 80 — however well the candidate spoke.
 
-"overall_score" is an integer 0-100, or null. Compute it ONLY over the categories you actually scored (it need not be their mean — weight what this role needs). A null category must never drag it down, and a weakness in something the role does not require must not dominate it.
+"overall_score" is an integer 0-100, or null. Compute it ONLY over the categories you actually scored — it is NOT their mean. Weight "${PRIMARY_CATEGORY}" the most heavily of the five, then what this role specifically needs. A null category must never drag it down, and a weakness in something the role does not require must not dominate it.
 Set "overall_score" to null when fewer than ${MIN_SCORED_CATEGORIES_FOR_OVERALL} of the five categories have a score: below that there is not enough of the person on record to put a single number on them.
 
 "coverage_note" is one or two plain sentences on what this interview did and did not cover. Always fill it in — every score above is read with this as the caveat.

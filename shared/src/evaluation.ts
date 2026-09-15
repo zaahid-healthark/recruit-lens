@@ -20,6 +20,16 @@ export type MatrixCategoryName = (typeof MATRIX_CATEGORIES)[number];
  */
 export const TECHNICAL_CATEGORY: MatrixCategoryName = "Technical Knowledge";
 
+/**
+ * The category that carries the most weight in the overall score.
+ *
+ * These candidates explain their work to clients, so an answer nobody can
+ * follow costs the firm something regardless of the thinking behind it —
+ * which makes clear English the single most decisive category here. It is
+ * about being UNDERSTOOD, never about sounding native; see the prompt.
+ */
+export const PRIMARY_CATEGORY: MatrixCategoryName = "Communication Skills";
+
 /** The categories that behavioural and situational answers bear on. */
 export const BEHAVIOURAL_CATEGORIES: MatrixCategoryName[] = ["Problem Solving", "Cultural Fit"];
 

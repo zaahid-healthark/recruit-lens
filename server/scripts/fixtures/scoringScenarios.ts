@@ -16,6 +16,8 @@ export interface ScenarioExpectation {
   questionAssessment: "present" | "must-be-null";
   /** Inclusive bounds on the technical aggregate, when questions were asked. */
   technicalScore?: { min: number; max: number };
+  /** Inclusive bounds on the Communication Skills category — the heaviest one. */
+  communicationScore?: { min: number; max: number };
   /** Matrix categories that must come back null (the interview never tested them). */
   categoriesMustBeNull?: string[];
   /** Why a human recruiter reaches this verdict — printed on failure. */
@@ -45,6 +47,76 @@ Requirements:
 };
 
 export const SCENARIOS: Scenario[] = [
+  {
+    name: "non-native-but-clear",
+    trap:
+      "Marking down clear thinking because the English is not native. Broken grammar, " +
+      "every answer precise and to the question asked.",
+    jd: DATA_ENGINEER_JD,
+    transcript: `Recruiter: Can you tell me about your experience with Airflow?
+Candidate: Yes. Four year I am using. Currently forty DAG in production, I am owning all.
+
+Recruiter: What happens when a DAG fails halfway through overnight?
+Candidate: Depend which task. Our task is idempotent, so retry is safe — three retry, backoff. If still fail, pager to on-call person. But if the fail is upstream extract, retry is no use, so that one alert immediately, no retry. Then we clear task, backfill from last good watermark.
+
+Recruiter: How do you approach data quality?
+Candidate: Two level. First, row count and null check — this one block the DAG, nothing pass. Second, distribution check — this only warn, because sometime is false alarm. One time a payer change code set and count was looking fine, so now we check also distinct value of code column.
+
+Recruiter: Have you had to explain this to non-technical stakeholders?
+Candidate: Yes, actuary team, every month. Before I show pipeline diagram — no use, they don't care. Now I show one chart only: data freshness against their deadline. This one they understand, and they act on it.
+
+Recruiter: What is your notice period?
+Candidate: Two month.`,
+    expect: {
+      overallScore: { min: 68, max: 100 },
+      recommendationOneOf: ["Strong hire", "Hire"],
+      questionAssessment: "present",
+      communicationScore: { min: 65, max: 100 },
+      rationale:
+        "The grammar is non-native throughout, and not one answer is unclear. Each has a " +
+        "structure, answers what was asked, and names specifics — 40 DAGs, the retry exception " +
+        "and why, a real data-quality incident, and a stakeholder habit they changed on purpose. " +
+        "Nobody on that call had to ask them to repeat anything. This is good communication.",
+    },
+  },
+
+  {
+    name: "fluent-but-unclear",
+    trap:
+      "Mistaking native fluency for clear communication. Effortless English that never " +
+      "lands a point, and a recruiter visibly struggling to follow.",
+    jd: DATA_ENGINEER_JD,
+    transcript: `Recruiter: Can you tell me about your experience with Airflow?
+Candidate: Sure, so I mean, orchestration generally is something I've always found fascinating, right, because ultimately what you're doing is you're expressing dependencies, and dependencies are really the heart of any system, whether that's data or honestly anything else. I've worked in environments where that was handled in a variety of ways, some more elegant than others, and I think what I've taken from that is a real appreciation for the problem space as a whole.
+
+Recruiter: Sorry — do you use Airflow day to day, yes or no?
+Candidate: I'd say I'm very much in that world, absolutely. It's part of the broader ecosystem I operate in, and I'd characterise my relationship with it as hands-on in the sense that matters.
+
+Recruiter: Okay. What happens when a DAG fails halfway through overnight?
+Candidate: So this is where I think philosophy really matters, because failure is inevitable, and the question isn't really whether things break, it's how your organisation metabolises that. I've seen teams that panic and teams that don't, and the difference is almost never technical.
+
+Recruiter: Right, but what do you actually do? Walk me through the steps.
+Candidate: Well, you assess, you communicate, and you resolve. I'm a big believer in not over-engineering the response.
+
+Recruiter: Can you give me a specific incident?
+Candidate: There've been many, honestly. I think they blur together after a while, which is probably a good sign in its own way.
+
+Recruiter: What's your notice period?
+Candidate: Thirty days.`,
+    expect: {
+      overallScore: { min: 0, max: 60 },
+      recommendationOneOf: ["No hire", "Maybe"],
+      questionAssessment: "present",
+      communicationScore: { min: 0, max: 55 },
+      rationale:
+        "The English is effortless and the candidate said nothing. The recruiter had to " +
+        "re-ask three times — 'yes or no', 'what do you actually do', 'give me a specific " +
+        "incident' — which is recorded evidence that the person on the call could not follow " +
+        "the answers. Fluency is not clarity, and this is the failure mode the heaviest " +
+        "category exists to catch.",
+    },
+  },
+
   {
     name: "fluent-but-empty",
     trap: "Score inflation. Confident, articulate, buzzword-dense, and says nothing checkable.",

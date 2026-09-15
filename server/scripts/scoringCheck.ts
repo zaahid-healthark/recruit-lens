@@ -17,6 +17,7 @@
 import {
   BEHAVIOURAL_CATEGORIES,
   MIN_SCORED_CATEGORIES_FOR_OVERALL,
+  PRIMARY_CATEGORY,
   TECHNICAL_CATEGORY,
 } from "@interview-evaluator/shared";
 import { ANSWER_CONSISTENCY_TOLERANCE } from "../src/ai/prompts";
@@ -96,6 +97,16 @@ function checkExpectations(s: Scenario, result: ParsedLlmEvaluation): void {
       s.name,
       `technical answers score ${e.technicalScore.min}-${e.technicalScore.max}`,
       got !== null && got >= e.technicalScore.min && got <= e.technicalScore.max,
+      `got ${got === null ? "null" : got}`
+    );
+  }
+
+  if (e.communicationScore) {
+    const got = categoryScore(result, PRIMARY_CATEGORY);
+    check(
+      s.name,
+      `"${PRIMARY_CATEGORY}" scores ${e.communicationScore.min}-${e.communicationScore.max}`,
+      got !== null && got >= e.communicationScore.min && got <= e.communicationScore.max,
       `got ${got === null ? "null" : got}`
     );
   }
