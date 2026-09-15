@@ -71,12 +71,26 @@ export async function transcribeAudio(
   filePath: string,
   model?: string
 ): Promise<TranscriptionResult> {
+  // Timed in two halves on purpose. "Transcription is slow" is not actionable
+  // until you know whether the minutes go to our own ffmpeg pass or to the
+  // API — and the API already chunks internally (chunking_strategy: "auto"),
+  // so splitting the file ourselves would only help if the API half dominates.
+  const startedAt = Date.now();
   const normalized = await normalizeForTranscription(filePath);
+  const normalizedAt = Date.now();
+  const secs = (from: number, to: number): string => ((to - from) / 1000).toFixed(1);
   try {
     let lastError: unknown = null;
     for (const candidate of candidateModels(model)) {
       try {
-        return await transcribeWithModel(normalized.path, candidate);
+        const result = await transcribeWithModel(normalized.path, candidate);
+        const doneAt = Date.now();
+        log.info(
+          `Transcribed with ${candidate} in ${secs(startedAt, doneAt)}s ` +
+            `(ffmpeg ${secs(startedAt, normalizedAt)}s, API ${secs(normalizedAt, doneAt)}s, ` +
+            `${result.text.length} chars).`
+        );
+        return result;
       } catch (err) {
         lastError = err;
         const status = (err as { status?: number }).status;
