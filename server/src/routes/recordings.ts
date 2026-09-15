@@ -22,6 +22,7 @@ import {
 import { log } from "../lib/logger";
 import { prisma } from "../lib/prisma";
 import { screenRecording } from "../ai/screening";
+import { MAX_CUSTOM_INSTRUCTION_CHARS } from "../ai/prompts";
 import { analyzeAudio, ensureSeekableAudio } from "../services/audio";
 import { evaluateRecording, isEvaluationInFlight } from "../services/pipeline";
 import { storage } from "../storage";
@@ -66,6 +67,12 @@ const importBodySchema = z.object({
   /** Job to screen this candidate against; its JD drives the scoring. */
   jobId: z.string().uuid().optional(),
   /**
+   * Recruiter's steer for this evaluation ("weigh SQL depth heavily", "this is
+   * a junior role"). Directs emphasis only — the evidence rules live in the
+   * system prompt, where typed text cannot reach them.
+   */
+  customInstructions: z.string().trim().max(MAX_CUSTOM_INSTRUCTION_CHARS).optional(),
+  /**
    * Sent by the watched-folder scanner for a call nobody confirmed was an
    * interview. Only these run the screening gate — a share-sheet import or a
    * manual send is already a human saying "this one counts".
@@ -90,6 +97,13 @@ const updateBodySchema = z
     notes: z.string().trim().max(2000).nullable().optional(),
     /** Display filename. The stored file's key is untouched — this is a label. */
     originalFilename: z.string().trim().min(1).max(300).optional(),
+    /** Changed between runs to re-score with a different steer; null clears it. */
+    customInstructions: z
+      .string()
+      .trim()
+      .max(MAX_CUSTOM_INSTRUCTION_CHARS)
+      .nullable()
+      .optional(),
   })
   .refine((v) => Object.keys(v).length > 0, { message: "No fields to update" });
 
@@ -166,6 +180,7 @@ recordingsRouter.post(
         detectedRole: verdict?.detectedRole ?? null,
         callSummary: verdict?.summary ?? null,
         autoImported: body.autoImported ?? false,
+        customInstructions: body.customInstructions || null,
         jobId: body.jobId || null,
       },
       include: { evaluation: true, job: true },
@@ -355,6 +370,9 @@ recordingsRouter.patch(
     }
     if (body.candidateName !== undefined) data.candidateName = body.candidateName || null;
     if (body.notes !== undefined) data.notes = body.notes || null;
+    if (body.customInstructions !== undefined) {
+      data.customInstructions = body.customInstructions || null;
+    }
     if (body.originalFilename !== undefined) data.originalFilename = body.originalFilename;
 
     const updated = await prisma.recording.update({

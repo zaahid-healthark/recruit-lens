@@ -97,7 +97,7 @@ export async function evaluateRecording(recordingId: string): Promise<void> {
       result = mockEvaluation(recording.originalFilename, { job });
       model = "mock-evaluator";
     } else {
-      const outcome = await scoreTranscript(transcriptText, job);
+      const outcome = await scoreTranscript(transcriptText, job, recording.customInstructions);
       result = outcome.result;
       model = outcome.model;
     }

@@ -79,11 +79,12 @@ function parseAndValidate(content: string, hasJob: boolean): ParsedLlmEvaluation
  */
 export async function scoreTranscript(
   transcript: string,
-  job: JobContext | null = null
+  job: JobContext | null = null,
+  customInstructions: string | null = null
 ): Promise<ScoringOutcome> {
   const messages: ChatMessage[] = [
     { role: "system", content: buildScoringSystemPrompt(job) },
-    { role: "user", content: buildScoringUserPrompt(transcript, job) },
+    { role: "user", content: buildScoringUserPrompt(transcript, job, customInstructions) },
   ];
 
   const first = await callChat(messages);

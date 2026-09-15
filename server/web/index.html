@@ -106,6 +106,28 @@
       .btn-sm { padding: 7px 12px; font-size: 12.5px; border-radius: 8px; }
       .row { display: flex; gap: 10px; flex-wrap: wrap; }
 
+      /* Numbered steps — the upload flow reads as a sequence, not a wall of fields */
+      .step { display: flex; gap: 14px; padding: 20px 0; border-top: 1px solid var(--border); }
+      .step:first-of-type { border-top: none; padding-top: 2px; }
+      .step:last-of-type { padding-bottom: 2px; }
+      .step-n {
+        width: 26px; height: 26px; border-radius: 50%; flex: none;
+        background: var(--primary-soft); color: var(--primary);
+        display: grid; place-items: center; font-weight: 800; font-size: 12.5px;
+      }
+      .step-body { flex: 1; min-width: 0; }
+      .step-title { font-size: 14.5px; font-weight: 800; margin-bottom: 2px; }
+      .step-hint { font-size: 12.5px; color: var(--subtext); margin: 0 0 12px; line-height: 1.5; }
+      .optional { font-weight: 600; color: var(--subtext); font-size: 12px; }
+
+      /* Segmented control for the job-description mode */
+      .seg { display: flex; gap: 6px; flex-wrap: wrap; margin-bottom: 12px; }
+      .seg button {
+        padding: 7px 13px; font-size: 12.5px; font-weight: 700; border-radius: 8px;
+        border: 1px solid var(--border); background: var(--card); color: var(--subtext);
+      }
+      .seg button.on { background: var(--primary); border-color: var(--primary); color: #fff; }
+
       /* Drop zone */
       .drop {
         border: 2px dashed var(--border); border-radius: 12px; padding: 26px 18px;
@@ -230,53 +252,94 @@
         <div class="card">
           <h2>Evaluate an interview</h2>
           <p class="hint">
-            Upload the recording of a screening call. It is transcribed, scored against the job
-            description if you attach one, and every technical question the recruiter asked is
-            graded individually.
+            Upload a screening call. It is transcribed, every question the recruiter asked is
+            graded individually, and the candidate is scored against the job description if you
+            attach one.
           </p>
 
-          <div class="field">
-            <div id="drop" class="drop">
-              <strong id="drop-title">Choose an audio file</strong>
-              <span id="drop-sub">or drag it here — MP3, M4A, WAV, AMR, OGG, 3GP</span>
-            </div>
-            <input id="file-input" type="file" accept="audio/*,.amr,.awb,.3gp,.3gpp,.m4a,.opus" class="hidden" />
-          </div>
-
-          <div class="field">
-            <label for="candidate">Candidate name <span class="muted">(optional)</span></label>
-            <input id="candidate" type="text" placeholder="e.g. Priya Sharma" />
-          </div>
-
-          <div class="field">
-            <label for="job-select">Screen against a job description</label>
-            <select id="job-select">
-              <option value="">No job — generic evaluation</option>
-            </select>
-            <p class="hint" style="margin: 7px 0 0">
-              With a JD attached, every requirement is checked off individually and the candidate
-              gets a fit score for this specific role.
-            </p>
-          </div>
-
-          <!-- New-JD sub-form -->
-          <div id="new-job" class="card hidden" style="margin: 0 0 14px; background: var(--bg)">
-            <h3>New job description</h3>
-            <div class="field">
-              <label for="job-title">Job title</label>
-              <input id="job-title" type="text" placeholder="e.g. Senior Data Engineer" />
-            </div>
-            <div class="field">
-              <label>Description</label>
-              <div class="row" style="margin-bottom: 8px">
-                <button id="jd-file-btn" class="btn-ghost btn-sm" type="button">
-                  Load from PDF / Word
-                </button>
-                <span id="jd-file-status" class="muted" style="align-self: center"></span>
+          <!-- Step 1 — the recording -->
+          <div class="step">
+            <div class="step-n">1</div>
+            <div class="step-body">
+              <div class="step-title">The recording</div>
+              <p class="step-hint">The audio file from your phone's call recorder.</p>
+              <div id="drop" class="drop">
+                <strong id="drop-title">Choose an audio file</strong>
+                <span id="drop-sub">or drag it here — MP3, M4A, WAV, AMR, OGG, 3GP</span>
               </div>
-              <input id="jd-file-input" type="file" accept=".pdf,.docx,.doc,.txt,.md" class="hidden" />
-              <textarea id="job-jd" placeholder="…or paste the description here — requirements, skills, experience"></textarea>
-              <p id="jd-count" class="hint" style="margin: 6px 0 0"></p>
+              <input id="file-input" type="file" accept="audio/*,.amr,.awb,.3gp,.3gpp,.m4a,.opus" class="hidden" />
+              <div class="field" style="margin: 12px 0 0">
+                <label for="candidate">Candidate name <span class="optional">— optional</span></label>
+                <input id="candidate" type="text" placeholder="e.g. Priya Sharma" />
+              </div>
+            </div>
+          </div>
+
+          <!-- Step 2 — the job description -->
+          <div class="step">
+            <div class="step-n">2</div>
+            <div class="step-body">
+              <div class="step-title">Job description</div>
+              <p class="step-hint">
+                With a JD attached, each requirement is checked off individually and the candidate
+                gets a fit score for this role — which is also what ranking compares candidates on.
+              </p>
+
+              <div class="seg" id="jd-modes">
+                <button type="button" data-mode="existing" class="on">Saved job</button>
+                <button type="button" data-mode="new">Upload or paste a new one</button>
+                <button type="button" data-mode="none">No JD</button>
+              </div>
+
+              <div id="jd-existing">
+                <select id="job-select"></select>
+              </div>
+
+              <div id="jd-new" class="hidden">
+                <div class="field">
+                  <label for="job-title">Job title</label>
+                  <input id="job-title" type="text" placeholder="e.g. Senior Data Engineer" />
+                </div>
+                <div class="field">
+                  <label>Description</label>
+                  <div class="row" style="margin-bottom: 9px">
+                    <button id="jd-file-btn" class="btn-primary btn-sm" type="button">
+                      Upload PDF / Word / text
+                    </button>
+                    <span id="jd-file-status" class="muted" style="align-self: center"></span>
+                  </div>
+                  <input id="jd-file-input" type="file" accept=".pdf,.docx,.doc,.txt,.md" class="hidden" />
+                  <textarea id="job-jd" placeholder="…or paste the description here — requirements, skills, experience"></textarea>
+                  <p id="jd-count" class="hint" style="margin: 6px 0 0"></p>
+                </div>
+              </div>
+
+              <div id="jd-none" class="hidden">
+                <p class="muted" style="margin: 0">
+                  Generic evaluation — the candidate is scored on the interview itself, with no
+                  requirement-by-requirement matching and no fit score.
+                </p>
+              </div>
+            </div>
+          </div>
+
+          <!-- Step 3 — the steer -->
+          <div class="step">
+            <div class="step-n">3</div>
+            <div class="step-body">
+              <div class="step-title">
+                Custom instructions <span class="optional">— optional</span>
+              </div>
+              <p class="step-hint">
+                Anything specific you want weighed for this candidate. Directs what the scoring
+                pays attention to; it cannot invent evidence that is not in the call.
+              </p>
+              <textarea
+                id="instructions"
+                style="min-height: 88px"
+                placeholder="e.g. Weigh hands-on SQL depth above everything else. This is a junior role, so calibrate to 1–2 years. Ignore the missing cloud experience — we will train for it."
+              ></textarea>
+              <p id="instr-count" class="hint" style="margin: 6px 0 0"></p>
             </div>
           </div>
 
@@ -462,17 +525,41 @@
         $("candidate").value = "";
         $("job-title").value = "";
         $("job-jd").value = "";
+        $("instructions").value = "";
         $("jd-file-status").textContent = "";
         $("job-select").value = "";
-        $("new-job").classList.add("hidden");
+        setJdMode("existing");
         $("upload-error").classList.add("hidden");
         updateJdCount();
+        updateInstrCount();
         refreshSubmit();
       }
 
       /** Mirrors MIN_JD_CHARS in server/src/routes/jobs.ts. */
       const MIN_JD_CHARS = 40;
-      const creatingJob = () => $("job-select").value === "__new__";
+      /** Mirrors MAX_CUSTOM_INSTRUCTION_CHARS in server/src/ai/prompts.ts. */
+      const MAX_INSTRUCTION_CHARS = 2000;
+
+      // "existing" | "new" | "none" — which of the three job-description routes
+      // is showing. Held here rather than read off the DOM so the submit
+      // handler cannot disagree with what the user can see.
+      let jdMode = "existing";
+
+      function setJdMode(mode) {
+        jdMode = mode;
+        $("jd-modes")
+          .querySelectorAll("button")
+          .forEach((b) => b.classList.toggle("on", b.dataset.mode === mode));
+        $("jd-existing").classList.toggle("hidden", mode !== "existing");
+        $("jd-new").classList.toggle("hidden", mode !== "new");
+        $("jd-none").classList.toggle("hidden", mode !== "none");
+        refreshSubmit();
+      }
+
+      $("jd-modes").addEventListener("click", (e) => {
+        const btn = e.target.closest("button[data-mode]");
+        if (btn) setJdMode(btn.dataset.mode);
+      });
 
       function updateJdCount() {
         const n = $("job-jd").value.trim().length;
@@ -484,19 +571,28 @@
               : "Each requirement will be checked off individually against the candidate.";
       }
 
-      function refreshSubmit() {
-        const jobOk =
-          !creatingJob() ||
-          ($("job-title").value.trim().length > 0 && $("job-jd").value.trim().length >= MIN_JD_CHARS);
-        $("submit").disabled = !chosenFile || !jobOk;
+      function updateInstrCount() {
+        const n = $("instructions").value.trim().length;
+        $("instr-count").textContent =
+          n === 0
+            ? ""
+            : n > MAX_INSTRUCTION_CHARS
+              ? n - MAX_INSTRUCTION_CHARS + " characters over the limit — trim it to " + MAX_INSTRUCTION_CHARS + "."
+              : n + " / " + MAX_INSTRUCTION_CHARS + " characters";
       }
 
-      $("job-select").addEventListener("change", () => {
-        $("new-job").classList.toggle("hidden", !creatingJob());
-        refreshSubmit();
-      });
+      function refreshSubmit() {
+        const jobOk =
+          jdMode !== "new" ||
+          ($("job-title").value.trim().length > 0 && $("job-jd").value.trim().length >= MIN_JD_CHARS);
+        const instrOk = $("instructions").value.trim().length <= MAX_INSTRUCTION_CHARS;
+        $("submit").disabled = !chosenFile || !jobOk || !instrOk;
+      }
+
+      $("job-select").addEventListener("change", refreshSubmit);
       $("job-title").addEventListener("input", refreshSubmit);
       $("job-jd").addEventListener("input", () => { updateJdCount(); refreshSubmit(); });
+      $("instructions").addEventListener("input", () => { updateInstrCount(); refreshSubmit(); });
 
       // JD from a document — the server extracts the text; nothing is stored.
       $("jd-file-btn").addEventListener("click", () => $("jd-file-input").click());
@@ -530,8 +626,8 @@
         btn.disabled = true;
         $("upload-error").classList.add("hidden");
         try {
-          let jobId = $("job-select").value;
-          if (jobId === "__new__") {
+          let jobId = jdMode === "existing" ? $("job-select").value : "";
+          if (jdMode === "new") {
             btn.innerHTML = '<span class="spin"></span>Saving job description…';
             const job = await api("/jobs", {
               method: "POST",
@@ -555,6 +651,8 @@
           const name = $("candidate").value.trim();
           if (name) form.append("candidateName", name);
           if (jobId) form.append("jobId", jobId);
+          const steer = $("instructions").value.trim();
+          if (steer) form.append("customInstructions", steer);
 
           const rec = await api("/recordings", { method: "POST", body: form });
           await api("/recordings/" + rec.id + "/evaluate", { method: "POST" });
@@ -631,6 +729,37 @@
         );
       }
 
+      /**
+       * Set a steer and (re-)run the scoring.
+       *
+       * Offered on every report, including ones that have not been evaluated
+       * yet or that failed — those are precisely the moments someone wants to
+       * add direction and try again, and hiding it there would send them back
+       * to the upload form to start over.
+       */
+      function reRunCard(rec, hasEvaluation) {
+        return (
+          '<div class="card"><h3>' +
+          (hasEvaluation ? "Re-run this evaluation" : "Evaluate this recording") +
+          "</h3>" +
+          '<p class="hint" style="margin:0 0 10px">' +
+          (hasEvaluation
+            ? "Re-scoring reuses the stored transcript, so it costs only the scoring step, not " +
+              "transcription. Change what it should weigh and run it again."
+            : "Add anything you want weighed for this candidate, then run it.") +
+          "</p>" +
+          '<textarea id="re-instructions" style="min-height:80px" placeholder="e.g. Weigh hands-on SQL depth above everything else. Junior role — calibrate to 1–2 years.">' +
+          esc(rec.customInstructions || "") +
+          "</textarea>" +
+          '<div class="row" style="margin-top:10px">' +
+          '<button class="btn-primary btn-sm" id="re-run">' +
+          (hasEvaluation ? "Re-evaluate" : "Evaluate") +
+          "</button>" +
+          '<span id="re-status" class="muted" style="align-self:center"></span>' +
+          "</div></div>"
+        );
+      }
+
       function renderReport(rec) {
         const e = rec.evaluation;
         const title = rec.candidateName || rec.originalFilename;
@@ -647,12 +776,18 @@
           '<div id="audio-slot"></div></div>';
 
         if (rec.status === "FAILED" || !e) {
-          html +=
-            '<div class="card"><div class="callout err">' +
-            esc(rec.errorMessage || "This recording could not be evaluated.") +
-            "</div></div>";
+          // An unevaluated recording is not an error — it simply has not been
+          // run yet, and saying "could not be evaluated" would be a lie.
+          if (rec.status === "FAILED") {
+            html +=
+              '<div class="card"><div class="callout err">' +
+              esc(rec.errorMessage || "This recording could not be evaluated.") +
+              "</div></div>";
+          }
+          html += reRunCard(rec, false);
           $("report").innerHTML = html;
           wireAudio(rec.id);
+          wireReRun(rec.id);
           show("view-report");
           return;
         }
@@ -667,7 +802,19 @@
         if (e.coverageNote) {
           html += '<div class="callout">' + esc(e.coverageNote) + "</div>";
         }
+        // The steer this run was scored under, so a surprising verdict can be
+        // read against what the scorer was told to weigh.
+        if (rec.customInstructions) {
+          html +=
+            '<div class="callout warn"><span><b>Scored with your instructions:</b> ' +
+            esc(rec.customInstructions) + "</span></div>";
+        }
         html += "</div>";
+
+        // Re-running is cheap — the transcript is reused, so only the scoring
+        // step is paid for again. That makes adjusting the steer a normal
+        // thing to do rather than something to agonise over.
+        html += reRunCard(rec, true);
 
         // ── Graded Q&A — only when the recruiter actually asked something ──
         if (e.questionAssessment) {
@@ -780,7 +927,34 @@
 
         $("report").innerHTML = html;
         wireAudio(rec.id);
+        wireReRun(rec.id);
         show("view-report");
+      }
+
+      /**
+       * Save the edited steer, then re-score. PATCH first so the instructions
+       * are persisted before the pipeline reads them — the pipeline takes them
+       * off the recording row, not from the evaluate request.
+       */
+      function wireReRun(id) {
+        const btn = $("re-run");
+        if (!btn) return;
+        btn.addEventListener("click", async () => {
+          btn.disabled = true;
+          $("re-status").textContent = "Starting…";
+          try {
+            await api("/recordings/" + id, {
+              method: "PATCH",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({ customInstructions: $("re-instructions").value.trim() || null }),
+            });
+            await api("/recordings/" + id + "/evaluate", { method: "POST" });
+            pollUntilDone(id);
+          } catch (err) {
+            btn.disabled = false;
+            $("re-status").textContent = err.message;
+          }
+        });
       }
 
       /**
@@ -970,16 +1144,21 @@
         try {
           const jobs = await api("/jobs");
           const sel = $("job-select");
-          sel.innerHTML =
-            '<option value="">No job — generic evaluation</option>' +
-            jobs
-              .map(
-                (j) =>
-                  '<option value="' + j.id + '">' + esc(j.title) +
-                  (j.recordingCount ? " (" + j.recordingCount + " screened)" : "") + "</option>"
-              )
-              .join("") +
-            '<option value="__new__">＋ Add a new job description…</option>';
+          if (!jobs.length) {
+            // Nothing saved yet, so "Saved job" would be an empty dropdown —
+            // start on the route that actually gets them somewhere.
+            sel.innerHTML = '<option value="">No saved jobs yet</option>';
+            setJdMode("new");
+            return;
+          }
+          sel.innerHTML = jobs
+            .map(
+              (j) =>
+                '<option value="' + j.id + '">' + esc(j.title) +
+                (j.recordingCount ? " (" + j.recordingCount + " screened)" : "") + "</option>"
+            )
+            .join("");
+          refreshSubmit();
         } catch (err) { /* 401 already handled */ }
       }
 

@@ -206,6 +206,7 @@ export function toRecordingListItemDto(
     importedAt: r.importedAt.toISOString(),
     candidateName: r.candidateName,
     notes: r.notes,
+    customInstructions: r.customInstructions,
     detectedRole: r.detectedRole,
     callSummary: r.callSummary,
     autoImported: r.autoImported,

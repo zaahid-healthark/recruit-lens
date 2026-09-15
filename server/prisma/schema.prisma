@@ -55,6 +55,10 @@ model Recording {
   /// True when the app sent this without a human confirming it was an
   /// interview — the only recordings the screening gate runs on.
   autoImported          Boolean         @default(false)
+  /// Free-text steer the recruiter attached for this evaluation ("focus on
+  /// SQL depth", "this is a junior role"). Directs emphasis only — it cannot
+  /// loosen the evidence rules the scoring contract enforces.
+  customInstructions    String?
   /// Job being screened for. SetNull so deleting a job never destroys recordings.
   jobId                 String?
   job                   Job?            @relation(fields: [jobId], references: [id], onDelete: SetNull)

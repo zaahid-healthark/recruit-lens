@@ -127,6 +127,11 @@ export interface RecordingListItemDto {
   importedAt: string;
   candidateName: string | null;
   notes: string | null;
+  /**
+   * Free-text steer the recruiter attached for this evaluation. Directs what
+   * the scorer weighs; it cannot relax the evidence rules.
+   */
+  customInstructions: string | null;
   /** The job this candidate is being screened for, if any. */
   job: JobRefDto | null;
   /** Role the screening gate heard discussed; null unless auto-imported. */
