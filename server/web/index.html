@@ -441,6 +441,11 @@
         padding: 0 4px 12px;
       }
       .filter-btn { display: inline-flex; align-items: center; gap: 7px; }
+      .filter-btn.on {
+        background: var(--primary); border-color: var(--primary); color: var(--on-primary);
+      }
+      .filter-btn.on:hover { background: var(--primary-hover); }
+      .filter-btn.on .filter-badge { background: var(--on-primary); color: var(--primary); }
       .filter-badge {
         min-width: 18px; height: 18px; padding: 0 5px; border-radius: 9px;
         background: var(--primary); color: var(--on-primary);
@@ -679,7 +684,7 @@
             <div class="step-body">
               <div id="drop" class="drop">
                 <strong id="drop-title">Choose an audio file</strong>
-                <span id="drop-sub">or drag it here — MP3, M4A, WAV, AMR, OGG, 3GP</span>
+                <span id="drop-sub"></span>
               </div>
               <input id="file-input" type="file" accept="audio/*,.amr,.awb,.3gp,.3gpp,.m4a,.opus" class="hidden" />
               <div class="field" style="margin: 12px 0 0">
@@ -1154,7 +1159,7 @@
         $("file-input").value = "";
         drop.classList.remove("has-file");
         $("drop-title").textContent = "Choose an audio file";
-        $("drop-sub").textContent = "or drag it here — MP3, M4A, WAV, AMR, OGG, 3GP";
+        $("drop-sub").textContent = "";
         $("candidate").value = "";
         $("job-title").value = "";
         $("job-jd").value = "";
@@ -2388,9 +2393,16 @@
         $("filter-badge").classList.toggle("hidden", n === 0);
       }
 
+      /** Keeps the button's pressed look and the panel's visibility in step. */
+      function setFilterPanel(open) {
+        $("filter-panel").classList.toggle("hidden", !open);
+        $("btn-filter").classList.toggle("on", open);
+        $("btn-filter").setAttribute("aria-expanded", open ? "true" : "false");
+      }
+
       $("btn-filter").addEventListener("click", () => {
         const panel = $("filter-panel");
-        panel.classList.toggle("hidden");
+        setFilterPanel(panel.classList.contains("hidden"));
         if (!panel.classList.contains("hidden")) {
           // Populate the job list lazily — it is only needed once the panel opens.
           const sel = $("f-job");
@@ -2400,13 +2412,14 @@
           sel.value = filters.jobId;
         }
       });
-      $("f-close").addEventListener("click", () => $("filter-panel").classList.add("hidden"));
+      $("f-close").addEventListener("click", () => setFilterPanel(false));
 
       $("f-clear").addEventListener("click", () => {
         filters.q = ""; filters.jobId = ""; filters.status = ""; filters.since = ""; filters.trash = false;
         $("f-q").value = ""; $("f-job").value = ""; $("f-status").value = "";
         $("f-since").value = ""; $("f-trash").checked = false;
         syncFilterBadge();
+        setFilterPanel(false);
         loadRecent();
       });
 
