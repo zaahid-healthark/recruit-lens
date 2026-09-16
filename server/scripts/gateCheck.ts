@@ -95,10 +95,10 @@ import { applyScoringGuards } from "../src/schemas/evaluationSchema";
 
 function guardCase(
   label: string,
-  verdicts: Array<"strong" | "adequate" | "weak">,
+  verdicts: Array<"strong" | "adequate" | "weak" | "not_answered">,
   scores: number[],
   overall: number,
-  expected: number
+  expect: { overall: number; questions?: number[]; technical?: number }
 ): boolean {
   const evaluation = {
     overall_score: overall,
@@ -113,14 +113,25 @@ function guardCase(
         question: "q" + i, kind: "technical", answer_summary: "", verdict: v,
         score: scores[i], evidence: "",
       })),
-      technical_score: 58, behavioural_score: null, summary: "",
+      technical_score: Math.min(...scores), behavioural_score: null, summary: "",
     },
     jd_match: null,
   } as any;
-  const got = applyScoringGuards(evaluation).overall_score;
-  const ok = got === expected;
-  console.log((ok ? "PASS  " : "FAIL  ") + label.padEnd(38) + "overall " + got +
-    (ok ? "" : `  (expected ${expected})`));
+
+  const out = applyScoringGuards(evaluation);
+  const gotQ: number[] = out.question_assessment.questions.map((q: any) => q.score);
+  const gotT: number = out.question_assessment.technical_score;
+  const ok =
+    out.overall_score === expect.overall &&
+    (!expect.questions || expect.questions.every((v, i) => v === gotQ[i])) &&
+    (expect.technical === undefined || expect.technical === gotT);
+  console.log(
+    (ok ? "PASS  " : "FAIL  ") + label.padEnd(38) +
+    `overall ${out.overall_score}  answers [${gotQ.join(", ")}]  technical ${gotT}` +
+    (ok ? "" : `   (expected overall ${expect.overall}` +
+      (expect.questions ? `, answers [${expect.questions.join(", ")}]` : "") +
+      (expect.technical !== undefined ? `, technical ${expect.technical}` : "") + ")")
+  );
   return ok;
 }
 
@@ -136,16 +147,25 @@ for (const c of CASES) {
     console.log("        " + c.why);
   }
 }
+
 console.log();
 const guards: boolean[] = [
   // The real call: 49 contradicted three acceptable answers; floored to the worst of them.
-  guardCase("REAL: all adequate, overall 49", ["adequate", "adequate", "adequate"], [58, 60, 56], 49, 56),
+  guardCase("REAL: all adequate, overall 49", ["adequate", "adequate", "adequate"], [58, 60, 56], 49,
+    { overall: 56, questions: [58, 60, 56], technical: 56 }),
+  // A correct-but-general answer scored into the weak range is the drift this catches.
+  guardCase("adequate scored down to 45", ["adequate", "adequate"], [45, 52], 44,
+    { overall: 55, questions: [55, 55], technical: 55 }),
+  // The clamp works downward too: a weak answer cannot be scored as a pass.
+  guardCase("weak scored up to 70", ["weak", "adequate"], [70, 60], 60,
+    { overall: 60, questions: [54, 60] }),
   // Floors at the candidate's OWN worst answer, so it cannot manufacture a pass.
-  guardCase("all adequate but genuinely weak", ["adequate", "adequate"], [40, 42], 30, 40),
-  // One weak answer and the floor does not apply at all.
-  guardCase("one weak answer present", ["adequate", "weak"], [60, 30], 45, 45),
+  guardCase("all adequate but genuinely weak", ["adequate", "adequate"], [56, 57], 30,
+    { overall: 56, technical: 56 }),
+  // One weak answer and the overall floor does not apply at all.
+  guardCase("one weak answer present", ["adequate", "weak"], [60, 30], 45, { overall: 45 }),
   // Never lowers a score the model already put above the answers.
-  guardCase("overall already above answers", ["adequate", "adequate"], [58, 60], 70, 70),
+  guardCase("overall already above answers", ["adequate", "adequate"], [58, 60], 70, { overall: 70 }),
 ];
 failed += guards.filter((ok) => !ok).length;
 

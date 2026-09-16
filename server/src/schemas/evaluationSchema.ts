@@ -8,6 +8,7 @@ import {
   OTHER_VALUE,
   QUESTION_KINDS,
   TECHNICAL_CATEGORY,
+  VERDICT_SCORE_RANGES,
 } from "@interview-evaluator/shared";
 import { z } from "zod";
 import { ANSWER_CONSISTENCY_TOLERANCE } from "../ai/prompts";
@@ -317,6 +318,38 @@ export function applyScoringGuards(result: ParsedLlmEvaluation): ParsedLlmEvalua
     result.recommendation =
       "Insufficient evidence — this call did not cover enough to judge the candidate. " +
       "A follow-up round is needed before any decision.";
+  }
+
+  // The verdict is the judgement; the score only reports it. They were drifting
+  // apart — answers graded "adequate" came back at 56-58, which reads as a near
+  // miss when the verdict already said the candidate answered the question.
+  //
+  // A technical answer in this call gets about a minute, so a correct but
+  // general answer is the expected good outcome. Specificity moves a score
+  // WITHIN its verdict's range; its absence never drops one out of the bottom.
+  const qa = result.question_assessment;
+  if (qa) {
+    for (const q of qa.questions) {
+      const range = VERDICT_SCORE_RANGES[q.verdict];
+      if (range) q.score = Math.min(range.max, Math.max(range.min, q.score));
+    }
+
+    // The aggregates follow the answers they aggregate. Clamping a score up and
+    // leaving the total beneath it would just move the contradiction.
+    const floorFor = (kinds: string[]): number | null => {
+      const of = qa.questions.filter((q) => kinds.includes(q.kind));
+      if (of.length === 0) return null;
+      if (!of.every((q) => q.verdict === "strong" || q.verdict === "adequate")) return null;
+      return Math.min(...of.map((q) => q.score));
+    };
+    const tech = floorFor(["technical"]);
+    if (tech !== null && qa.technical_score !== null && qa.technical_score < tech) {
+      qa.technical_score = tech;
+    }
+    const behav = floorFor(["behavioural", "situational"]);
+    if (behav !== null && qa.behavioural_score !== null && qa.behavioural_score < behav) {
+      qa.behavioural_score = behav;
+    }
   }
 
   // A candidate cannot be rated below the worst answer they gave, when every

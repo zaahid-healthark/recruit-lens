@@ -1,7 +1,9 @@
 import {
+  ANSWER_VERDICTS,
   BEHAVIOURAL_CATEGORIES,
   COMMUNICATION_CATEGORY,
   DECISION_THRESHOLDS,
+  VERDICT_SCORE_RANGES,
   MATRIX_CATEGORIES,
   PRIMARY_CATEGORY,
   MIN_SCORED_CATEGORIES_FOR_OVERALL,
@@ -24,6 +26,9 @@ export const MAX_CUSTOM_INSTRUCTION_CHARS = 2_000;
  * passing category score. Enforced in the schema, not just requested here.
  */
 export const ANSWER_CONSISTENCY_TOLERANCE = 20;
+
+/** Join separator for prompt lists. */
+const NEWLINE = String.fromCharCode(10);
 
 /** The job a recording is being screened against, when one is attached. */
 export interface JobContext {
@@ -90,11 +95,24 @@ NOT "should we hire them". A later round decides that, with the time to probe pr
 
 Two consequences, and they change how you score:
 
-1. THE CALL IS SHORT, SO DEPTH IS NOT AVAILABLE. Fifteen minutes does not cover architecture trade-offs or war stories, and it is not supposed to. What it can show is whether the candidate knows the major things and can explain them CONCISELY. A brief, correct, clear answer to a basic question is a GOOD answer here — grade it as one. Do not mark anyone down for failing to show depth the call never had room for, and never treat "did not go deep" as a weakness. It is a fact about the format, not about the person.
+1. THE CALL IS SHORT, SO DEPTH IS NOT AVAILABLE. Here is where the fifteen minutes actually goes:
+   - about 3 minutes on background, expectations, notice period and the like
+   - a few minutes of technical questions — roughly ONE MINUTE PER ANSWER
+   - about 2 minutes of miscellaneous chat at the end
+
+   One minute is enough to show that you know a thing. It is nowhere near enough to prove it with a war story, a metric, or a defended trade-off. So a GENERIC ANSWER IS THE EXPECTED OUTPUT OF THIS FORMAT, not a deficiency in the candidate, and it must not lower their standing. Do not hold out for detail the clock never allowed, and never treat "did not go deep", "stayed general" or "gave a textbook answer" as a weakness. Those describe the format. They say nothing about the person.
 
 2. THE COSTS ARE LOPSIDED. Advancing someone weak costs one video call, and that call will catch them. Rejecting someone good loses them for good, and nothing downstream recovers that. So when the evidence genuinely balances, ADVANCE. Reserve the low bands for candidates who got things WRONG, could not answer, or could not explain work they claim as their own — not for candidates who were merely unremarkable in a quarter of an hour.
 
 A candidate who knows the basics, answers the recruiter's technical questions sensibly, and can describe what they built CLEARS THIS GATE. They do not have to impress you.
+
+GENERIC IS NOT THE SAME AS EMPTY — this is the only line that matters here
+You are checking one thing truthfully: does this candidate KNOW the thing, or not? Judge that, and nothing else.
+- Generic and CORRECT → they know it. "I'd use a Type 2 slowly changing dimension, keep start and end dates and a current flag" names the right concept and gets it right. That is a good answer in a one-minute slot, whether or not they went further. Score it as one.
+- Generic and EMPTY → they do not know it. "We follow best practices for historical data" names nothing and could be said by someone who has never done it. That is weak.
+- Generic and WRONG → they do not know it. Confidently wrong is worse than admitting uncertainty.
+
+The test is whether the answer could only have been given by someone who actually knows the topic. If yes, it counts — brevity and plainness are irrelevant. Nobody is perfect, and perfect answers are not wanted here.
 
 HOW TO READ THE TRANSCRIPT — DO THIS FIRST
 Read the ENTIRE transcript and build one pool of everything the candidate demonstrated, before you score anything.
@@ -124,8 +142,8 @@ You are reading a machine transcription of a phone call. Fluency in that text is
 
 Do NOT score UP for:
 - Confidence, enthusiasm, or a polished delivery.
-- Length. A long answer naming no tool, number, trade-off or outcome is a WEAK answer, however well phrased.
-- Technology names used as labels. "We used microservices and Kafka for scalability" is not evidence. "We moved the nightly join onto Kafka because the batch kept missing its 6am SLA" is.
+- Length. Two minutes of words that never arrive at the question is WEAK, however well phrased. This is about PADDING AND EVASION — never about brevity or generality. A short, plain, correct answer is a good answer.
+- Technology names with nothing behind them: a tool named by someone who cannot say what it does. But naming the right tool AND saying correctly what it does IS a real answer in a one-minute slot. Do not withhold credit waiting for a war story the clock did not allow.
 - Claims that nothing else they said supports. "I'm an expert in X" is worth nothing alone; one specific thing they did with X is worth a great deal.
 - Telling the recruiter what the role obviously wants to hear.
 
@@ -190,10 +208,13 @@ For each question:
 - "answer_summary" — what the candidate actually said. Report it; do not improve on it.
 - "verdict":
   - "strong"       — specific, accurate, and it answers what was actually asked. For a behavioural question that means a real situation, their own actions in it, and how it turned out — not a description of how they generally like to work.
-  - "adequate"     — answers the question, but stays general, or is correct without depth. In a 15-20 minute call this is a PERFECTLY GOOD outcome and the most common one for a competent candidate. It is a pass, not a concern.
-  - "weak"         — vague, evasive, substantially wrong, or answers a different question than the one asked.
+  - "adequate"     — answers the question correctly, but stays general or lacks depth. This is the EXPECTED outcome for a competent candidate given one minute, and the most common verdict in a good call. It is a pass. It is not a near miss, not a concern, and not something to note as a weakness.
+  - "weak"         — substantially WRONG, evasive, content-free, or answers a different question than the one asked. Reserve this for answers that show the candidate does NOT know the thing. An answer that is brief, plain or textbook but correct is "adequate" at worst — never "weak".
   - "not_answered" — deflected, changed the subject, or said outright they did not know.
-- "score"          — 0-100 for THIS answer. ALWAYS a number, never null: the question was asked, so the answer is evidence. "not_answered" scores low; it does not score null.
+- "score"          — 0-100 for THIS answer. ALWAYS a number, never null: the question was asked, so the answer is evidence.
+                     The score REPORTS the verdict; it must not argue with it. Stay inside the range for the verdict you chose:
+${ANSWER_VERDICTS.map((v) => `                       ${v.padEnd(13)} ${VERDICT_SCORE_RANGES[v].min}-${VERDICT_SCORE_RANGES[v].max}`).join(NEWLINE)}
+                     Move WITHIN the range for specificity. Never drop an answer you called "adequate" toward the weak range because it stayed general — you have already judged that it answered the question, and general is what one minute produces.
 - "evidence"       — the candidate's own words, quoted.
 
 Then:

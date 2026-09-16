@@ -235,6 +235,30 @@ export const ANSWER_VERDICT_LABELS: Record<AnswerVerdict, string> = {
   not_answered: "Could not answer",
 };
 
+/**
+ * The score range each verdict must fall in.
+ *
+ * The verdict is the judgement; the number only reports it. They were drifting
+ * apart — answers graded "adequate" came back at 56-58, which reads as a near
+ * miss when the verdict already said the candidate answered the question.
+ *
+ * The ranges are set for the format. A technical answer in this call gets
+ * roughly ONE MINUTE, which is not enough to produce war stories or metrics,
+ * so a correct but general answer is the expected good outcome and is scored
+ * as one. Specificity lifts an answer within its range; its absence never
+ * drops one below "they knew this". Only being WRONG or EMPTY does that.
+ */
+export const VERDICT_SCORE_RANGES: Record<AnswerVerdict, { min: number; max: number }> = {
+  /** Correct and they clearly know it. A concrete detail lifts it; brevity does not lower it. */
+  strong: { min: 70, max: 100 },
+  /** Correct but general — the NORMAL good answer in a one-minute slot. */
+  adequate: { min: 55, max: 85 },
+  /** Wrong, or words with no content in them. Not merely short or unelaborated. */
+  weak: { min: 20, max: 54 },
+  /** Deflected, or said outright they did not know. */
+  not_answered: { min: 0, max: 30 },
+};
+
 export interface LlmQuestionResult {
   /** The question as asked, tightened to one sentence if the recruiter rambled. */
   question: string;
