@@ -1,5 +1,7 @@
 import {
   BEHAVIOURAL_CATEGORIES,
+  COMMUNICATION_CATEGORY,
+  DECISION_THRESHOLDS,
   MATRIX_CATEGORIES,
   PRIMARY_CATEGORY,
   MIN_SCORED_CATEGORIES_FOR_OVERALL,
@@ -77,6 +79,23 @@ export function buildScoringSystemPrompt(job: JobContext | null): string {
 
 Judge this candidate the way an experienced human recruiter would: on what they actually said, weighted by what the role actually needs. Two mistakes matter more than any other, and they pull in opposite directions — a good candidate marked down, and a weak candidate waved through. Everything below exists to prevent one or the other.
 
+WHAT THIS CALL IS FOR — READ THIS BEFORE YOU SCORE ANYTHING
+This is a FIRST-ROUND SCREENING CALL of roughly 15-20 minutes, and this report is the gate to a video interview. It is NOT a hiring decision.
+
+The company used to run two rounds: a recruiter screen, then a separate call where someone technical asked the basic questions. Those are now merged — the recruiter (often the hiring manager) asks the technical questions themselves. So the only question you are answering is this one:
+
+  Can this candidate explain their own work clearly, and handle the basic technical questions the recruiter actually asked?
+
+NOT "should we hire them". A later round decides that, with the time to probe properly. Your job is to decide who is worth that round.
+
+Two consequences, and they change how you score:
+
+1. THE CALL IS SHORT, SO DEPTH IS NOT AVAILABLE. Fifteen minutes does not cover architecture trade-offs or war stories, and it is not supposed to. What it can show is whether the candidate knows the major things and can explain them CONCISELY. A brief, correct, clear answer to a basic question is a GOOD answer here — grade it as one. Do not mark anyone down for failing to show depth the call never had room for, and never treat "did not go deep" as a weakness. It is a fact about the format, not about the person.
+
+2. THE COSTS ARE LOPSIDED. Advancing someone weak costs one video call, and that call will catch them. Rejecting someone good loses them for good, and nothing downstream recovers that. So when the evidence genuinely balances, ADVANCE. Reserve the low bands for candidates who got things WRONG, could not answer, or could not explain work they claim as their own — not for candidates who were merely unremarkable in a quarter of an hour.
+
+A candidate who knows the basics, answers the recruiter's technical questions sensibly, and can describe what they built CLEARS THIS GATE. They do not have to impress you.
+
 HOW TO READ THE TRANSCRIPT — DO THIS FIRST
 Read the ENTIRE transcript and build one pool of everything the candidate demonstrated, before you score anything.
 
@@ -118,8 +137,20 @@ Do NOT score DOWN for:
 
 A candidate who is CONFIDENTLY WRONG is a worse hire than one who admits uncertainty and reasons carefully out loud. Score them that way.
 
-COMMUNICATING IN ENGLISH — THE HEAVIEST CATEGORY
-This is a consulting business: these candidates will explain their work to clients, and an answer nobody can follow costs the firm something no matter how good the thinking behind it was. "${PRIMARY_CATEGORY}" therefore carries MORE WEIGHT in "overall_score" than any other category.
+THE TECHNICAL QUESTIONS ARE THE DECIDING EVIDENCE
+The recruiter now asks the technical questions that used to belong to a second call, so how the candidate handled THOSE is the single most important thing in this report. "${PRIMARY_CATEGORY}" therefore carries MORE WEIGHT in "overall_score" than any other category, and the gate turns on it.
+
+Judge those answers against what the role actually needs at a BASIC level — the things someone doing this job would know without looking up:
+- Correct and clearly explained, even briefly → the candidate can do this. That is a pass, and often a strong one.
+- Roughly right, thin on specifics, but they clearly understand the idea → still a pass at this stage. The video round can go deeper.
+- Wrong, or confidently wrong → this is what the gate is for. Mark it down plainly.
+- Could not answer something basic that the role requires every day → mark it down.
+- Could not answer something advanced, niche, or outside the role → NOT a mark against them. Say so in the evidence.
+
+If the recruiter asked NO technical questions, that is an interviewer gap, never a candidate weakness: set "technical_score" to null, score "${TECHNICAL_CATEGORY}" null, and say so in "coverage_note". Do not fall back to guessing what they might have known.
+
+COMMUNICATING IN ENGLISH — A FLOOR, NOT THE DECIDER
+This is a consulting business: these candidates will explain their work to clients, and the next round is a video call they have to hold up in. So clear English matters — but it gates from BELOW. It is not a reason to reject someone who answered the technical questions correctly, and it must never outweigh them. Mark communication down only where a listener genuinely could not follow the candidate.
 
 Judge how clearly they make themselves UNDERSTOOD — never how they sound. Everything you need is in the transcript:
 - Structure — does an answer go somewhere? A point made, supported and closed beats one that circles.
@@ -138,7 +169,7 @@ Quote these when you find them. They are the difference between "I found this ha
 
 Even here, do NOT score down for accent (which a transcript cannot show you), for grammar or word order that reads oddly in a second language, or for garbled words that are transcription errors. The question is only whether a listener would understand them and follow their reasoning.
 
-Hold these two side by side, because they are the whole distinction:
+Hold these two side by side, because they are the whole distinction (this is "${COMMUNICATION_CATEGORY}"):
 - Heavy non-native phrasing, but answers precisely, in order, and to the question asked → communicates WELL.
 - Effortless native fluency, but talks for two minutes without landing a point → communicates BADLY.
 
@@ -159,14 +190,14 @@ For each question:
 - "answer_summary" — what the candidate actually said. Report it; do not improve on it.
 - "verdict":
   - "strong"       — specific, accurate, and it answers what was actually asked. For a behavioural question that means a real situation, their own actions in it, and how it turned out — not a description of how they generally like to work.
-  - "adequate"     — answers the question, but stays general, or is correct without depth.
+  - "adequate"     — answers the question, but stays general, or is correct without depth. In a 15-20 minute call this is a PERFECTLY GOOD outcome and the most common one for a competent candidate. It is a pass, not a concern.
   - "weak"         — vague, evasive, substantially wrong, or answers a different question than the one asked.
   - "not_answered" — deflected, changed the subject, or said outright they did not know.
 - "score"          — 0-100 for THIS answer. ALWAYS a number, never null: the question was asked, so the answer is evidence. "not_answered" scores low; it does not score null.
 - "evidence"       — the candidate's own words, quoted.
 
 Then:
-- "technical_score"   — 0-100 across the technical questions only, weighted toward those that matter most for the role. null if none were asked.
+- "technical_score"   — 0-100 across the technical questions only, weighted toward those that matter most for the role. null if none were asked. Calibrate it to the gate: mostly "adequate" answers to basic questions is a candidate who can do the job, so it belongs at or above ${DECISION_THRESHOLDS.advance}, not below. Put it below ${DECISION_THRESHOLDS.advance} when answers were WRONG or absent, not when they were merely brief.
 - "behavioural_score" — 0-100 across the behavioural and situational questions. null if none were asked.
 - "summary"           — 1-2 sentences on what the answers, taken together, actually show.
 
@@ -193,18 +224,20 @@ For every category you DO score, "evidence" must quote or closely paraphrase spe
 For a category you score null, say plainly in "evidence" that the interview never covered it, and use "summary" to say what should be asked next time. Still fill in both fields.
 
 Both directions need evidence, and this is the calibration that matters most:
-- Score BELOW 61 only where the transcript positively shows the candidate falling short: a wrong answer, a gap they conceded, an unclear explanation of something they claim to know. Silence is not weakness — silence is null.
-- Score ABOVE 80 only where the candidate DEMONSTRATED depth: specifics, a trade-off they can defend, a concrete outcome they owned. If you cannot point to a moment that would convince a sceptical hiring manager, it is not above 80 — however well the candidate spoke.
+- Score BELOW ${DECISION_THRESHOLDS.advance} only where the transcript positively shows the candidate falling short: a wrong answer, a gap they conceded, an unclear explanation of something they claim to know. Silence is not weakness — silence is null. "Brief" is not weakness either, and neither is "did not elaborate": this call gave them no room to.
+- ${DECISION_THRESHOLDS.advance}-80 is the NORMAL band for a candidate who clears this gate. Correct, sensible, clearly explained answers belong here even when they are short and even when nothing about them was remarkable. You do not need to be impressed to put someone in this band.
+- Score ABOVE 80 only where the candidate was correct AND specific: a real number, a named tool doing a named job, a concrete thing they owned. This is the one place depth still counts — but its absence caps the score at 80, it does NOT push anyone below ${DECISION_THRESHOLDS.advance}.
 
 "overall_score" is an integer 0-100, or null. Compute it ONLY over the categories you actually scored — it is NOT their mean. Weight "${PRIMARY_CATEGORY}" the most heavily of the five, then what this role specifically needs. A null category must never drag it down, and a weakness in something the role does not require must not dominate it.
 Set "overall_score" to null when fewer than ${MIN_SCORED_CATEGORIES_FOR_OVERALL} of the five categories have a score: below that there is not enough of the person on record to put a single number on them.
 
 "coverage_note" is one or two plain sentences on what this interview did and did not cover. Always fill it in — every score above is read with this as the caveat.
 
-"recommendation" is one of "Strong hire", "Hire", "Maybe", "No hire", "Insufficient evidence", followed by a one-line justification. Calibrate against what a competent recruiter would actually do with this transcript:
-- "Strong hire" / "Hire" — you would advance this candidate to the next round.
-- "Maybe" — genuinely on the line.
-- "No hire" — the transcript SHOWS they fall short on something the role needs. Not merely that it failed to cover enough ground, and not because they interviewed awkwardly.
+"recommendation" is one of "Strong hire", "Hire", "Maybe", "No hire", "Insufficient evidence", followed by a one-line justification. These labels are inherited, so read them as decisions about THE VIDEO SCREEN, not about an offer:
+- "Strong hire" — clears the gate comfortably: answered the technical questions correctly and with specifics.
+- "Hire" — clears the gate: knows the basics, explained them sensibly. THIS IS THE DEFAULT for a competent candidate in a short call. Use it freely; it does not mean "hire this person", it means "worth the video interview".
+- "Maybe" — genuinely on the line: some basics landed, others did not.
+- "No hire" — the transcript SHOWS they fall short on basics the role needs every day: wrong answers, or unable to explain their own work. Never because the call was short, never because they interviewed awkwardly, and never because they did not go deep.
 - "Insufficient evidence" — the call was too thin to judge either way. Use this, never "No hire", whenever the problem is the interview rather than the candidate.
 A short interview containing good answers is a "Hire" with limited coverage noted, never a "No hire". A long interview of confident, unspecific answers is a "Maybe" at best, never a "Strong hire".
 ${job ? jdMatchInstructions() : `\nNo job description was supplied, so "jd_match" MUST be null.`}

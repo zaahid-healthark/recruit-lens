@@ -1,6 +1,10 @@
 import {
   CandidateDecision,
+  COMMUNICATION_CATEGORY,
+  COMMUNICATION_FLOOR,
   DECISION_THRESHOLDS,
+  TECHNICAL_BORDERLINE_RATE,
+  TECHNICAL_PASS_RATE,
   EvaluationDto,
   JobRankingDto,
   RankedCandidateDto,
@@ -60,24 +64,67 @@ function band(score: number): CandidateDecision {
 const SEVERITY: CandidateDecision[] = ["reject", "borderline", "advance", "insufficient_evidence"];
 
 /**
- * Fit and overall answer different questions — "right for this job" and "did
- * well in this interview" — and a candidate needs both. Matching the JD on
- * paper while interviewing below the bar is not an advance, and neither is a
- * strong interview for a role the candidate does not match. When the two
- * disagree the more cautious one governs, which is what stops a weak candidate
- * riding a good CV through the pipeline.
+ * Where a candidate sits on the gate to a video interview.
+ *
+ * The gate asks one thing: could they handle the technical questions the
+ * recruiter actually asked? So those answers decide it, and two views of the
+ * same evidence are used — how many answers LANDED, and how good they were.
+ * Counting answers is the more direct reading of "could they answer?", and it
+ * survives the model scoring a shade high or low.
+ *
+ * Deliberately NOT a veto structure. This previously took the worse of JD fit
+ * and overall, so a candidate had to clear the bar twice and a 15-minute call
+ * that never probed most of the JD could sink someone who answered every
+ * question put to them. Fit is now context a recruiter reads, not a gate:
+ * a short screening call is not evidence about requirements nobody raised.
+ *
+ * The asymmetry is deliberate too. A wrongly advanced candidate costs one
+ * video call, which will catch them; a wrongly rejected one is lost for good.
+ * Where the two readings disagree, the more generous governs — except when the
+ * candidate failed most of what was asked, which is exactly what this gate
+ * exists to catch and no score is allowed to override.
  */
-function decisionFor(
-  decidingScore: number | null,
-  overallScore: number | null,
-  fitScore: number | null
-): CandidateDecision {
-  if (decidingScore === null) return "insufficient_evidence";
-  const bands = [fitScore, overallScore]
-    .filter((s): s is number => s !== null)
-    .map(band);
-  if (bands.length === 0) return band(decidingScore);
-  return bands.reduce((worst, b) => (SEVERITY.indexOf(b) < SEVERITY.indexOf(worst) ? b : worst));
+export interface GateEvidence {
+  decidingScore: number | null;
+  technicalScore: number | null;
+  technicalAsked: number;
+  technicalAnswered: number;
+  communicationScore: number | null;
+}
+
+export function decisionFor(g: GateEvidence): CandidateDecision {
+  if (g.decidingScore === null) return "insufficient_evidence";
+
+  let decision: CandidateDecision;
+  if (g.technicalAsked > 0) {
+    const rate = g.technicalAnswered / g.technicalAsked;
+    if (rate < TECHNICAL_BORDERLINE_RATE) {
+      // Could not answer most of what was asked. This is the case the gate is
+      // for, and a flattering score cannot talk it out.
+      return "reject";
+    }
+    const byRate: CandidateDecision = rate >= TECHNICAL_PASS_RATE ? "advance" : "borderline";
+    const byScore = band(g.technicalScore ?? g.decidingScore);
+    decision =
+      SEVERITY.indexOf(byRate) > SEVERITY.indexOf(byScore) ? byRate : byScore;
+  } else {
+    // No technical questions asked: nothing to gate on, so fall back to how the
+    // call went overall rather than inventing a technical verdict.
+    decision = band(g.decidingScore);
+  }
+
+  // Communication gates from BELOW only. The next round is a video call the
+  // candidate has to hold up in, so being genuinely hard to follow is worth
+  // pausing on — but it can never sink someone who answered correctly, and an
+  // accent or awkward phrasing is not what this measures.
+  if (
+    decision === "advance" &&
+    g.communicationScore !== null &&
+    g.communicationScore < COMMUNICATION_FLOOR
+  ) {
+    return "borderline";
+  }
+  return decision;
 }
 
 const plural = (n: number, word: string): string => `${n} ${word}${n === 1 ? "" : "s"}`;
@@ -87,6 +134,21 @@ function buildReasons(c: RankedCandidateDto, hasJd: boolean): string[] {
   const reasons: string[] = [];
   const req = c.requirementCounts;
   const totalRequirements = req.met + req.partial + req.missing + req.notDiscussed;
+
+  // Led with, because it is what the gate decided on.
+  if (c.technicalAsked > 0) {
+    reasons.push(
+      `Answered ${c.technicalAnswered} of ${plural(c.technicalAsked, "technical question")} ` +
+        `adequately or better` +
+        (c.technicalScore !== null ? `, scoring ${c.technicalScore} across them` : "") +
+        "."
+    );
+  } else if (c.questionsAsked > 0) {
+    reasons.push(
+      "The recruiter asked no technical questions, so this call could not test the thing " +
+        "the screen exists to check. That is a gap in the interview, not in the candidate."
+    );
+  }
 
   if (hasJd && totalRequirements > 0) {
     const probed = req.met + req.partial + req.missing;
@@ -105,9 +167,6 @@ function buildReasons(c: RankedCandidateDto, hasJd: boolean): string[] {
     }
   }
 
-  if (c.technicalScore !== null) {
-    reasons.push(`Technical answers scored ${c.technicalScore} across the questions asked.`);
-  }
   if (c.behaviouralScore !== null) {
     reasons.push(`Behavioural and situational answers scored ${c.behaviouralScore}.`);
   }
@@ -127,18 +186,20 @@ function buildReasons(c: RankedCandidateDto, hasJd: boolean): string[] {
   // it up, or the reverse.
   if (hasJd && c.fitScore !== null && c.overallScore !== null && band(c.fitScore) !== band(c.overallScore)) {
     reasons.push(
-      c.fitScore > c.overallScore
-        ? `Matches the role on paper (fit ${c.fitScore}) but the interview itself came in lower ` +
-          `(${c.overallScore}) — the background fits, the answers did not back it up.`
-        : `Interviewed well overall (${c.overallScore}) but matches less of what this role ` +
-          `specifically asks for (fit ${c.fitScore}) — possibly a better fit elsewhere.`
+      (c.fitScore > c.overallScore
+        ? `Matches the role on paper (fit ${c.fitScore}) more than the call itself showed ` +
+          `(${c.overallScore}).`
+        : `Interviewed better overall (${c.overallScore}) than this role's specific ` +
+          `requirements were shown to be met (fit ${c.fitScore}).`) +
+        " Context for the next round, not part of this decision — a 15-20 minute screen " +
+        "cannot probe a whole job description."
     );
   }
 
   if (c.decision === "reject") {
     reasons.push(
-      "Placed below the bar because the transcript shows the candidate falling short, " +
-        "not because the interview was short."
+      "Not put forward because the transcript shows the candidate falling short on the " +
+        "basics — not because the interview was short or because they did not go deep."
     );
   }
   if (c.decision === "insufficient_evidence") {
@@ -155,14 +216,23 @@ function explainAhead(a: RankedCandidateDto, b: RankedCandidateDto, hasJd: boole
   const label = b.candidateName || b.originalFilename;
   const diffs: string[] = [];
 
+  if (
+    (a.technicalAsked > 0 || b.technicalAsked > 0) &&
+    a.technicalAnswered !== b.technicalAnswered
+  ) {
+    diffs.push(
+      `answered ${a.technicalAnswered} of ${a.technicalAsked} technical questions to ` +
+        `${b.technicalAnswered} of ${b.technicalAsked}`
+    );
+  }
+  if (a.technicalScore !== null && b.technicalScore !== null && a.technicalScore !== b.technicalScore) {
+    diffs.push(`technical answers ${a.technicalScore} against ${b.technicalScore}`);
+  }
   if (hasJd && a.fitScore !== null && b.fitScore !== null && a.fitScore !== b.fitScore) {
     diffs.push(`JD fit ${a.fitScore} against ${b.fitScore}`);
   }
   if (a.requirementCounts.met !== b.requirementCounts.met) {
     diffs.push(`met ${a.requirementCounts.met} requirements to ${b.requirementCounts.met}`);
-  }
-  if (a.technicalScore !== null && b.technicalScore !== null && a.technicalScore !== b.technicalScore) {
-    diffs.push(`technical answers ${a.technicalScore} against ${b.technicalScore}`);
   }
   if (
     a.behaviouralScore !== null &&
@@ -273,23 +343,46 @@ export async function getJobRanking(jobId: string): Promise<JobRankingDto> {
     const qa = evaluation?.questionAssessment ?? null;
     const fitScore = evaluation?.jdMatch?.fitScore ?? null;
     const overallScore = evaluation?.overallScore ?? null;
-    // Fit answers "right for THIS job", which is the question a ranking is
-    // actually asking; overall stands in only when there is no JD to match.
-    const decidingScore = hasJd && fitScore !== null ? fitScore : overallScore;
+    const technicalScore = qa?.technicalScore ?? null;
+
+    // The gate turns on the technical questions, so they are counted directly
+    // rather than inferred from a score. "Adequate" counts as answered: in a
+    // 15-20 minute call a correct answer without depth is the normal good
+    // outcome, not a near miss.
+    const technicalQuestions = (qa?.questions ?? []).filter((q) => q.kind === "technical");
+    const technicalAsked = technicalQuestions.length;
+    const technicalAnswered = technicalQuestions.filter(
+      (q) => q.verdict === "strong" || q.verdict === "adequate"
+    ).length;
+
+    const communicationScore =
+      (evaluation?.categories ?? []).find((c) => c.name === COMMUNICATION_CATEGORY)?.score ?? null;
+
+    // Sorted on what the gate decides on. Fit used to lead here, which ranked
+    // candidates by how much of a JD a short call happened to touch.
+    const decidingScore = technicalScore ?? overallScore ?? (hasJd ? fitScore : null);
 
     const base: RankedCandidateDto = {
       recordingId: r.id,
       candidateName: r.candidateName,
       originalFilename: r.originalFilename,
       rank: null,
-      decision: decisionFor(decidingScore, overallScore, hasJd ? fitScore : null),
+      decision: decisionFor({
+        decidingScore,
+        technicalScore,
+        technicalAsked,
+        technicalAnswered,
+        communicationScore,
+      }),
       decidingScore,
       overallScore,
       fitScore,
-      technicalScore: qa?.technicalScore ?? null,
+      technicalScore,
       behaviouralScore: qa?.behaviouralScore ?? null,
       requirementCounts: countRequirements(evaluation),
       questionsAsked: qa?.questions.length ?? 0,
+      technicalAsked,
+      technicalAnswered,
       categoriesScored: (evaluation?.categories ?? []).filter((c) => c.score !== null).length,
       reasons: [],
       aheadOfNext: null,
@@ -300,11 +393,14 @@ export async function getJobRanking(jobId: string): Promise<JobRankingDto> {
       // Descending on each: the deciding score, then the tie-breaks a recruiter
       // would reach for — how much of the JD they actually satisfy, then how
       // they did on the questions they were actually asked.
+      // Descending on each: the deciding score, then how many technical
+      // questions actually landed, then the rest a recruiter would reach for.
       _sortKey: [
         decidingScore ?? -1,
-        base.requirementCounts.met,
+        technicalAnswered,
+        technicalScore ?? -1,
         base.overallScore ?? -1,
-        base.technicalScore ?? -1,
+        base.requirementCounts.met,
         base.behaviouralScore ?? -1,
       ],
     };

@@ -209,11 +209,16 @@ export interface DashboardStatsDto {
  * questioned in a way that generated prose does not.
  */
 export const CANDIDATE_DECISIONS = [
-  /** Clears the bar on the evidence available. */
+  /** Worth a video interview: handled the technical questions they were asked. */
   "advance",
-  /** Real capability shown, with gaps that need a second look. */
+  /** Some of the basics landed and some did not — genuinely on the line. */
   "borderline",
-  /** The transcript positively shows they fall short. */
+  /**
+   * The transcript positively shows they fall short of the basics: wrong
+   * answers, or unable to explain their own work. Never "did not go deep" —
+   * a 15-20 minute call has no room for depth and is not evidence of its
+   * absence.
+   */
   "reject",
   /**
    * The interview never established enough to judge. NOT a rejection, and
@@ -232,7 +237,10 @@ export interface RankedCandidateDto {
   /** 1-based position. Null for candidates set aside as unrankable. */
   rank: number | null;
   decision: CandidateDecision;
-  /** The number the ranking actually sorted on — fit when a JD exists. */
+  /**
+   * The number the ranking actually sorted on — the technical answers when the
+   * recruiter asked any, because that is what this gate is deciding on.
+   */
   decidingScore: number | null;
   overallScore: number | null;
   fitScore: number | null;
@@ -240,6 +248,9 @@ export interface RankedCandidateDto {
   behaviouralScore: number | null;
   requirementCounts: { met: number; partial: number; missing: number; notDiscussed: number };
   questionsAsked: number;
+  /** Technical questions asked, and how many drew an adequate-or-better answer. */
+  technicalAsked: number;
+  technicalAnswered: number;
   categoriesScored: number;
   /** Why this candidate sits here — each line names the evidence behind it. */
   reasons: string[];

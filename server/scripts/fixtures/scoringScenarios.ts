@@ -5,6 +5,11 @@
  * Each fixture states what a competent human recruiter would conclude, as
  * assertions the scorer must satisfy. They are deliberately unsubtle — if the
  * rubric cannot separate these, it certainly cannot separate real calls.
+ *
+ * Calibrated to what this report DECIDES: whether a 15-20 minute screening
+ * call earns a video interview. Not whether to hire. A candidate who knows the
+ * basics and explains them briefly passes — the bar is not "impressive", and a
+ * call this short cannot show depth either way.
  */
 
 export interface ScenarioExpectation {
@@ -16,7 +21,7 @@ export interface ScenarioExpectation {
   questionAssessment: "present" | "must-be-null";
   /** Inclusive bounds on the technical aggregate, when questions were asked. */
   technicalScore?: { min: number; max: number };
-  /** Inclusive bounds on the Communication Skills category — the heaviest one. */
+  /** Inclusive bounds on Communication Skills — a floor here, not the decider. */
   communicationScore?: { min: number; max: number };
   /** Matrix categories that must come back null (the interview never tested them). */
   categoriesMustBeNull?: string[];
@@ -68,7 +73,7 @@ Candidate: Yes, actuary team, every month. Before I show pipeline diagram — no
 Recruiter: What is your notice period?
 Candidate: Two month.`,
     expect: {
-      overallScore: { min: 68, max: 100 },
+      overallScore: { min: 60, max: 100 },
       recommendationOneOf: ["Strong hire", "Hire"],
       questionAssessment: "present",
       communicationScore: { min: 65, max: 100 },
@@ -104,7 +109,7 @@ Candidate: There've been many, honestly. I think they blur together after a whil
 Recruiter: What's your notice period?
 Candidate: Thirty days.`,
     expect: {
-      overallScore: { min: 0, max: 60 },
+      overallScore: { min: 0, max: 54 },
       recommendationOneOf: ["No hire", "Maybe"],
       questionAssessment: "present",
       communicationScore: { min: 0, max: 55 },
@@ -142,7 +147,7 @@ Candidate: Data quality is absolutely critical, it's something I'm hugely passio
 Recruiter: Okay. What's your notice period?
 Candidate: Thirty days, and I'm very excited about this opportunity.`,
     expect: {
-      overallScore: { min: 0, max: 60 },
+      overallScore: { min: 0, max: 54 },
       recommendationOneOf: ["No hire", "Maybe"],
       questionAssessment: "present",
       technicalScore: { min: 0, max: 50 },
@@ -150,6 +155,51 @@ Candidate: Thirty days, and I'm very excited about this opportunity.`,
         "Six substantive questions, not one concrete answer: no tool beyond the name Airflow, " +
         "no number, no failure they actually handled, and the 2am question was dodged twice. " +
         "A recruiter would not advance this candidate, however well they spoke.",
+    },
+  },
+
+  {
+    name: "basics-briefly-explained",
+    trap:
+      "The reported failure. A real 15-minute screen: every technical answer is correct but " +
+      "short, with no war stories and no trade-off essays. Marking this down for lacking depth " +
+      "rejects a candidate the video round would have confirmed.",
+    jd: DATA_ENGINEER_JD,
+    transcript: `Recruiter: Thanks for making time. Can you give me a quick sense of what you do day to day?
+Candidate: Sure. I'm a data engineer, about five years now. I build and maintain the pipelines that load our warehouse. Mostly Airflow, Python and SQL, and we're on Snowflake.
+
+Recruiter: What is Airflow actually doing for you there?
+Candidate: It schedules the jobs and handles the dependencies. So a task only runs once the one it depends on has finished. And if something fails it retries, and we get alerted.
+
+Recruiter: If a job fails overnight, what happens?
+Candidate: It retries a couple of times first. If it still fails it alerts us and we look in the morning. Then we fix it and rerun that day's load.
+
+Recruiter: How would you find out that a table had bad data in it?
+Candidate: We have checks on the loads — row counts, and nulls on the important columns. If the count is way off from normal it flags. Honestly some of it we also hear from the analysts first, which isn't ideal.
+
+Recruiter: What's the difference between a view and a materialised view?
+Candidate: A view just runs the query each time you use it. A materialised view stores the result, so reading it is faster, but it has to be refreshed, so the data can be a bit behind.
+
+Recruiter: And in SQL, if you wanted the most recent record per customer, how would you do that?
+Candidate: I'd use a window function. Row_number partitioned by customer, ordered by the date descending, then filter where it equals one.
+
+Recruiter: Good. Have you had to explain any of this to non-technical people?
+Candidate: Yes, to the commercial team mostly. I try to keep it to what it means for them — like, this report is a day behind, rather than explaining the pipeline.
+
+Recruiter: Great. What's your notice period?
+Candidate: One month.`,
+    expect: {
+      overallScore: { min: 55, max: 100 },
+      recommendationOneOf: ["Hire", "Strong hire"],
+      questionAssessment: "present",
+      technicalScore: { min: 55, max: 100 },
+      rationale:
+        "Every technical answer is CORRECT: the view/materialised-view distinction, the " +
+        "row_number window function, what Airflow does and what happens on failure. None is " +
+        "deep, and none needs to be — this is a 15-minute screen, and the next round exists to " +
+        "go further. The candidate even volunteers a real weakness (analysts sometimes notice " +
+        "bad data first), which is honesty, not a gap to punish. Marking this below the gate " +
+        "is exactly the failure this rubric must not produce.",
     },
   },
 
@@ -211,7 +261,7 @@ Candidate: Airflow handles that itself, you don't need to do anything. Every tas
 Recruiter: What's your notice period?
 Candidate: I can start immediately.`,
     expect: {
-      overallScore: { min: 0, max: 45 },
+      overallScore: { min: 0, max: 34 },
       recommendationOneOf: ["No hire"],
       questionAssessment: "present",
       technicalScore: { min: 0, max: 35 },
@@ -271,7 +321,7 @@ Candidate: Depends who's asking and why. If it's a real incident, everything sto
 Recruiter: What's your notice period?
 Candidate: A month.`,
     expect: {
-      overallScore: { min: 61, max: 100 },
+      overallScore: { min: 55, max: 100 },
       recommendationOneOf: ["Strong hire", "Hire", "Maybe"],
       questionAssessment: "present",
       categoriesMustBeNull: ["Technical Knowledge"],

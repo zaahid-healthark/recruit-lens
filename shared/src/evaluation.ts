@@ -23,12 +23,39 @@ export const TECHNICAL_CATEGORY: MatrixCategoryName = "Technical Knowledge";
 /**
  * The category that carries the most weight in the overall score.
  *
- * These candidates explain their work to clients, so an answer nobody can
- * follow costs the firm something regardless of the thinking behind it —
- * which makes clear English the single most decisive category here. It is
- * about being UNDERSTOOD, never about sounding native; see the prompt.
+ * This is a SCREENING GATE, not a hiring decision: the call merges what used
+ * to be two rounds — the recruiter's own questions and the basic technical
+ * questions an engineer asked in a second call — and the report decides only
+ * whether to spend a video interview on this person. So the deciding question
+ * is the narrow one the recruiter actually tested: could the candidate answer
+ * the technical questions they were asked?
  */
-export const PRIMARY_CATEGORY: MatrixCategoryName = "Communication Skills";
+export const PRIMARY_CATEGORY: MatrixCategoryName = TECHNICAL_CATEGORY;
+
+/**
+ * Communication gates from BELOW, rather than outranking everything else.
+ *
+ * Clear English still matters — these candidates explain their work to
+ * clients, and the next round is a video call they have to hold up in. But it
+ * is a floor, not the primary signal: an accent or an awkward phrase is not a
+ * reason to reject someone who answered the questions correctly. Only being
+ * genuinely unable to be understood is, because a video screen cannot fix it.
+ * It is about being UNDERSTOOD, never about sounding native; see the prompt.
+ */
+export const COMMUNICATION_CATEGORY: MatrixCategoryName = "Communication Skills";
+export const COMMUNICATION_FLOOR = 35;
+
+/**
+ * How many of the technical questions a candidate has to actually answer.
+ *
+ * The gate is a question about answers, not about a score: "could they handle
+ * what the recruiter asked?" is answered by counting the answers that landed,
+ * which is auditable and survives a model scoring a shade high or low. Rates
+ * are over the technical questions ASKED — a recruiter who asked none leaves
+ * this silent rather than failing the candidate for it.
+ */
+export const TECHNICAL_PASS_RATE = 0.6;
+export const TECHNICAL_BORDERLINE_RATE = 0.34;
 
 /** The categories that behavioural and situational answers bear on. */
 export const BEHAVIOURAL_CATEGORIES: MatrixCategoryName[] = ["Problem Solving", "Cultural Fit"];
@@ -61,15 +88,20 @@ export const MIN_SCORED_CATEGORIES_FOR_OVERALL = 3;
 
 /**
  * Where a candidate's deciding score puts them. These are the band edges from
- * SCORE_BANDS, named: 61 is "meets the bar", 41 is where real capability
- * starts. Kept here so the hire/no-hire line and the score bands can never
- * drift apart.
+ * SCORE_BANDS, named, so the gate and the score bands can never drift apart.
+ *
+ * Set for what this decision COSTS, which is the thing that was wrong before.
+ * Advancing someone weak costs one video call; rejecting someone good loses
+ * them outright, and nothing downstream can recover that. The bar is therefore
+ * "knows the basics and can explain them", not "would I hire this person" —
+ * that judgement belongs to the round this gate feeds, which has the time to
+ * make it. A 15-20 minute call does not.
  */
 export const DECISION_THRESHOLDS = {
-  /** At or above this, a competent recruiter advances the candidate. */
-  advance: 61,
-  /** At or above this, there is real capability with gaps worth a second look. */
-  borderline: 41,
+  /** At or above this, the candidate is worth a video screen. */
+  advance: 55,
+  /** At or above this, there is something real here but the basics wobbled. */
+  borderline: 35,
 } as const;
 
 export interface ScoreBand {
@@ -85,31 +117,36 @@ export const SCORE_BANDS: ScoreBand[] = [
     min: 0,
     max: 20,
     label: "0-20",
-    descriptor: "No relevant capability shown — could not engage with the role at all",
+    descriptor: "Could not engage with the question at all — no relevant capability shown",
   },
   {
     min: 21,
-    max: 40,
-    label: "21-40",
-    descriptor: "Clearly below the bar — core gaps a hiring manager would reject on",
+    max: 34,
+    label: "21-34",
+    descriptor:
+      "Clearly short — answers were wrong, or they could not explain their own work",
   },
   {
-    min: 41,
-    max: 60,
-    label: "41-60",
-    descriptor: "Borderline — some real capability, but gaps that need a second look",
+    min: 35,
+    max: 54,
+    label: "35-54",
+    descriptor:
+      "Mixed — got some of it, but wobbled on basics the role needs",
   },
   {
-    min: 61,
+    min: 55,
     max: 80,
-    label: "61-80",
-    descriptor: "MEETS THE BAR — a competent recruiter would advance this candidate",
+    label: "55-80",
+    descriptor:
+      "CLEARS THE GATE — explained the basics correctly and sensibly; worth a video screen. " +
+      "A short, correct, clear answer belongs here; depth is not required in a 15-20 minute call",
   },
   {
     min: 81,
     max: 100,
     label: "81-100",
-    descriptor: "Clearly above the bar — strong across the board",
+    descriptor:
+      "Well clear — correct, concise AND specific, with real detail from their own work",
   },
 ];
 
