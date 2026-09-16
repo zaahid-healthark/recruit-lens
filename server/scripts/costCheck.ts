@@ -32,12 +32,15 @@ const OBS = [
   // The case this all exists for: tokens recorded, no rate, Langfuse says zero.
   { traceId: "t1", name: "transcribe", type: "GENERATION", model: "gpt-4o-transcribe-diarize",
     costDetails: {}, calculatedTotalCost: 0, usageDetails: { input: 2500, output: 900 } },
-  // Another application sharing the Langfuse project — must not leak in.
-  { traceId: "other-app", name: "chat", type: "GENERATION", model: "gpt-5-nano",
+  // Another application sharing the project AND the stage name. Name
+  // filtering alone would let this through, so the trace-id check has to.
+  { traceId: "other-app", name: "score", type: "GENERATION", model: "gpt-5-nano",
     costDetails: { total: 0.9 }, usageDetails: { input: 5, output: 5 } },
 ];
 
 let sawFromStartTime = false;
+const namesRequested: string[] = [];
+let unscopedRequests = 0;
 const realFetch = globalThis.fetch;
 globalThis.fetch = (async (input: any, init?: any) => {
   const url = String(typeof input === "string" ? input : (input?.url ?? ""));
@@ -48,8 +51,12 @@ globalThis.fetch = (async (input: any, init?: any) => {
   if (url.includes("/api/public/traces")) return body(TRACES);
   if (url.includes("/api/public/observations")) {
     if (url.includes("fromStartTime")) sawFromStartTime = true;
-    const page = Number(new URL(url).searchParams.get("page") ?? "1");
-    return body(page > 1 ? [] : OBS); // second page empty: exercises the pager
+    const name = new URL(url).searchParams.get("name");
+    // An unscoped query is the performance bug this guards against: it would
+    // return every generation in a shared project, thousands of them.
+    if (!name) unscopedRequests++;
+    else namesRequested.push(name);
+    return body(name ? OBS.filter((o) => o.name === name) : OBS);
   }
   return realFetch(input, init);
 }) as typeof fetch;
@@ -68,8 +75,11 @@ async function main(): Promise<void> {
     ["not flagged unpriced", !t?.unpriced, t?.unpriced],
     ["tokens surfaced to the UI", t?.inputTokens === 2500 && t?.outputTokens === 900,
       [t?.inputTokens, t?.outputTokens]],
-    ["other application excluded", !c.byStage.some((s) => s.name === "chat"),
-      c.byStage.map((s) => s.name)],
+    ["other app's rows excluded even under our own stage name",
+      c.byStage.find((s) => s.name === "score")?.calls === 1,
+      c.byStage.find((s) => s.name === "score")],
+    ["no unscoped observation query", unscopedRequests === 0, unscopedRequests],
+    ["one request per stage, by name", namesRequested.length === 3, namesRequested],
     ["stage count is 3", c.byStage.length === 3, c.byStage.length],
     ["derived cost added to the call total",
       Math.abs((c.calls[0]?.cost ?? 0) - (0.15 + expected)) < 1e-9, c.calls[0]?.cost],
@@ -77,6 +87,8 @@ async function main(): Promise<void> {
       c.byStage.find((s) => s.name === "score")?.cost === 0.07,
       c.byStage.find((s) => s.name === "score")?.cost],
     ["observation query bounded by fromStartTime", sawFromStartTime, sawFromStartTime],
+    ["other app's cost not added to ours",
+      Math.abs((c.calls[0]?.cost ?? 0) - (0.15 + expected)) < 1e-9, c.calls[0]?.cost],
     ["missingPricing not set", !c.missingPricing, c.missingPricing],
   ];
 

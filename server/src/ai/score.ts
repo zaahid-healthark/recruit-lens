@@ -6,7 +6,12 @@ import {
   normalizeLlmResult,
   ParsedLlmEvaluation,
 } from "../schemas/evaluationSchema";
-import { EvaluationTrace, recordGeneration } from "../observability/langfuse";
+import {
+  EvaluationTrace,
+  recordGeneration,
+  STAGE_SCORE,
+  STAGE_SCORE_REPAIR,
+} from "../observability/langfuse";
 import { getOpenAI } from "./openaiClient";
 import { buildScoringSystemPrompt, buildScoringUserPrompt, JobContext } from "./prompts";
 
@@ -106,7 +111,7 @@ export async function scoreTranscript(
     { role: "user", content: buildScoringUserPrompt(transcript, job, customInstructions) },
   ];
 
-  const first = await callChat(messages, trace, "score");
+  const first = await callChat(messages, trace, STAGE_SCORE);
   try {
     return { result: parseAndValidate(first, job !== null), model: env.evalModel };
   } catch (err) {
@@ -121,7 +126,7 @@ export async function scoreTranscript(
       },
       // Recorded under its own name so a run that needed a repair is visibly
       // more expensive in the trace than one that got it right first time.
-    ], trace, "score-repair");
+    ], trace, STAGE_SCORE_REPAIR);
     return { result: parseAndValidate(repaired, job !== null), model: env.evalModel };
   }
 }

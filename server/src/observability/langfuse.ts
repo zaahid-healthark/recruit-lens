@@ -43,6 +43,19 @@ function getClient(): Langfuse | null {
   return client;
 }
 
+/**
+ * Every generation name this app records.
+ *
+ * One source of truth because the Costs screen queries Langfuse BY these
+ * names: a stage recorded under a name missing here is invisible in the cost
+ * split rather than wrong, which is the harder kind of bug to notice. Adding
+ * a stage means adding it here too.
+ */
+export const STAGE_TRANSCRIBE = "transcribe";
+export const STAGE_SCORE = "score";
+export const STAGE_SCORE_REPAIR = "score-repair";
+export const GENERATION_STAGES = [STAGE_TRANSCRIBE, STAGE_SCORE, STAGE_SCORE_REPAIR];
+
 /** Opaque handle; null whenever tracing is off, so callers need no branching. */
 export type EvaluationTrace = ReturnType<Langfuse["trace"]> | null;
 
@@ -292,10 +305,13 @@ export async function fetchCostTraces(limit: number): Promise<CostsDto> {
     // unfiltered query returns every generation in it — which showed other
     // applications' models sitting in this app's cost breakdown.
     //
-    // Bounded by the oldest trace being shown and paged: one page of 100 is
-    // not enough when another application writes to the same project, and
-    // ours would simply be crowded out of the newest rows — the stage split
-    // would then silently omit calls rather than report them wrongly.
+    // Bounded by the oldest trace being shown, and asked for BY NAME.
+    //
+    // An unfiltered query returns every generation in the project, and a
+    // project shared with a busy application holds thousands — so this used to
+    // page through hundreds of rows to keep three, which is both slow and
+    // liable to crowd ours out of the newest page entirely. Langfuse can
+    // filter by name server-side, so only this app's stages come back.
     const oldest = rows
       .map((t) => Date.parse(String(t.timestamp ?? "")))
       .filter((n) => Number.isFinite(n))
@@ -304,20 +320,20 @@ export async function fetchCostTraces(limit: number): Promise<CostsDto> {
       ? new Date(oldest - 60_000).toISOString() // a minute of slack for clock skew
       : undefined;
 
-    const observations: Array<Record<string, any>> = [];
-    const PAGE = 100;
-    const MAX_PAGES = 5; // cap the work; a reporting screen must not hang
-    for (let page = 1; page <= MAX_PAGES; page++) {
-      const obs = await lf.fetchObservations({
-        type: "GENERATION",
-        limit: PAGE,
-        page,
-        ...(fromStartTime ? { fromStartTime } : {}),
-      } as Parameters<typeof lf.fetchObservations>[0]);
-      const data = (obs?.data ?? []) as Array<Record<string, any>>;
-      observations.push(...data);
-      if (data.length < PAGE) break;
-    }
+    // One request per stage, in parallel: three small responses beat one large
+    // one, and the screen waits on the slowest rather than the sum.
+    const pages = await Promise.all(
+      GENERATION_STAGES.map(async (stage) => {
+        const obs = await lf.fetchObservations({
+          type: "GENERATION",
+          name: stage,
+          limit: Math.min(Math.max(limit, 1) * 2, 100),
+          ...(fromStartTime ? { fromStartTime } : {}),
+        } as Parameters<typeof lf.fetchObservations>[0]);
+        return (obs?.data ?? []) as Array<Record<string, any>>;
+      })
+    );
+    const observations = pages.flat();
 
     const totals = new Map<
       string,

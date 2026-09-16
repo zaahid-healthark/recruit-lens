@@ -2,7 +2,11 @@ import fs from "fs";
 import { env } from "../config/env";
 import { log } from "../lib/logger";
 import { cleanupNormalized, normalizeForTranscription } from "../services/audio";
-import { EvaluationTrace, recordGeneration } from "../observability/langfuse";
+import {
+  EvaluationTrace,
+  recordGeneration,
+  STAGE_TRANSCRIBE,
+} from "../observability/langfuse";
 import { getOpenAI } from "./openaiClient";
 
 export interface TranscriptionResult {
@@ -62,7 +66,7 @@ async function transcribeWithModel(
   // Transcription is the larger half of the bill, so it is traced in its own
   // right rather than folded into the evaluation's total.
   recordGeneration(trace, {
-    name: "transcribe",
+    name: STAGE_TRANSCRIBE,
     model,
     // This model IS token-priced and returns the counts; the cost is derived
     // from them in recordGeneration, because Langfuse has no rate for it.
