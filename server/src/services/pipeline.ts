@@ -7,6 +7,11 @@ import { env } from "../config/env";
 import { syncRecordingToDrive } from "../google/driveSync";
 import { log } from "../lib/logger";
 import { prisma } from "../lib/prisma";
+import {
+  flushLangfuse,
+  recordTraceError,
+  startEvaluationTrace,
+} from "../observability/langfuse";
 import { storage } from "../storage";
 
 /** Guards against double-running the pipeline for the same recording. */
@@ -30,6 +35,7 @@ const sleep = (ms: number): Promise<void> => new Promise((r) => setTimeout(r, ms
 export async function evaluateRecording(recordingId: string): Promise<void> {
   if (inFlight.has(recordingId)) return;
   inFlight.add(recordingId);
+  let trace = null as ReturnType<typeof startEvaluationTrace>;
   try {
     const recording = await prisma.recording.findUnique({
       where: { id: recordingId },
@@ -39,6 +45,17 @@ export async function evaluateRecording(recordingId: string): Promise<void> {
       log.warn(`evaluateRecording: recording ${recordingId} no longer exists — skipping.`);
       return;
     }
+
+    // One trace spans transcription and scoring, so the cost of evaluating
+    // THIS candidate is a single number rather than something to reassemble
+    // from a usage dashboard by timestamp.
+    trace = startEvaluationTrace({
+      recordingId,
+      candidateName: recording.candidateName,
+      jobTitle: recording.job?.title ?? null,
+      filename: recording.originalFilename,
+      durationSeconds: recording.durationSeconds,
+    });
 
     // A job with an empty JD is treated as no job at all: there would be
     // nothing to match against, and a jd_match block built from whitespace
@@ -80,7 +97,7 @@ export async function evaluateRecording(recordingId: string): Promise<void> {
         });
       } else {
         const localPath = await storage.getLocalPath(recording.storagePath);
-        const t = await transcribeAudio(localPath);
+        const t = await transcribeAudio(localPath, undefined, trace);
         transcriptText = t.text;
         await prisma.transcript.create({
           data: { recordingId, text: t.text, model: t.model, language: t.language },
@@ -97,7 +114,12 @@ export async function evaluateRecording(recordingId: string): Promise<void> {
       result = mockEvaluation(recording.originalFilename, { job });
       model = "mock-evaluator";
     } else {
-      const outcome = await scoreTranscript(transcriptText, job, recording.customInstructions);
+      const outcome = await scoreTranscript(
+        transcriptText,
+        job,
+        recording.customInstructions,
+        trace
+      );
       result = outcome.result;
       model = outcome.model;
     }
@@ -164,11 +186,15 @@ export async function evaluateRecording(recordingId: string): Promise<void> {
   } catch (err) {
     const message = (err instanceof Error ? err.message : String(err)).slice(0, 800);
     log.error(`Evaluation failed for recording ${recordingId}:`, message);
+    recordTraceError(trace, message);
     await prisma.recording
       .update({ where: { id: recordingId }, data: { status: "FAILED", errorMessage: message } })
       .catch((e) => log.error("Could not persist FAILED status:", e));
     syncRecordingToDrive(recordingId); // reflect the FAILED status + error in the sheet
   } finally {
     inFlight.delete(recordingId);
+    // Langfuse batches in the background; flushing here means a restart
+    // between evaluations cannot lose the trace for one that just finished.
+    void flushLangfuse();
   }
 }

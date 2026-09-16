@@ -28,6 +28,7 @@
     "express": "^4.21.2",
     "ffmpeg-static": "^5.2.0",
     "googleapis": "^173.0.0",
+    "langfuse": "^3.39.2",
     "mammoth": "^1.12.1",
     "multer": "^2.0.1",
     "openai": "^4.104.0",

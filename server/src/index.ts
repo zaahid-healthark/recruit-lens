@@ -1,6 +1,7 @@
 import { createApp } from "./app";
 import { env } from "./config/env";
 import { log } from "./lib/logger";
+import { flushLangfuse } from "./observability/langfuse";
 import { recoverStuckRecordings } from "./services/recovery";
 
 async function main(): Promise<void> {
@@ -24,6 +25,14 @@ async function main(): Promise<void> {
         ? "Mode: MOCK_AI — canned transcripts/evaluations, zero OpenAI cost."
         : `Mode: real AI — transcribe=${env.transcribeModel}, eval=${env.evalModel}.`
     );
+  });
+}
+
+// Langfuse batches in the background, so a plain kill would drop whatever has
+// not been sent. Both signals get the same short grace period.
+for (const signal of ["SIGINT", "SIGTERM"] as const) {
+  process.on(signal, () => {
+    void flushLangfuse().finally(() => process.exit(0));
   });
 }
 

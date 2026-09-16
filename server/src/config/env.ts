@@ -81,6 +81,25 @@ export const env = {
    */
   silenceThresholdDb: floatEnv(process.env.SILENCE_THRESHOLD_DB, -45),
   rejectSilentUploads: boolEnv(process.env.REJECT_SILENT_UPLOADS, true),
+  /**
+   * Langfuse tracing (optional). With both keys present every evaluation is
+   * traced with its model calls and token usage, which is what turns "roughly
+   * 20-40 cents a call" into a measured figure per candidate. Leave unset to
+   * disable entirely — nothing is sent and nothing is imported at runtime.
+   */
+  langfusePublicKey: process.env.LANGFUSE_PUBLIC_KEY ?? "",
+  langfuseSecretKey: process.env.LANGFUSE_SECRET_KEY ?? "",
+  langfuseBaseUrl: process.env.LANGFUSE_BASE_URL ?? "https://cloud.langfuse.com",
+  /**
+   * Send prompts and completions too, not just usage numbers.
+   *
+   * Off by default on purpose: a transcript is a recording of a real person
+   * answering questions about their career, and cost tracing needs model names
+   * and token counts, not what they said. Turn it on deliberately, and only
+   * when debugging the prompts is worth sending interview content to a
+   * third-party service.
+   */
+  langfuseCaptureContent: boolEnv(process.env.LANGFUSE_CAPTURE_CONTENT, false),
   /** Parallelism of the bulk evaluation queue (1 = strictly sequential). */
   bulkConcurrency: Math.max(1, intEnv(process.env.BULK_CONCURRENCY, 1)),
 } as const;

@@ -6,6 +6,7 @@ import {
   normalizeLlmResult,
   ParsedLlmEvaluation,
 } from "../schemas/evaluationSchema";
+import { EvaluationTrace, recordGeneration } from "../observability/langfuse";
 import { getOpenAI } from "./openaiClient";
 import { buildScoringSystemPrompt, buildScoringUserPrompt, JobContext } from "./prompts";
 
@@ -30,7 +31,11 @@ function stripJsonFences(content: string): string {
   return fence ? fence[1] : trimmed;
 }
 
-async function callChat(messages: ChatMessage[]): Promise<string> {
+async function callChat(
+  messages: ChatMessage[],
+  trace: EvaluationTrace,
+  name: string
+): Promise<string> {
   const openai = getOpenAI();
   const params: Record<string, unknown> = {
     model: env.evalModel,
@@ -42,9 +47,22 @@ async function callChat(messages: ChatMessage[]): Promise<string> {
   // Defensive: if the chosen model rejects a parameter, strip it and retry
   // instead of failing the recording over an API-surface difference.
   for (let attempt = 0; ; attempt++) {
+    const startedAt = new Date();
     try {
       const resp = (await openai.chat.completions.create(params as any)) as any;
-      return resp?.choices?.[0]?.message?.content ?? "";
+      const content = resp?.choices?.[0]?.message?.content ?? "";
+      // The repair retry is recorded separately, so a run that needed one is
+      // visibly more expensive than one that did not.
+      recordGeneration(trace, {
+        name,
+        model: env.evalModel,
+        usage: resp?.usage,
+        startedAt,
+        input: messages,
+        output: content,
+        metadata: { attempt },
+      });
+      return content;
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err);
       if (attempt < 2 && /temperature/i.test(msg) && "temperature" in params) {
@@ -80,14 +98,15 @@ function parseAndValidate(content: string, hasJob: boolean): ParsedLlmEvaluation
 export async function scoreTranscript(
   transcript: string,
   job: JobContext | null = null,
-  customInstructions: string | null = null
+  customInstructions: string | null = null,
+  trace: EvaluationTrace = null
 ): Promise<ScoringOutcome> {
   const messages: ChatMessage[] = [
     { role: "system", content: buildScoringSystemPrompt(job) },
     { role: "user", content: buildScoringUserPrompt(transcript, job, customInstructions) },
   ];
 
-  const first = await callChat(messages);
+  const first = await callChat(messages, trace, "score");
   try {
     return { result: parseAndValidate(first, job !== null), model: env.evalModel };
   } catch (err) {
@@ -100,7 +119,9 @@ export async function scoreTranscript(
         role: "user",
         content: `Your previous response was not valid. Validation errors:\n${issues.slice(0, 2000)}\n\nRespond again with ONLY the corrected JSON object.`,
       },
-    ]);
+      // Recorded under its own name so a run that needed a repair is visibly
+      // more expensive in the trace than one that got it right first time.
+    ], trace, "score-repair");
     return { result: parseAndValidate(repaired, job !== null), model: env.evalModel };
   }
 }

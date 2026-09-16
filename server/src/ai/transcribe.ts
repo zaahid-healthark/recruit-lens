@@ -2,6 +2,7 @@ import fs from "fs";
 import { env } from "../config/env";
 import { log } from "../lib/logger";
 import { cleanupNormalized, normalizeForTranscription } from "../services/audio";
+import { EvaluationTrace, recordGeneration } from "../observability/langfuse";
 import { getOpenAI } from "./openaiClient";
 
 export interface TranscriptionResult {
@@ -24,7 +25,11 @@ function candidateModels(preferred?: string): string[] {
   return [...new Set([preferred ?? env.transcribeModel, "gpt-4o-transcribe", "whisper-1"])];
 }
 
-async function transcribeWithModel(filePath: string, model: string): Promise<TranscriptionResult> {
+async function transcribeWithModel(
+  filePath: string,
+  model: string,
+  trace: EvaluationTrace = null
+): Promise<TranscriptionResult> {
   const openai = getOpenAI();
   const diarize = model.includes("diarize");
   // `diarized_json` / `chunking_strategy` are newer params than some SDK
@@ -37,6 +42,7 @@ async function transcribeWithModel(filePath: string, model: string): Promise<Tra
   // Required by gpt-4o-transcribe-diarize for audio longer than 30 seconds.
   if (diarize) params.chunking_strategy = "auto";
 
+  const startedAt = new Date();
   const resp = (await openai.audio.transcriptions.create(params as any)) as any;
 
   let text: string;
@@ -51,6 +57,18 @@ async function transcribeWithModel(filePath: string, model: string): Promise<Tra
     text = typeof resp?.text === "string" ? resp.text : JSON.stringify(resp);
   }
   if (!text.trim()) throw new Error("Transcription returned empty text");
+
+  // Transcription is the larger half of the bill, so it is traced in its own
+  // right rather than folded into the evaluation's total.
+  recordGeneration(trace, {
+    name: "transcribe",
+    model,
+    usage: resp?.usage,
+    startedAt,
+    input: filePath,
+    output: text,
+    metadata: { diarized: diarize, characters: text.length },
+  });
 
   return {
     text,
@@ -69,7 +87,8 @@ async function transcribeWithModel(filePath: string, model: string): Promise<Tra
  */
 export async function transcribeAudio(
   filePath: string,
-  model?: string
+  model?: string,
+  trace: EvaluationTrace = null
 ): Promise<TranscriptionResult> {
   // Timed in two halves on purpose. "Transcription is slow" is not actionable
   // until you know whether the minutes go to our own ffmpeg pass or to the
@@ -83,7 +102,7 @@ export async function transcribeAudio(
     let lastError: unknown = null;
     for (const candidate of candidateModels(model)) {
       try {
-        const result = await transcribeWithModel(normalized.path, candidate);
+        const result = await transcribeWithModel(normalized.path, candidate, trace);
         const doneAt = Date.now();
         log.info(
           `Transcribed with ${candidate} in ${secs(startedAt, doneAt)}s ` +

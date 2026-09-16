@@ -241,6 +241,32 @@ Ranking is separate and deterministic: `GET /jobs/:id/ranking` compares a job's
 candidates from stored evaluations only, so it costs nothing, returns the same
 answer every time, and can be re-read months later to explain a decision.
 
+## Measuring what an evaluation costs
+
+Set these in `server/.env` and restart:
+
+```
+LANGFUSE_PUBLIC_KEY="pk-lf-…"
+LANGFUSE_SECRET_KEY="sk-lf-…"
+LANGFUSE_BASE_URL="https://cloud.langfuse.com"
+```
+
+Every evaluation then appears as one trace with its transcription and scoring
+calls beneath it, priced from the token counts each returns. That turns the
+per-call figure from an estimate into a measurement, and makes the split
+visible — transcription against scoring, and what a repair retry costs when
+the model's first JSON fails validation.
+
+Two things worth knowing before you turn it on:
+
+- **Interview content is NOT sent by default.** Only model names, token counts
+  and timings leave the VM. `LANGFUSE_CAPTURE_CONTENT=true` adds the prompts
+  and completions, which means transcripts of real candidates reach a
+  third-party service — worth a deliberate decision rather than a default.
+- **Tracing can never fail an evaluation.** Every call is wrapped and
+  fire-and-forget, so an unreachable Langfuse, a wrong key or a network stall
+  costs a candidate nothing. Leaving the keys unset disables it completely.
+
 ## Troubleshooting
 
 | Symptom | Cause |
