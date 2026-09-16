@@ -625,6 +625,13 @@
             <span class="drawer-hint">Roles candidates are scored against</span>
           </span>
         </button>
+        <button class="drawer-item" data-view="view-instructions">
+          <span class="drawer-icon">""</span>
+          <span class="drawer-text">
+            <span class="drawer-label">Saved instructions</span>
+            <span class="drawer-hint">Reusable scoring steers</span>
+          </span>
+        </button>
         <button class="drawer-item" data-view="view-shortlist">
           <span class="drawer-icon">→</span>
           <span class="drawer-text">
@@ -743,12 +750,26 @@
             <div class="step-head"><span class="step-n">3</span><span class="step-title">Custom instructions <span class="optional">— optional</span></span></div>
             <div class="step-body">
               <p class="step-hint">Anything to weigh more heavily for this candidate.</p>
+              <select id="instr-preset" style="margin-bottom: 9px">
+                <option value="">No saved instruction</option>
+              </select>
               <textarea
                 id="instructions"
                 style="min-height: 88px"
                 placeholder="e.g. Weigh hands-on SQL depth most. Junior role — calibrate to 1–2 years."
               ></textarea>
               <p id="instr-count" class="hint" style="margin: 6px 0 0"></p>
+              <div class="row" style="margin-top: 10px">
+                <button id="instr-save-btn" class="btn-ghost btn-sm" type="button" disabled>
+                  Save for reuse
+                </button>
+                <span id="instr-save-status" class="muted" style="align-self: center"></span>
+              </div>
+              <div id="instr-save-row" class="row hidden" style="margin-top: 9px">
+                <input id="instr-label" type="text" placeholder="Name it, e.g. Junior role" style="flex: 1 1 160px" />
+                <button id="instr-confirm" class="btn-primary btn-sm" type="button">Save</button>
+                <button id="instr-cancel" class="btn-ghost btn-sm" type="button">Cancel</button>
+              </div>
             </div>
           </div>
 
@@ -863,6 +884,18 @@
             <button id="nj-save" class="btn-primary" disabled>Save job description</button>
           </div>
         </div>
+      </section>
+
+      <!-- Reusable scoring steers -->
+      <section id="view-instructions" class="hidden">
+        <div class="card">
+          <h2>Saved instructions</h2>
+          <p class="hint" style="margin: 2px 0 0">
+            Steers you can apply when evaluating. Editing one never changes a past evaluation —
+            each recording keeps the text it was actually scored with.
+          </p>
+        </div>
+        <div id="instr-list"></div>
       </section>
 
       <!-- Candidates a person marked for another conversation -->
@@ -983,6 +1016,7 @@
         "view-job",
         "view-shortlist",
         "view-job-new",
+        "view-instructions",
       ];
       /** Title bar text, and which bottom tab (if any) owns each view. */
       const VIEW_META = {
@@ -995,6 +1029,7 @@
         "view-job": { title: "Job description", tab: null, back: "view-jobs" },
         "view-job-new": { title: "New job description", tab: null, back: "view-jobs" },
         "view-shortlist": { title: "Next round", tab: null, back: "view-recordings" },
+        "view-instructions": { title: "Saved instructions", tab: null, back: "view-recordings" },
         "view-ranking": { title: "Compare candidates", tab: null, back: "view-recordings" },
         "view-settings": { title: "Settings", tab: null, back: "view-recordings" },
       };
@@ -1075,6 +1110,7 @@
         else if (view === "view-jobs") openJobs();
         else if (view === "view-job") openJobs();
         else if (view === "view-shortlist") openShortlist();
+        else if (view === "view-instructions") openInstructions();
         else if (view === "view-ranking") openRanking();
         else if (view === "view-settings") openSettings();
         else show(view);
@@ -1199,6 +1235,10 @@
         $("job-title").value = "";
         $("job-jd").value = "";
         $("instructions").value = "";
+        $("instr-preset").value = "";
+        $("instr-save-row").classList.add("hidden");
+        $("instr-save-status").textContent = "";
+        $("instr-save-btn").disabled = true;
         $("jd-file-status").textContent = "";
         if ($("job-select").options.length) $("job-select").selectedIndex = 0;
         setJdMode("existing");
@@ -2156,6 +2196,157 @@
         }
       }
 
+      // ── Saved instructions ────────────────────────────────────────────
+      /**
+       * Reusable scoring steers.
+       *
+       * Applying one only FILLS the box — the text is still editable, and the
+       * recording stores whatever was actually sent. So a preset can be edited
+       * or deleted later without rewriting what a past candidate was judged
+       * on, which is the property that makes this safe to use on a hiring
+       * record at all.
+       */
+      let presetCache = [];
+
+      async function loadPresets() {
+        try {
+          presetCache = await api("/instructions");
+          const sel = $("instr-preset");
+          const previous = sel.value;
+          sel.innerHTML =
+            '<option value="">No saved instruction</option>' +
+            presetCache.map((p) => '<option value="' + p.id + '">' + esc(p.label) + "</option>").join("");
+          if (previous && presetCache.some((p) => p.id === previous)) sel.value = previous;
+        } catch (err) { /* 401 already handled */ }
+      }
+
+      $("instr-preset").addEventListener("change", () => {
+        const preset = presetCache.find((p) => p.id === $("instr-preset").value);
+        if (!preset) return;
+        $("instructions").value = preset.text;
+        $("instructions").dispatchEvent(new Event("input"));
+      });
+
+      // Typing after applying one means this is no longer that preset.
+      $("instructions").addEventListener("input", () => {
+        const sel = $("instr-preset");
+        const preset = presetCache.find((p) => p.id === sel.value);
+        if (preset && preset.text !== $("instructions").value) sel.value = "";
+        const text = $("instructions").value.trim();
+        $("instr-save-btn").disabled = text.length === 0;
+        if (!text) $("instr-save-row").classList.add("hidden");
+      });
+
+      $("instr-save-btn").addEventListener("click", () => {
+        $("instr-save-row").classList.remove("hidden");
+        $("instr-save-status").textContent = "";
+        // Seed the name from the opening words — usually close enough to keep.
+        if (!$("instr-label").value.trim()) {
+          $("instr-label").value = $("instructions").value.trim().split(/\s+/).slice(0, 4).join(" ");
+        }
+        $("instr-label").focus();
+      });
+      $("instr-cancel").addEventListener("click", () => {
+        $("instr-save-row").classList.add("hidden");
+      });
+
+      $("instr-confirm").addEventListener("click", async () => {
+        const label = $("instr-label").value.trim();
+        const text = $("instructions").value.trim();
+        if (!label || !text) return;
+        $("instr-confirm").disabled = true;
+        $("instr-save-status").textContent = "Saving…";
+        try {
+          const saved = await api("/instructions", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ label, text }),
+          });
+          await loadPresets();
+          $("instr-preset").value = saved.id;
+          $("instr-save-row").classList.add("hidden");
+          $("instr-label").value = "";
+          $("instr-save-status").textContent = "Saved as “" + saved.label + "”.";
+        } catch (err) {
+          if (err.status !== 401) $("instr-save-status").textContent = err.message;
+        } finally {
+          $("instr-confirm").disabled = false;
+        }
+      });
+
+      async function openInstructions() {
+        show("view-instructions");
+        $("instr-list").innerHTML = '<div class="card center"><p class="muted">Loading…</p></div>';
+        try {
+          const presets = await api("/instructions");
+          presetCache = presets;
+          if (!presets.length) {
+            $("instr-list").innerHTML =
+              '<div class="card"><p class="empty">Nothing saved yet.<br />' +
+              "Write a steer on the Evaluate screen and choose <b>Save for reuse</b>.</p></div>";
+            return;
+          }
+          $("instr-list").innerHTML = presets
+            .map(
+              (p) =>
+                '<div class="card" data-preset="' + p.id + '">' +
+                '<div class="field"><label>Name</label>' +
+                '<input type="text" data-label="' + p.id + '" value="' + esc(p.label) + '" /></div>' +
+                '<div class="field" style="margin-bottom:12px"><label>Instruction</label>' +
+                '<textarea data-text="' + p.id + '" style="min-height:96px">' + esc(p.text) + "</textarea></div>" +
+                '<div class="row"><button class="btn-primary btn-sm" data-save="' + p.id + '">Save</button>' +
+                '<button class="btn-ghost btn-sm" data-delete="' + p.id + '">Delete</button>' +
+                '<span class="muted" data-status="' + p.id + '" style="align-self:center"></span></div>' +
+                "</div>"
+            )
+            .join("");
+          wireInstructionList();
+        } catch (err) {
+          if (err.status !== 401) {
+            $("instr-list").innerHTML =
+              '<div class="card"><div class="callout err">' + esc(err.message) + "</div></div>";
+          }
+        }
+      }
+
+      function wireInstructionList() {
+        const root = $("instr-list");
+        root.querySelectorAll("[data-save]").forEach((b) =>
+          b.addEventListener("click", async () => {
+            const id = b.dataset.save;
+            const status = root.querySelector('[data-status="' + id + '"]');
+            b.disabled = true;
+            status.textContent = "Saving…";
+            try {
+              await api("/instructions/" + id, {
+                method: "PATCH",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({
+                  label: root.querySelector('[data-label="' + id + '"]').value.trim(),
+                  text: root.querySelector('[data-text="' + id + '"]').value.trim(),
+                }),
+              });
+              status.textContent = "Saved.";
+              loadPresets();
+            } catch (err) {
+              if (err.status !== 401) status.textContent = err.message;
+            } finally {
+              b.disabled = false;
+            }
+          })
+        );
+        root.querySelectorAll("[data-delete]").forEach((b) =>
+          b.addEventListener("click", async () => {
+            b.disabled = true;
+            try {
+              await api("/instructions/" + b.dataset.delete, { method: "DELETE" });
+              await loadPresets();
+              openInstructions();
+            } catch (err) { b.disabled = false; }
+          })
+        );
+      }
+
       // ── Adding a job description ──────────────────────────────────────
       /**
        * Its own screen, reachable from the Jobs list as well as from the
@@ -2679,6 +2870,7 @@
         // tap away and is where they go afterwards.
         show("view-upload");
         loadJobs();
+        loadPresets();
         loadRecent();
       }
 

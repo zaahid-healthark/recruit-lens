@@ -260,6 +260,19 @@ export interface JobRankingDto {
   generatedAt: string;
 }
 
+/**
+ * A saved, reusable scoring steer. A template only: applying one fills the
+ * instructions box, and the recording keeps its own copy of whatever text was
+ * actually used, so deleting a preset never rewrites past evaluations.
+ */
+export interface InstructionPresetDto {
+  id: string;
+  label: string;
+  text: string;
+  createdAt: string;
+  updatedAt: string;
+}
+
 /** Structured error body returned by the API on any failure. */
 export interface ApiErrorBody {
   error: {

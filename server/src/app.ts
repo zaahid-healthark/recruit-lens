@@ -6,6 +6,7 @@ import { apiKeyAuth } from "./middleware/apiKey";
 import { errorHandler, notFoundHandler } from "./middleware/errorHandler";
 import { dashboardRouter } from "./routes/dashboard";
 import { evaluateRouter } from "./routes/evaluate";
+import { instructionsRouter } from "./routes/instructions";
 import { jobsRouter } from "./routes/jobs";
 import { recordingsRouter } from "./routes/recordings";
 import { taxonomyRouter } from "./routes/taxonomy";
@@ -53,6 +54,7 @@ export function createApp(): express.Express {
   app.use(apiKeyAuth);
   app.use("/recordings", recordingsRouter);
   app.use("/jobs", jobsRouter);
+  app.use("/instructions", instructionsRouter);
   app.use("/evaluate", evaluateRouter);
   app.use("/dashboard", dashboardRouter);
   app.use("/taxonomy", taxonomyRouter);

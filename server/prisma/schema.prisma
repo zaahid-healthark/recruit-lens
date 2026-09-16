@@ -89,6 +89,22 @@ model Recording {
   @@index([shortlistedAt])
 }
 
+/// A reusable scoring steer. Recruiters converge on a handful of phrasings —
+/// "junior role, calibrate to 1-2 years", "weigh hands-on SQL above all else" —
+/// and retyping one from memory each time is how it drifts between candidates
+/// who were supposed to be judged on the same basis.
+model InstructionPreset {
+  id        String   @id @default(uuid())
+  /// Short name shown in the picker.
+  label     String
+  /// The steer itself, dropped into the evaluation prompt verbatim.
+  text      String
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([label])
+}
+
 model Transcript {
   id          String    @id @default(uuid())
   recordingId String    @unique

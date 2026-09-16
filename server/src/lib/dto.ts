@@ -8,6 +8,7 @@ import {
   JobDto,
   RecordingDetailDto,
   RecordingListItemDto,
+  InstructionPresetDto,
   RecordingStatus,
   ANSWER_VERDICTS,
   AnswerVerdict,
@@ -16,7 +17,7 @@ import {
   QuestionKind,
   TranscriptDto,
 } from "@interview-evaluator/shared";
-import { Evaluation, Job, Recording, Transcript } from "@prisma/client";
+import { Evaluation, InstructionPreset, Job, Recording, Transcript } from "@prisma/client";
 
 function asStringArray(value: unknown): string[] {
   return Array.isArray(value) ? value.filter((v): v is string => typeof v === "string") : [];
@@ -131,6 +132,16 @@ function asJdMatch(value: unknown): JdMatchDto | null {
     fitScore: asScore(v.fitScore),
     verdictSummary: typeof v.verdictSummary === "string" ? v.verdictSummary : "",
     requirements,
+  };
+}
+
+export function toInstructionPresetDto(p: InstructionPreset): InstructionPresetDto {
+  return {
+    id: p.id,
+    label: p.label,
+    text: p.text,
+    createdAt: p.createdAt.toISOString(),
+    updatedAt: p.updatedAt.toISOString(),
   };
 }
 
