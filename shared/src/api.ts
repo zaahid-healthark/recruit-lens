@@ -94,6 +94,8 @@ export interface EvaluationSummaryDto {
   subCategory: string;
   recommendation: string;
   classificationConfidence: string;
+  /** When this evaluation was produced — distinct from when the file was uploaded. */
+  createdAt: string;
 }
 
 export interface EvaluationDto extends EvaluationSummaryDto {

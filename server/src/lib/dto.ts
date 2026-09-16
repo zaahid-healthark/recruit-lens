@@ -167,6 +167,7 @@ export function toEvaluationSummaryDto(e: Evaluation): EvaluationSummaryDto {
     subCategory: e.subCategory,
     recommendation: e.recommendation,
     classificationConfidence: e.classificationConfidence,
+    createdAt: e.createdAt.toISOString(),
   };
 }
 
@@ -182,7 +183,6 @@ export function toEvaluationDto(e: Evaluation): EvaluationDto {
     areasForImprovement: asStringArray(e.areasForImprovement),
     jdMatch: asJdMatch(e.jdMatchJson),
     model: e.model,
-    createdAt: e.createdAt.toISOString(),
   };
 }
 

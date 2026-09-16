@@ -420,6 +420,39 @@
       }
       .cat-name { font-size: 14px; font-weight: 700; }
 
+      /* ── List bar + filters ──────────────────────────────────────────
+         Filters live behind a button rather than across the top. Five
+         controls on permanent display is most of what made the list screen
+         feel busy, and four of them are empty most of the time. */
+      .list-bar {
+        display: flex; align-items: center; gap: 10px;
+        padding: 0 4px 12px;
+      }
+      .filter-btn { display: inline-flex; align-items: center; gap: 7px; }
+      .filter-badge {
+        min-width: 18px; height: 18px; padding: 0 5px; border-radius: 9px;
+        background: var(--primary); color: var(--on-primary);
+        font-size: 11px; font-weight: 700; display: grid; place-items: center;
+      }
+      .check {
+        display: flex; align-items: center; gap: 9px;
+        font-size: 13.5px; font-weight: 500; margin: 0;
+      }
+      .check input { width: auto; }
+
+      /* ── Job detail ─────────────────────────────────────────────────── */
+      .job-row {
+        display: flex; align-items: center; gap: 14px; width: 100%; text-align: left;
+        padding: 15px 8px; border: none; border-top: 1px solid var(--border);
+        background: none; color: var(--text); border-radius: 0; font-weight: 400;
+      }
+      .job-row:first-of-type { border-top: none; }
+      .job-row:hover { background: var(--inset); }
+      .job-row-main { flex: 1; min-width: 0; }
+      .job-row-title { font-size: 14.5px; font-weight: 650; }
+      .job-row-meta { font-size: 12.5px; color: var(--subtext); margin-top: 2px; }
+      .chev { flex: none; color: var(--faint); }
+
       /* ── Candidate rows: open on the left, trash on the right ─────── */
       .rec-open {
         display: flex; align-items: center; gap: 14px; flex: 1; min-width: 0;
@@ -679,13 +712,53 @@
 
       <!-- ── Recordings: the library, and the app's home screen ───────── -->
       <section id="view-recordings" class="hidden">
-        <div class="card" style="padding: 14px 16px">
-          <div class="seg" id="rec-filters" style="margin: 0">
-            <button type="button" data-filter="all" class="on">All</button>
-            <button type="button" data-filter="EVALUATED">Evaluated</button>
-            <button type="button" data-filter="UNEVALUATED">Not evaluated</button>
-            <button type="button" data-filter="FAILED">Failed</button>
-            <button type="button" data-filter="trash">Trash</button>
+        <div class="list-bar">
+          <span id="rec-count" class="muted"></span>
+          <div class="spacer"></div>
+          <button id="btn-filter" class="btn-ghost btn-sm filter-btn">
+            <svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+              <path d="M3 5h18M7 12h10M10 19h4"/>
+            </svg>
+            Filter
+            <span id="filter-badge" class="filter-badge hidden">0</span>
+          </button>
+        </div>
+
+        <!-- Hidden until asked for: a list of every filter, always on screen,
+             is most of what made the old bar noisy. -->
+        <div id="filter-panel" class="card hidden">
+          <div class="field">
+            <label for="f-q">Candidate or file name</label>
+            <input id="f-q" type="text" placeholder="Search…" autocomplete="off" />
+          </div>
+          <div class="field">
+            <label for="f-job">Job description</label>
+            <select id="f-job"><option value="">Any job</option></select>
+          </div>
+          <div class="field">
+            <label for="f-status">Status</label>
+            <select id="f-status">
+              <option value="">Any status</option>
+              <option value="EVALUATED">Evaluated</option>
+              <option value="UNEVALUATED">Not evaluated</option>
+              <option value="FAILED">Failed</option>
+            </select>
+          </div>
+          <div class="field">
+            <label for="f-since">Evaluated</label>
+            <select id="f-since">
+              <option value="">Any time</option>
+              <option value="7">Last 7 days</option>
+              <option value="30">Last 30 days</option>
+              <option value="90">Last 90 days</option>
+            </select>
+          </div>
+          <div class="field" style="margin-bottom: 0">
+            <label class="check"><input id="f-trash" type="checkbox" /> Show trash instead</label>
+          </div>
+          <div class="row" style="margin-top: 16px">
+            <button id="f-clear" class="btn-ghost btn-sm">Clear all</button>
+            <button id="f-close" class="btn-primary btn-sm">Done</button>
           </div>
         </div>
         <div class="card">
@@ -706,12 +779,14 @@
       <section id="view-jobs" class="hidden">
         <div class="card">
           <h2>Job descriptions</h2>
-          <p class="hint" style="margin: 0">
-            Every JD you have saved. Open one to read it in full, edit the text, or archive it —
-            archived jobs keep their candidates and history but drop out of the picker.
-          </p>
+          <p class="hint" style="margin: 0">Open one to read or edit it.</p>
         </div>
         <div id="jobs-list"></div>
+      </section>
+
+      <!-- One job, on its own screen — the list is for choosing, this is for reading. -->
+      <section id="view-job" class="hidden">
+        <div id="job-detail"></div>
       </section>
 
       <section id="view-ranking" class="hidden">
@@ -819,6 +894,7 @@
         "view-jobs",
         "view-dashboard",
         "view-settings",
+        "view-job",
       ];
       /** Title bar text, and which bottom tab (if any) owns each view. */
       const VIEW_META = {
@@ -828,6 +904,7 @@
         "view-report": { title: "Report", tab: null, back: "view-recordings" },
         "view-dashboard": { title: "Dashboard", tab: "view-dashboard" },
         "view-jobs": { title: "Job descriptions", tab: null, back: "view-recordings" },
+        "view-job": { title: "Job description", tab: null, back: "view-jobs" },
         "view-ranking": { title: "Compare candidates", tab: null, back: "view-recordings" },
         "view-settings": { title: "Settings", tab: null, back: "view-recordings" },
       };
@@ -906,6 +983,7 @@
         else if (view === "view-upload") { resetForm(); show("view-upload"); }
         else if (view === "view-dashboard") openDashboard();
         else if (view === "view-jobs") openJobs();
+        else if (view === "view-job") openJobs();
         else if (view === "view-ranking") openRanking();
         else if (view === "view-settings") openSettings();
         else show(view);
@@ -1528,10 +1606,11 @@
           $("trash-status").textContent = toTrash ? "Moving…" : "Restoring…";
           try {
             await setTrashed(rec.id, toTrash);
-            recFilter = toTrash ? "all" : "all";
-            $("rec-filters")
-              .querySelectorAll("button")
-              .forEach((b) => b.classList.toggle("on", b.dataset.filter === "all"));
+            // Land on the list the candidate just moved INTO, so the action
+            // has a visible result instead of appearing to do nothing.
+            filters.trash = !toTrash ? false : false;
+            $("f-trash").checked = false;
+            syncFilterBadge();
             show("view-recordings");
             loadRecent();
           } catch (err) {
@@ -1779,19 +1858,49 @@
           '<pre class="jdtext">' + esc(job.jdText) + "</pre></details>";
       }
 
+      /**
+       * The jobs list is for CHOOSING one, so it stays compact — previously
+       * every description was expanded inline and the page was a single long
+       * scroll through full JD texts with the next title buried somewhere in
+       * it. Reading one is its own screen.
+       */
       async function openJobs() {
         show("view-jobs");
         $("jobs-list").innerHTML = '<div class="card center"><p class="muted">Loading…</p></div>';
         try {
           const jobs = await api("/jobs?includeArchived=true");
+          jobsDetailCache = jobs;
           if (!jobs.length) {
             $("jobs-list").innerHTML =
               '<div class="card"><p class="empty">No job descriptions saved yet.<br />' +
               "Add one from the Evaluate tab when you upload a call.</p></div>";
             return;
           }
-          $("jobs-list").innerHTML = jobs.map(jobCard).join("");
-          wireJobCards();
+          $("jobs-list").innerHTML =
+            '<div class="card" style="padding:6px 14px">' +
+            jobs
+              .map((j) => {
+                const words = j.jdText.trim().split(/\s+/).length;
+                return (
+                  '<button class="job-row" data-open-job="' + j.id + '">' +
+                  (j.averageOverallScore !== null
+                    ? '<div class="mini" style="background:' + scoreColor(j.averageOverallScore) + '">' +
+                      j.averageOverallScore + "</div>"
+                    : '<div class="mini na">—</div>') +
+                  '<div class="job-row-main"><div class="job-row-title">' + esc(j.title) +
+                  (j.archived ? ' <span class="kind">Archived</span>' : "") + "</div>" +
+                  '<div class="job-row-meta">' +
+                  j.recordingCount + " candidate" + (j.recordingCount === 1 ? "" : "s") +
+                  " · " + words + " words</div></div>" +
+                  '<svg class="chev" viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 5l7 7-7 7"/></svg>' +
+                  "</button>"
+                );
+              })
+              .join("") +
+            "</div>";
+          $("jobs-list").querySelectorAll("[data-open-job]").forEach((b) =>
+            b.addEventListener("click", () => openJob(b.dataset.openJob))
+          );
         } catch (err) {
           if (err.status !== 401) {
             $("jobs-list").innerHTML =
@@ -1800,27 +1909,22 @@
         }
       }
 
-      function jobCard(j) {
+      /** Jobs as last listed, so opening one needs no extra request. */
+      let jobsDetailCache = [];
+
+      function openJob(id) {
+        const j = jobsDetailCache.find((x) => x.id === id);
+        if (!j) { openJobs(); return; }
+        show("view-job");
+        $("topbar-title").textContent = j.title;
         const words = j.jdText.trim().split(/\s+/).length;
-        const avg = j.averageOverallScore;
-        return (
-          '<div class="card" data-job="' + j.id + '">' +
-          '<div class="item-head">' +
-          '<div style="flex:1;min-width:0">' +
-          '<h2 style="margin:0">' + esc(j.title) +
-          (j.archived ? ' <span class="pill" style="background:var(--inset);color:var(--faint)">Archived</span>' : "") +
-          "</h2>" +
-          '<p class="muted" style="margin:3px 0 0">' +
-          j.recordingCount + " candidate" + (j.recordingCount === 1 ? "" : "s") +
-          (avg !== null ? " · average " + avg : "") +
-          " · " + words + " words" +
-          "</p></div>" +
-          (avg !== null
-            ? '<div class="mini" style="background:' + scoreColor(avg) + '">' + avg + "</div>"
-            : "") +
-          "</div>" +
-          '<pre class="jdtext">' + esc(j.jdText) + "</pre>" +
-          '<div class="row" style="margin-top:12px">' +
+        $("job-detail").innerHTML =
+          '<div class="card"><h2>' + esc(j.title) + "</h2>" +
+          '<p class="card-sub">' + j.recordingCount + " candidate" +
+          (j.recordingCount === 1 ? "" : "s") +
+          (j.averageOverallScore !== null ? " · average " + j.averageOverallScore : "") +
+          " · " + words + " words" + (j.archived ? " · archived" : "") + "</p>" +
+          '<div class="row" style="margin-top:14px">' +
           '<button class="btn-ghost btn-sm" data-edit="' + j.id + '">Edit text</button>' +
           '<button class="btn-ghost btn-sm" data-archive="' + j.id + '">' +
           (j.archived ? "Restore" : "Archive") + "</button>" +
@@ -1828,63 +1932,56 @@
             ? '<button class="btn-ghost btn-sm" data-compare="' + j.id + '">Compare candidates</button>'
             : "") +
           '<span class="muted" data-status="' + j.id + '" style="align-self:center"></span>' +
-          "</div></div>"
-        );
+          "</div></div>" +
+          '<div class="card" data-job="' + j.id + '"><h3>Description</h3>' +
+          '<pre class="jdtext">' + esc(j.jdText) + "</pre></div>";
+        wireJobDetail(j.id);
       }
 
-      function wireJobCards() {
-        const list = $("jobs-list");
+      function wireJobDetail(id) {
+        const root = $("job-detail");
+        const card = root.querySelector("[data-job]");
 
-        list.querySelectorAll("[data-edit]").forEach((b) =>
-          b.addEventListener("click", () => {
-            const card = b.closest("[data-job]");
-            const pre = card.querySelector("pre.jdtext");
-            if (b.textContent === "Save") {
-              const text = card.querySelector("textarea").value.trim();
-              saveJd(card.dataset.job, text, b, card);
-              return;
-            }
-            // Swap the read-only text for an editable copy, in place.
-            const ta = document.createElement("textarea");
-            ta.value = pre.textContent;
-            ta.style.minHeight = "220px";
-            pre.replaceWith(ta);
-            b.textContent = "Save";
-            b.classList.remove("btn-ghost");
-            b.classList.add("btn-primary");
-          })
-        );
+        root.querySelector("[data-edit]").addEventListener("click", (e) => {
+          const b = e.currentTarget;
+          const pre = card.querySelector("pre.jdtext");
+          if (b.textContent === "Save") {
+            saveJd(id, card.querySelector("textarea").value.trim(), b, root);
+            return;
+          }
+          const ta = document.createElement("textarea");
+          ta.value = pre.textContent;
+          ta.style.minHeight = "320px";
+          pre.replaceWith(ta);
+          b.textContent = "Save";
+          b.classList.remove("btn-ghost");
+          b.classList.add("btn-primary");
+        });
 
-        list.querySelectorAll("[data-archive]").forEach((b) =>
-          b.addEventListener("click", async () => {
-            b.disabled = true;
-            try {
-              const archived = b.textContent === "Archive";
-              await api("/jobs/" + b.dataset.archive, {
-                method: "PATCH",
-                headers: { "Content-Type": "application/json" },
-                body: JSON.stringify({ archived }),
-              });
-              openJobs();
-              loadJobs(); // the picker's list changed too
-            } catch (err) {
-              b.disabled = false;
-              if (err.status !== 401) {
-                list.querySelector('[data-status="' + b.dataset.archive + '"]').textContent = err.message;
-              }
-            }
-          })
-        );
+        root.querySelector("[data-archive]").addEventListener("click", async (e) => {
+          const b = e.currentTarget;
+          b.disabled = true;
+          try {
+            await api("/jobs/" + id, {
+              method: "PATCH",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({ archived: b.textContent === "Archive" }),
+            });
+            openJobs();
+            loadJobs();
+          } catch (err) {
+            b.disabled = false;
+            if (err.status !== 401) root.querySelector("[data-status]").textContent = err.message;
+          }
+        });
 
-        list.querySelectorAll("[data-compare]").forEach((b) =>
-          b.addEventListener("click", () => {
-            openRanking(b.dataset.compare);
-          })
-        );
+        const cmp = root.querySelector("[data-compare]");
+        if (cmp) cmp.addEventListener("click", () => openRanking(id));
       }
 
-      async function saveJd(id, text, btn, card) {
-        const status = card.querySelector("[data-status]");
+      async function saveJd(id, text, btn, root) {
+        const status = root.querySelector("[data-status]");
+        const card = root.querySelector("[data-job]");
         btn.disabled = true;
         status.textContent = "Saving…";
         try {
@@ -1903,7 +2000,9 @@
           pre.className = "jdtext";
           pre.textContent = text;
           card.querySelector("textarea").replaceWith(pre);
-          loadJobs(); // keep the picker's cache in step
+          const cached = jobsDetailCache.find((x) => x.id === id);
+          if (cached) cached.jdText = text;
+          loadJobs();
         } catch (err) {
           btn.disabled = false;
           if (err.status !== 401) status.textContent = err.message;
@@ -2023,18 +2122,6 @@
       }
 
       // ── Recent list ───────────────────────────────────────────────────
-      /** Status filter on the Recordings view; "all" shows everything. */
-      let recFilter = "all";
-      $("rec-filters").addEventListener("click", (e) => {
-        const btn = e.target.closest("button[data-filter]");
-        if (!btn) return;
-        recFilter = btn.dataset.filter;
-        $("rec-filters")
-          .querySelectorAll("button")
-          .forEach((b) => b.classList.toggle("on", b.dataset.filter === recFilter));
-        loadRecent();
-      });
-
       /**
        * Move a recording to the trash, or bring it back.
        *
@@ -2051,19 +2138,92 @@
         });
       }
 
+      // ── Candidate filters ─────────────────────────────────────────────
+      /** Empty string everywhere means "no opinion", so counting what is set is trivial. */
+      const filters = { q: "", jobId: "", status: "", since: "", trash: false };
+
+      function activeFilterCount() {
+        return (
+          (filters.q ? 1 : 0) + (filters.jobId ? 1 : 0) + (filters.status ? 1 : 0) +
+          (filters.since ? 1 : 0) + (filters.trash ? 1 : 0)
+        );
+      }
+
+      function syncFilterBadge() {
+        const n = activeFilterCount();
+        $("filter-badge").textContent = n;
+        $("filter-badge").classList.toggle("hidden", n === 0);
+      }
+
+      $("btn-filter").addEventListener("click", () => {
+        const panel = $("filter-panel");
+        panel.classList.toggle("hidden");
+        if (!panel.classList.contains("hidden")) {
+          // Populate the job list lazily — it is only needed once the panel opens.
+          const sel = $("f-job");
+          sel.innerHTML =
+            '<option value="">Any job</option>' +
+            jobCache.map((j) => '<option value="' + j.id + '">' + esc(j.title) + "</option>").join("");
+          sel.value = filters.jobId;
+        }
+      });
+      $("f-close").addEventListener("click", () => $("filter-panel").classList.add("hidden"));
+
+      $("f-clear").addEventListener("click", () => {
+        filters.q = ""; filters.jobId = ""; filters.status = ""; filters.since = ""; filters.trash = false;
+        $("f-q").value = ""; $("f-job").value = ""; $("f-status").value = "";
+        $("f-since").value = ""; $("f-trash").checked = false;
+        syncFilterBadge();
+        loadRecent();
+      });
+
+      const onFilterChange = () => {
+        filters.q = $("f-q").value.trim().toLowerCase();
+        filters.jobId = $("f-job").value;
+        filters.status = $("f-status").value;
+        filters.since = $("f-since").value;
+        filters.trash = $("f-trash").checked;
+        syncFilterBadge();
+        loadRecent();
+      };
+      ["f-q", "f-job", "f-status", "f-since", "f-trash"].forEach((id) => {
+        $(id).addEventListener(id === "f-q" ? "input" : "change", onFilterChange);
+      });
+
+      /** The evaluation date when there is one; otherwise when it was uploaded. */
+      function candidateDate(r) {
+        return new Date(r.evaluationSummary ? r.evaluationSummary.createdAt : r.importedAt);
+      }
+
+      function matchesFilters(r) {
+        if (filters.status && r.status !== filters.status) return false;
+        if (filters.jobId && (!r.job || r.job.id !== filters.jobId)) return false;
+        if (filters.q) {
+          const hay = ((r.candidateName || "") + " " + r.originalFilename).toLowerCase();
+          if (!hay.includes(filters.q)) return false;
+        }
+        if (filters.since) {
+          const cutoff = Date.now() - Number(filters.since) * 86400000;
+          if (candidateDate(r).getTime() < cutoff) return false;
+        }
+        return true;
+      }
+
       async function loadRecent() {
         try {
-          const inTrash = recFilter === "trash";
-          const all = await api("/recordings" + (inTrash ? "?trashed=true" : ""));
-          const list =
-            inTrash || recFilter === "all" ? all : all.filter((r) => r.status === recFilter);
+          const all = await api("/recordings" + (filters.trash ? "?trashed=true" : ""));
+          const list = all.filter(matchesFilters);
+          $("rec-count").textContent =
+            list.length === all.length
+              ? list.length + (list.length === 1 ? " candidate" : " candidates")
+              : list.length + " of " + all.length;
           if (!list.length) {
             $("recent").innerHTML =
               '<p class="empty">' +
-              (inTrash
+              (filters.trash && !all.length
                 ? "Trash is empty."
                 : all.length
-                  ? "Nothing matches this filter."
+                  ? "Nothing matches these filters."
                   : "No candidates yet.<br />Upload a call from the Evaluate tab.") +
               "</p>";
             return;
@@ -2073,7 +2233,7 @@
               const s = r.evaluationSummary;
               const score = s ? s.overallScore : null;
               const na = score === null || score === undefined;
-              const when = new Date(r.importedAt).toLocaleDateString(undefined, {
+              const when = candidateDate(r).toLocaleDateString(undefined, {
                 day: "numeric", month: "short",
               });
               return (
@@ -2087,10 +2247,10 @@
                 (r.job ? " · " + esc(r.job.title) : "") +
                 (r.status !== "EVALUATED" ? " · " + r.status.toLowerCase() : "") +
                 "</div></div></button>" +
-                '<button class="rec-action" data-' + (inTrash ? "restore" : "trash") + '="' + r.id +
-                '" title="' + (inTrash ? "Restore" : "Move to trash") + '" aria-label="' +
-                (inTrash ? "Restore" : "Move to trash") + '">' +
-                (inTrash
+                '<button class="rec-action" data-' + (filters.trash ? "restore" : "trash") + '="' + r.id +
+                '" title="' + (filters.trash ? "Restore" : "Move to trash") + '" aria-label="' +
+                (filters.trash ? "Restore" : "Move to trash") + '">' +
+                (filters.trash
                   ? '<svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 12a9 9 0 1 0 3-6.7"/><path d="M3 4v5h5"/></svg>'
                   : '<svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 6h18"/><path d="M8 6V4h8v2"/><path d="M19 6l-1 14H6L5 6"/></svg>') +
                 "</button></div>"
