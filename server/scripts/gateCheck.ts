@@ -29,6 +29,12 @@ const CASES: Case[] = [
     expect: "advance",
   },
   {
+    name: "REAL: 3 technical, all adequate (58/60/56)",
+    why: "The reported call. Every answer the recruiter asked for was acceptable; the pipeline returned 49 and 'Maybe'.",
+    gate: { decidingScore: 58, technicalScore: 58, technicalAsked: 3, technicalAnswered: 3, communicationScore: 50 },
+    expect: "advance",
+  },
+  {
     name: "brief but correct throughout",
     why: "Adequate-without-depth is the normal good outcome in 15 minutes and must not read as a near miss.",
     gate: { decidingScore: 58, technicalScore: 58, technicalAsked: 5, technicalAnswered: 5, communicationScore: 60 },
@@ -84,6 +90,40 @@ const CASES: Case[] = [
   },
 ];
 
+// ── the guard that stops a summary judgement contradicting the answers ──
+import { applyScoringGuards } from "../src/schemas/evaluationSchema";
+
+function guardCase(
+  label: string,
+  verdicts: Array<"strong" | "adequate" | "weak">,
+  scores: number[],
+  overall: number,
+  expected: number
+): boolean {
+  const evaluation = {
+    overall_score: overall,
+    recommendation: "Maybe — see summary",
+    categories: [
+      { name: "Communication Skills", score: 50, summary: "", evidence: "", recommendation: "" },
+      { name: "Technical Knowledge", score: 58, summary: "", evidence: "", recommendation: "" },
+      { name: "Problem Solving", score: 55, summary: "", evidence: "", recommendation: "" },
+    ],
+    question_assessment: {
+      questions: verdicts.map((v, i) => ({
+        question: "q" + i, kind: "technical", answer_summary: "", verdict: v,
+        score: scores[i], evidence: "",
+      })),
+      technical_score: 58, behavioural_score: null, summary: "",
+    },
+    jd_match: null,
+  } as any;
+  const got = applyScoringGuards(evaluation).overall_score;
+  const ok = got === expected;
+  console.log((ok ? "PASS  " : "FAIL  ") + label.padEnd(38) + "overall " + got +
+    (ok ? "" : `  (expected ${expected})`));
+  return ok;
+}
+
 let failed = 0;
 for (const c of CASES) {
   const got = decisionFor(c.gate);
@@ -96,5 +136,18 @@ for (const c of CASES) {
     console.log("        " + c.why);
   }
 }
+console.log();
+const guards: boolean[] = [
+  // The real call: 49 contradicted three acceptable answers; floored to the worst of them.
+  guardCase("REAL: all adequate, overall 49", ["adequate", "adequate", "adequate"], [58, 60, 56], 49, 56),
+  // Floors at the candidate's OWN worst answer, so it cannot manufacture a pass.
+  guardCase("all adequate but genuinely weak", ["adequate", "adequate"], [40, 42], 30, 40),
+  // One weak answer and the floor does not apply at all.
+  guardCase("one weak answer present", ["adequate", "weak"], [60, 30], 45, 45),
+  // Never lowers a score the model already put above the answers.
+  guardCase("overall already above answers", ["adequate", "adequate"], [58, 60], 70, 70),
+];
+failed += guards.filter((ok) => !ok).length;
+
 console.log(failed ? `\n${failed} check(s) FAILED` : "\nall checks passed");
 process.exit(failed ? 1 : 0);

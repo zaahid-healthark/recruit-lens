@@ -228,6 +228,8 @@ Both directions need evidence, and this is the calibration that matters most:
 - ${DECISION_THRESHOLDS.advance}-80 is the NORMAL band for a candidate who clears this gate. Correct, sensible, clearly explained answers belong here even when they are short and even when nothing about them was remarkable. You do not need to be impressed to put someone in this band.
 - Score ABOVE 80 only where the candidate was correct AND specific: a real number, a named tool doing a named job, a concrete thing they owned. This is the one place depth still counts — but its absence caps the score at 80, it does NOT push anyone below ${DECISION_THRESHOLDS.advance}.
 
+A candidate is never rated below the worst answer they gave, when every answer they gave was acceptable. If every question you graded came back "strong" or "adequate", then "overall_score" MUST NOT be lower than the lowest "score" you gave any of those answers. You have already judged each answer acceptable; a lower overall contradicts your own findings, and the candidate is not perfect — nobody screened in 15 minutes is, and they do not need to be. The question is only whether they know the things.
+
 "overall_score" is an integer 0-100, or null. Compute it ONLY over the categories you actually scored — it is NOT their mean. Weight "${PRIMARY_CATEGORY}" the most heavily of the five, then what this role specifically needs. A null category must never drag it down, and a weakness in something the role does not require must not dominate it.
 Set "overall_score" to null when fewer than ${MIN_SCORED_CATEGORIES_FOR_OVERALL} of the five categories have a score: below that there is not enough of the person on record to put a single number on them.
 

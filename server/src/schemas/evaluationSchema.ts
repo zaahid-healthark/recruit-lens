@@ -319,6 +319,31 @@ export function applyScoringGuards(result: ParsedLlmEvaluation): ParsedLlmEvalua
       "A follow-up round is needed before any decision.";
   }
 
+  // A candidate cannot be rated below the worst answer they gave, when every
+  // answer they gave was acceptable.
+  //
+  // This is the failure that prompted it: three technical questions, all three
+  // graded "adequate", scoring 58, 60 and 56 — and an overall of 49. Every
+  // piece of evidence in the report said "this person knows the things"; the
+  // summary judgement said otherwise, and the summary judgement is what the
+  // recruiter reads. The graded answers are the hardest evidence in the
+  // transcript, so an overall beneath all of them is the model second-guessing
+  // its own findings on tone rather than on anything the candidate said.
+  //
+  // Deliberately floors at the LOWEST answer rather than at a passing score:
+  // it is derived from the candidate's own worst moment, not from a threshold,
+  // so it cannot lift anyone past the gate who did not earn it. Three adequate
+  // answers at 40 still floor at 40, and still fail.
+  const graded = result.question_assessment?.questions ?? [];
+  if (
+    result.overall_score !== null &&
+    graded.length >= 2 &&
+    graded.every((q) => q.verdict === "strong" || q.verdict === "adequate")
+  ) {
+    const worst = Math.min(...graded.map((q) => q.score));
+    if (result.overall_score < worst) result.overall_score = worst;
+  }
+
   // A JD nobody probed produces no fit evidence; 0 would read as a bad
   // candidate rather than as an interview that never asked.
   if (result.jd_match) {
