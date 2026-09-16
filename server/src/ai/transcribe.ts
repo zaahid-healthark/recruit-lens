@@ -64,9 +64,9 @@ async function transcribeWithModel(
   recordGeneration(trace, {
     name: "transcribe",
     model,
+    // This model IS token-priced and returns the counts; the cost is derived
+    // from them in recordGeneration, because Langfuse has no rate for it.
     usage: resp?.usage,
-    // Langfuse cannot price the audio models from tokens, so the duration is
-    // what makes an explicit cost possible when a rate is configured.
     audioSeconds,
     startedAt,
     input: filePath,

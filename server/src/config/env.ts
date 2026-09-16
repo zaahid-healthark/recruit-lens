@@ -101,14 +101,21 @@ export const env = {
    */
   langfuseCaptureContent: boolEnv(process.env.LANGFUSE_CAPTURE_CONTENT, false),
   /**
-   * USD per minute of audio, used to price transcription in the cost view.
+   * USD per million tokens for the transcription model, used to price it in
+   * the cost view.
    *
-   * Deliberately NOT defaulted. Langfuse has no price for the transcription
-   * models, so without this they report as $0.00 — and a made-up default
-   * would replace "we cannot see this cost" with a confident wrong number,
-   * which is worse. Set it from the rate on your own OpenAI bill.
+   * Langfuse has no rate for gpt-4o-transcribe-diarize, so it reports as
+   * unpriced — and transcription is usually the larger half of the bill. The
+   * model IS token-priced and the API returns the token counts, so the cost
+   * is computed from them rather than estimated from audio length.
+   *
+   * Defaults are OpenAI's published rates for gpt-4o-transcribe-diarize as of
+   * Sep 2026 ($2.50 in / $10.00 out per 1M). Override both if the published
+   * price changes or you are on a different model — these are the one place
+   * a stale number would quietly misreport every evaluation.
    */
-  transcribeUsdPerMinute: floatEnv(process.env.OPENAI_TRANSCRIBE_USD_PER_MINUTE, 0),
+  transcribeUsdPer1mInput: floatEnv(process.env.OPENAI_TRANSCRIBE_USD_PER_1M_INPUT, 2.5),
+  transcribeUsdPer1mOutput: floatEnv(process.env.OPENAI_TRANSCRIBE_USD_PER_1M_OUTPUT, 10),
   /** Parallelism of the bulk evaluation queue (1 = strictly sequential). */
   bulkConcurrency: Math.max(1, intEnv(process.env.BULK_CONCURRENCY, 1)),
 } as const;

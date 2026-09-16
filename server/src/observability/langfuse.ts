@@ -88,10 +88,7 @@ export function startEvaluationTrace(input: TraceInput): EvaluationTrace {
 export interface GenerationInput {
   name: string;
   model: string;
-  /**
-   * Audio length, for models Langfuse cannot price from tokens. Only used
-   * when a per-minute rate has been configured.
-   */
+  /** Audio length, recorded as context — pricing comes from tokens. */
   audioSeconds?: number | null;
   /** Raw `usage` from the OpenAI response, whatever shape that model returns. */
   usage?: unknown;
@@ -136,32 +133,77 @@ function toUsageDetails(usage: unknown): Record<string, number> | undefined {
   return Object.keys(details).length > 0 ? details : undefined;
 }
 
+/**
+ * Cost for models Langfuse cannot price itself.
+ *
+ * gpt-4o-transcribe-diarize has no entry in Langfuse's model table, so it
+ * reports as unpriced — and it is usually the larger half of the bill. It IS
+ * token-priced and the API returns the counts, so the cost is derived from
+ * them rather than estimated from audio length, which would be a second
+ * approximation on top of a rate that might itself be wrong.
+ *
+ * Returns undefined for anything Langfuse already prices, so its own figures
+ * are never overridden by ours.
+ */
+let warnedNoTranscribeTokens = false;
+
+function priceFromTokens(
+  model: string,
+  usage: Record<string, number> | undefined,
+  rawUsage: unknown
+): { input?: number; output?: number; total: number } | undefined {
+  if (!model.includes("transcribe")) return undefined;
+
+  const input = usage?.input ?? 0;
+  const output = usage?.output ?? 0;
+  if (input === 0 && output === 0) {
+    // Pricing depends on the API returning token counts for this model. If it
+    // ever stops doing so the stage silently reverts to unpriced, which looks
+    // identical to free — so say once, in the server log, what actually came
+    // back. Once per process: this would otherwise fire on every evaluation.
+    if (!warnedNoTranscribeTokens) {
+      warnedNoTranscribeTokens = true;
+      const keys =
+        typeof rawUsage === "object" && rawUsage !== null
+          ? Object.keys(rawUsage as Record<string, unknown>).join(", ")
+          : String(rawUsage);
+      log.warn(
+        `Transcription returned no token counts, so it cannot be priced ` +
+          `(usage keys: ${keys || "none"}). The Costs screen will show it as unpriced.`
+      );
+    }
+    return undefined;
+  }
+
+  const inCost = (input / 1_000_000) * env.transcribeUsdPer1mInput;
+  const outCost = (output / 1_000_000) * env.transcribeUsdPer1mOutput;
+  const total = inCost + outCost;
+  if (total <= 0) return undefined;
+  log.info(
+    `Transcription priced from tokens: ${input} in + ${output} out = $${total.toFixed(4)}.`
+  );
+  return { input: inCost, output: outCost, total };
+}
+
 /** Records one model call against a trace. Safe to call with a null trace. */
 export function recordGeneration(trace: EvaluationTrace, gen: GenerationInput): void {
   if (!trace) return;
   try {
     const capture = env.langfuseCaptureContent;
-    // Langfuse prices from its own model table and has no entry for the audio
-    // transcription models, so those land at zero — which reads as free when
-    // it is in fact the larger half of the bill. An explicit cost is sent when
-    // a rate is configured; without one the stage stays visibly unpriced
-    // rather than quietly reporting $0.00.
-    const rate = env.transcribeUsdPerMinute;
-    const costDetails =
-      rate > 0 && typeof gen.audioSeconds === "number" && gen.audioSeconds > 0
-        ? { total: (gen.audioSeconds / 60) * rate }
-        : undefined;
+    const usageDetails = toUsageDetails(gen.usage);
+    const costDetails = priceFromTokens(gen.model, usageDetails, gen.usage);
     trace.generation({
       name: gen.name,
       model: gen.model,
       startTime: gen.startedAt,
       endTime: new Date(),
-      usageDetails: toUsageDetails(gen.usage),
+      usageDetails,
       costDetails,
       input: capture ? gen.input : undefined,
       output: capture ? gen.output : undefined,
       metadata: {
         ...gen.metadata,
+        ...(gen.audioSeconds ? { audioSeconds: gen.audioSeconds } : {}),
         // Say plainly why input/output are absent, so an empty generation in
         // the UI does not read as a failed capture.
         ...(capture ? {} : { contentCapture: "disabled (LANGFUSE_CAPTURE_CONTENT)" }),

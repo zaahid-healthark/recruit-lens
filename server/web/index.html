@@ -2311,10 +2311,10 @@
               ? '<div class="callout warn" style="margin-top:12px"><span>' +
                 "<b>" +
                 c.byStage.filter((s) => s.unpriced).map((s) => esc(s.name)).join(", ") +
-                " could not be priced.</b> Langfuse has no rate for the transcription models, so " +
-                "this shows as unpriced rather than free — it is usually the larger half of the " +
-                "bill. Set <b>OPENAI_TRANSCRIBE_USD_PER_MINUTE</b> in server/.env to the rate on " +
-                "your OpenAI bill and it will be costed from the audio length." +
+                " could not be priced.</b> Shown as unpriced rather than free. Transcription is " +
+                "costed from the token counts the model returns; if this persists, those counts " +
+                "are missing from the response. Evaluations before this was added stay unpriced — " +
+                "only new ones are costed." +
                 "</span></div>"
               : "") +
             "</div>";
