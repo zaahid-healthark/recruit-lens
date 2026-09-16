@@ -119,8 +119,13 @@ function guardCase(
   } as any;
 
   const out = applyScoringGuards(evaluation);
-  const gotQ: number[] = out.question_assessment.questions.map((q: any) => q.score);
-  const gotT: number = out.question_assessment.technical_score;
+  const assessed = out.question_assessment;
+  if (!assessed) {
+    console.log("FAIL  " + label.padEnd(38) + "question_assessment was dropped");
+    return false;
+  }
+  const gotQ: number[] = assessed.questions.map((q) => q.score);
+  const gotT: number | null = assessed.technical_score;
   const ok =
     out.overall_score === expect.overall &&
     (!expect.questions || expect.questions.every((v, i) => v === gotQ[i])) &&
