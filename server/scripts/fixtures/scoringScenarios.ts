@@ -10,6 +10,9 @@
  * call earns a video interview. Not whether to hire. A candidate who knows the
  * basics and explains them briefly passes — the bar is not "impressive", and a
  * call this short cannot show depth either way.
+ *
+ * Bounds are on the stored 0-100 scale; recruiters see them out of 10. 75 is
+ * the fit line, 60 the consider line, so a bound of 75 here reads as 7.5.
  */
 
 export interface ScenarioExpectation {
@@ -73,10 +76,10 @@ Candidate: Yes, actuary team, every month. Before I show pipeline diagram — no
 Recruiter: What is your notice period?
 Candidate: Two month.`,
     expect: {
-      overallScore: { min: 60, max: 100 },
+      overallScore: { min: 75, max: 100 },
       recommendationOneOf: ["Strong hire", "Hire"],
       questionAssessment: "present",
-      communicationScore: { min: 65, max: 100 },
+      communicationScore: { min: 70, max: 100 },
       rationale:
         "The grammar is non-native throughout, and not one answer is unclear. Each has a " +
         "structure, answers what was asked, and names specifics — 40 DAGs, the retry exception " +
@@ -109,10 +112,10 @@ Candidate: There've been many, honestly. I think they blur together after a whil
 Recruiter: What's your notice period?
 Candidate: Thirty days.`,
     expect: {
-      overallScore: { min: 0, max: 54 },
+      overallScore: { min: 0, max: 59 },
       recommendationOneOf: ["No hire", "Maybe"],
       questionAssessment: "present",
-      communicationScore: { min: 0, max: 55 },
+      communicationScore: { min: 0, max: 59 },
       rationale:
         "The English is effortless and the candidate said nothing. The recruiter had to " +
         "re-ask three times — 'yes or no', 'what do you actually do', 'give me a specific " +
@@ -147,10 +150,10 @@ Candidate: Data quality is absolutely critical, it's something I'm hugely passio
 Recruiter: Okay. What's your notice period?
 Candidate: Thirty days, and I'm very excited about this opportunity.`,
     expect: {
-      overallScore: { min: 0, max: 54 },
+      overallScore: { min: 0, max: 59 },
       recommendationOneOf: ["No hire", "Maybe"],
       questionAssessment: "present",
-      technicalScore: { min: 0, max: 50 },
+      technicalScore: { min: 0, max: 59 },
       rationale:
         "Six substantive questions, not one concrete answer: no tool beyond the name Airflow, " +
         "no number, no failure they actually handled, and the 2am question was dodged twice. " +
@@ -189,10 +192,10 @@ Candidate: Yes, to the commercial team mostly. I try to keep it to what it means
 Recruiter: Great. What's your notice period?
 Candidate: One month.`,
     expect: {
-      overallScore: { min: 55, max: 100 },
+      overallScore: { min: 75, max: 100 },
       recommendationOneOf: ["Hire", "Strong hire"],
       questionAssessment: "present",
-      technicalScore: { min: 55, max: 100 },
+      technicalScore: { min: 75, max: 100 },
       rationale:
         "Every technical answer is CORRECT: the view/materialised-view distinction, the " +
         "row_number window function, what Airflow does and what happens on failure. None is " +
@@ -228,10 +231,10 @@ Candidate: Yes. Monthly with the actuarial team. I stopped showing them pipeline
 Recruiter: What's your notice period?
 Candidate: Two months, sorry.`,
     expect: {
-      overallScore: { min: 70, max: 100 },
+      overallScore: { min: 85, max: 100 },
       recommendationOneOf: ["Strong hire", "Hire"],
       questionAssessment: "present",
-      technicalScore: { min: 65, max: 100 },
+      technicalScore: { min: 85, max: 100 },
       rationale:
         "Every answer is specific and checkable: 40 DAGs, idempotent retries with a reason for " +
         "the exception, 400M rows, a real data-quality incident and the fix it produced. " +
@@ -261,10 +264,10 @@ Candidate: Airflow handles that itself, you don't need to do anything. Every tas
 Recruiter: What's your notice period?
 Candidate: I can start immediately.`,
     expect: {
-      overallScore: { min: 0, max: 34 },
+      overallScore: { min: 0, max: 29 },
       recommendationOneOf: ["No hire"],
       questionAssessment: "present",
-      technicalScore: { min: 0, max: 35 },
+      technicalScore: { min: 0, max: 29 },
       rationale:
         "Five technical answers, four of them plainly wrong (indexes are free, SELECT * absorbs " +
         "schema drift, Airflow tasks are idempotent by default), each delivered with total " +
@@ -321,7 +324,7 @@ Candidate: Depends who's asking and why. If it's a real incident, everything sto
 Recruiter: What's your notice period?
 Candidate: A month.`,
     expect: {
-      overallScore: { min: 55, max: 100 },
+      overallScore: { min: 75, max: 100 },
       recommendationOneOf: ["Strong hire", "Hire", "Maybe"],
       questionAssessment: "present",
       categoriesMustBeNull: ["Technical Knowledge"],

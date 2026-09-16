@@ -43,7 +43,7 @@ export const PRIMARY_CATEGORY: MatrixCategoryName = TECHNICAL_CATEGORY;
  * It is about being UNDERSTOOD, never about sounding native; see the prompt.
  */
 export const COMMUNICATION_CATEGORY: MatrixCategoryName = "Communication Skills";
-export const COMMUNICATION_FLOOR = 35;
+export const COMMUNICATION_FLOOR = 40;
 
 /**
  * How many of the technical questions a candidate has to actually answer.
@@ -87,22 +87,38 @@ export const NOT_ASSESSED_LABEL = "Not assessed";
 export const MIN_SCORED_CATEGORIES_FOR_OVERALL = 3;
 
 /**
- * Where a candidate's deciding score puts them. These are the band edges from
- * SCORE_BANDS, named, so the gate and the score bands can never drift apart.
+ * Where a candidate's deciding score puts them.
  *
- * Set for what this decision COSTS, which is the thing that was wrong before.
- * Advancing someone weak costs one video call; rejecting someone good loses
- * them outright, and nothing downstream can recover that. The bar is therefore
- * "knows the basics and can explain them", not "would I hire this person" —
- * that judgement belongs to the round this gate feeds, which has the time to
- * make it. A 15-20 minute call does not.
+ * Scores are SHOWN out of 10 and stored out of 100 — the storage is a hundred
+ * integers rather than ten, which leaves room for the model to discriminate,
+ * and avoids migrating every score already on record. Divide by ten to display
+ * (see toDisplayScore); never show the raw number.
+ *
+ * The bands ARE the actions, which is the property that was missing. A score
+ * that does not tell a recruiter what to do is decoration, and 5.5 meaning
+ * "advance" was exactly that. Now:
+ *
+ *   7.5 - 10   fit — send them to the video screen
+ *   6.0 - 7.4  consider — a judgement call for a human
+ *   below 6.0  do not proceed
+ *
+ * Everything else is calibrated to land candidates in the right band: an
+ * answer the model calls "adequate" scores 7.5 or better BY CONSTRUCTION (see
+ * VERDICT_SCORE_RANGES), so "they answered acceptably" and "they scored a fit"
+ * cannot contradict each other. That contradiction is what produced a 4.9 for
+ * a candidate whose every answer had just been accepted.
  */
 export const DECISION_THRESHOLDS = {
-  /** At or above this, the candidate is worth a video screen. */
-  advance: 55,
-  /** At or above this, there is something real here but the basics wobbled. */
-  borderline: 35,
+  /** At or above this, the candidate is a fit for the video screen. */
+  advance: 75,
+  /** At or above this, worth a human deciding. Below it, do not proceed. */
+  borderline: 60,
 } as const;
+
+/** Scores are stored out of 100 and shown out of 10. Always display via this. */
+export function toDisplayScore(score: number): string {
+  return (score / 10).toFixed(1);
+}
 
 export interface ScoreBand {
   min: number;
@@ -115,38 +131,36 @@ export interface ScoreBand {
 export const SCORE_BANDS: ScoreBand[] = [
   {
     min: 0,
-    max: 20,
-    label: "0-20",
-    descriptor: "Could not engage with the question at all — no relevant capability shown",
+    max: 29,
+    label: "0.0-2.9",
+    descriptor: "DO NOT PROCEED — could not answer, or could not explain their own work",
   },
   {
-    min: 21,
-    max: 34,
-    label: "21-34",
+    min: 30,
+    max: 59,
+    label: "3.0-5.9",
+    descriptor: "DO NOT PROCEED — answers were wrong, or said nothing a knowledgeable person would say",
+  },
+  {
+    min: 60,
+    max: 74,
+    label: "6.0-7.4",
     descriptor:
-      "Clearly short — answers were wrong, or they could not explain their own work",
+      "CONSIDER — some of the basics landed and some did not; a human decides this one",
   },
   {
-    min: 35,
-    max: 54,
-    label: "35-54",
+    min: 75,
+    max: 84,
+    label: "7.5-8.4",
     descriptor:
-      "Mixed — got some of it, but wobbled on basics the role needs",
+      "FIT — send to the video screen. Correct, sensible answers to the questions asked. " +
+      "A short, general, correct answer belongs HERE; one minute per answer cannot show depth",
   },
   {
-    min: 55,
-    max: 80,
-    label: "55-80",
-    descriptor:
-      "CLEARS THE GATE — explained the basics correctly and sensibly; worth a video screen. " +
-      "A short, correct, clear answer belongs here; depth is not required in a 15-20 minute call",
-  },
-  {
-    min: 81,
+    min: 85,
     max: 100,
-    label: "81-100",
-    descriptor:
-      "Well clear — correct, concise AND specific, with real detail from their own work",
+    label: "8.5-10.0",
+    descriptor: "STRONG FIT — correct AND specific, with real detail from their own work",
   },
 ];
 
@@ -250,13 +264,13 @@ export const ANSWER_VERDICT_LABELS: Record<AnswerVerdict, string> = {
  */
 export const VERDICT_SCORE_RANGES: Record<AnswerVerdict, { min: number; max: number }> = {
   /** Correct and they clearly know it. A concrete detail lifts it; brevity does not lower it. */
-  strong: { min: 70, max: 100 },
-  /** Correct but general — the NORMAL good answer in a one-minute slot. */
-  adequate: { min: 55, max: 85 },
+  strong: { min: 85, max: 100 },
+  /** Correct but general — the NORMAL good answer in a one-minute slot, and a FIT. */
+  adequate: { min: 75, max: 84 },
   /** Wrong, or words with no content in them. Not merely short or unelaborated. */
-  weak: { min: 20, max: 54 },
+  weak: { min: 30, max: 59 },
   /** Deflected, or said outright they did not know. */
-  not_answered: { min: 0, max: 30 },
+  not_answered: { min: 0, max: 29 },
 };
 
 export interface LlmQuestionResult {

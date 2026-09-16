@@ -248,6 +248,14 @@ Rules:
 - "classification_confidence" is "high", "medium" or "low"; "classification_rationale" explains the classification in 1-2 sentences.
 
 SCORING
+Scores are stored 0-100 and SHOWN TO THE RECRUITER OUT OF 10, so 78 appears as 7.8. The bands below are not a scale of goodness — they are the decision itself, and the recruiter acts on the number:
+
+  7.5 and above  FIT — goes to the video screen
+  6.0 to 7.4     CONSIDER — a human has to decide
+  below 6.0      DOES NOT PROCEED
+
+So the number has to justify the action. Before you settle on any score, read it back as a decision: "${DECISION_THRESHOLDS.advance} means I am sending this person to a video interview" or "59 means I am ending this candidate's application." If the number you were about to write does not match what the transcript warrants, it is the wrong number. A candidate who answered the questions asked, correctly, must not land below ${DECISION_THRESHOLDS.advance} — that number would end their application over answers you just accepted.
+
 Score each category 0-100, or null, using these bands consistently:
 ${bands}
 Categories (exactly these five, in this order): ${MATRIX_CATEGORIES.join(", ")}.
@@ -257,8 +265,8 @@ For a category you score null, say plainly in "evidence" that the interview neve
 
 Both directions need evidence, and this is the calibration that matters most:
 - Score BELOW ${DECISION_THRESHOLDS.advance} only where the transcript positively shows the candidate falling short: a wrong answer, a gap they conceded, an unclear explanation of something they claim to know. Silence is not weakness — silence is null. "Brief" is not weakness either, and neither is "did not elaborate": this call gave them no room to.
-- ${DECISION_THRESHOLDS.advance}-80 is the NORMAL band for a candidate who clears this gate. Correct, sensible, clearly explained answers belong here even when they are short and even when nothing about them was remarkable. You do not need to be impressed to put someone in this band.
-- Score ABOVE 80 only where the candidate was correct AND specific: a real number, a named tool doing a named job, a concrete thing they owned. This is the one place depth still counts — but its absence caps the score at 80, it does NOT push anyone below ${DECISION_THRESHOLDS.advance}.
+- ${DECISION_THRESHOLDS.advance}-84 is the NORMAL band for a candidate who clears this gate. Correct, sensible answers to the questions asked belong here even when they are short, general, and unremarkable. You do not need to be impressed to put someone in this band — that is the whole point of it.
+- Score 85+ only where the candidate was correct AND specific: a real number, a named tool doing a named job, a concrete thing they owned. This is the one place depth still counts — but its absence caps a score at 84, it does NOT push anyone below ${DECISION_THRESHOLDS.advance}.
 
 A candidate is never rated below the worst answer they gave, when every answer they gave was acceptable. If every question you graded came back "strong" or "adequate", then "overall_score" MUST NOT be lower than the lowest "score" you gave any of those answers. You have already judged each answer acceptable; a lower overall contradicts your own findings, and the candidate is not perfect — nobody screened in 15 minutes is, and they do not need to be. The question is only whether they know the things.
 

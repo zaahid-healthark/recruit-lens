@@ -1155,13 +1155,20 @@
         );
       }
 
+      /**
+       * Scores are stored out of 100 and shown out of 10, so the number a
+       * recruiter reads is the decision: 7.5+ is a fit, 6.0-7.4 is a judgement
+       * call, below 6.0 does not proceed. Mirrors toDisplayScore in shared.
+       */
+      const sc10 = (score) => (score === null || score === undefined ? "—" : (score / 10).toFixed(1));
+
       /** Mirrors SCORE_BANDS in shared/src/evaluation.ts. */
       function scoreColor(score) {
         if (score === null || score === undefined) return "var(--muted)";
-        if (score >= 81) return "#16a34a";
-        if (score >= 55) return "#65a30d";
-        if (score >= 35) return "#d97706";
-        if (score >= 21) return "#ea580c";
+        if (score >= 85) return "#16a34a";
+        if (score >= 75) return "#65a30d";
+        if (score >= 60) return "#d97706";
+        if (score >= 30) return "#ea580c";
         return "#dc2626";
       }
 
@@ -1465,7 +1472,7 @@
         const na = score === null || score === undefined;
         return (
           '<div class="score' + (na ? " na" : "") + '" style="background:' + scoreColor(score) + '">' +
-          "<b>" + (na ? "—" : score) + "</b><span>" + (na ? "not scored" : "/ 100") + "</span></div>"
+          "<b>" + (na ? "—" : sc10(score)) + "</b><span>" + (na ? "not scored" : "/ 10") + "</span></div>"
         );
       }
 
@@ -1607,13 +1614,13 @@
             .concat(
               qa.technicalScore !== null
                 ? ['<div class="stat-chip"><span class="k">Technical</span><span class="v" style="color:' +
-                    scoreColor(qa.technicalScore) + '">' + qa.technicalScore + "</span></div>"]
+                    scoreColor(qa.technicalScore) + '">' + sc10(qa.technicalScore) + "</span></div>"]
                 : []
             )
             .concat(
               qa.behaviouralScore !== null
                 ? ['<div class="stat-chip"><span class="k">Behavioural</span><span class="v" style="color:' +
-                    scoreColor(qa.behaviouralScore) + '">' + qa.behaviouralScore + "</span></div>"]
+                    scoreColor(qa.behaviouralScore) + '">' + sc10(qa.behaviouralScore) + "</span></div>"]
                 : []
             )
             .concat([
@@ -1632,7 +1639,7 @@
               '<div class="qa"><div class="qa-head">' +
               '<span class="qa-n">' + (i + 1) + "</span>" +
               '<span class="qa-q">' + esc(q.question) + "</span>" +
-              '<span class="chip" style="background:' + scoreColor(q.score) + '">' + q.score + "</span>" +
+              '<span class="chip" style="background:' + scoreColor(q.score) + '">' + sc10(q.score) + "</span>" +
               '</div><div class="qa-body"><div class="qa-meta">' +
               '<span class="pill" style="color:' + m[1] + ";background:" + m[2] + '">' + m[0] + "</span>" +
               '<span class="kind">' + esc(KIND_LABELS[q.kind] || q.kind) + "</span>" +
@@ -1656,7 +1663,7 @@
             " — each requirement judged on transcript evidence alone.</p>" +
             '<div class="stat-chips">' +
             '<div class="stat-chip"><span class="k">Fit</span><span class="v" style="color:' +
-            scoreColor(j.fitScore) + '">' + (j.fitScore === null ? "—" : j.fitScore) + "</span></div>" +
+            scoreColor(j.fitScore) + '">' + sc10(j.fitScore) + "</span></div>" +
             '<div class="stat-chip"><span class="k">Met</span><span class="v">' +
             (counts.met || 0) + " / " + total + "</span></div>" +
             (counts.not_discussed
@@ -1706,7 +1713,7 @@
             '<div class="cat"><div class="cat-head">' +
             '<span class="cat-name">' + esc(c.name) + "</span>" +
             '<span class="chip' + (na ? " na" : "") + '" style="background:' + scoreColor(c.score) + '">' +
-            (na ? "Not assessed" : c.score) + "</span></div>" +
+            (na ? "Not assessed" : sc10(c.score)) + "</span></div>" +
             (c.summary ? '<p class="qa-answer">' + esc(c.summary) + "</p>" : "") +
             (c.evidence ? '<blockquote class="evidence">' + esc(c.evidence) + "</blockquote>" : "") +
             "</div>";
@@ -2091,7 +2098,7 @@
                   '<button class="job-row" data-open-job="' + j.id + '">' +
                   (j.averageOverallScore !== null
                     ? '<div class="mini" style="background:' + scoreColor(j.averageOverallScore) + '">' +
-                      j.averageOverallScore + "</div>"
+                      sc10(j.averageOverallScore) + "</div>"
                     : '<div class="mini na">—</div>') +
                   '<div class="job-row-main"><div class="job-row-title">' + esc(j.title) +
                   (j.archived ? ' <span class="kind">Archived</span>' : "") + "</div>" +
@@ -2128,7 +2135,7 @@
           '<div class="card"><h2>' + esc(j.title) + "</h2>" +
           '<p class="card-sub">' + j.recordingCount + " candidate" +
           (j.recordingCount === 1 ? "" : "s") +
-          (j.averageOverallScore !== null ? " · average " + j.averageOverallScore : "") +
+          (j.averageOverallScore !== null ? " · average " + sc10(j.averageOverallScore) : "") +
           " · " + words + " words" + (j.archived ? " · archived" : "") + "</p>" +
           '<div class="row" style="margin-top:14px">' +
           '<button class="btn-ghost btn-sm" data-edit="' + j.id + '">Edit text</button>' +
@@ -2668,7 +2675,7 @@
                   '<div class="short" data-row="' + r.id + '">' +
                   '<div class="short-head">' +
                   '<div class="mini' + (na ? " na" : "") + '" style="background:' + scoreColor(score) + '">' +
-                  (na ? "—" : score) + "</div>" +
+                  (na ? "—" : sc10(score)) + "</div>" +
                   '<div class="short-name">' + esc(r.candidateName || r.originalFilename) +
                   '<div class="short-meta">' +
                   (r.job ? esc(r.job.title) : "No job attached") +
@@ -2795,10 +2802,10 @@
         const m = DECISION_META[c.decision] || DECISION_META.insufficient_evidence;
         const na = c.decidingScore === null || c.decidingScore === undefined;
         const stats = []
-          .concat(c.fitScore !== null ? ["JD fit <b>" + c.fitScore + "</b>"] : [])
-          .concat(c.overallScore !== null ? ["overall <b>" + c.overallScore + "</b>"] : [])
-          .concat(c.technicalScore !== null ? ["technical <b>" + c.technicalScore + "</b>"] : [])
-          .concat(c.behaviouralScore !== null ? ["behavioural <b>" + c.behaviouralScore + "</b>"] : [])
+          .concat(c.fitScore !== null ? ["JD fit <b>" + sc10(c.fitScore) + "</b>"] : [])
+          .concat(c.overallScore !== null ? ["overall <b>" + sc10(c.overallScore) + "</b>"] : [])
+          .concat(c.technicalScore !== null ? ["technical <b>" + sc10(c.technicalScore) + "</b>"] : [])
+          .concat(c.behaviouralScore !== null ? ["behavioural <b>" + sc10(c.behaviouralScore) + "</b>"] : [])
           .concat([c.questionsAsked + " question" + (c.questionsAsked === 1 ? "" : "s") + " asked"]);
         return (
           '<div class="card"><div class="score-wrap" style="align-items:flex-start">' +
@@ -2978,7 +2985,7 @@
                 '<div class="rec">' +
                 '<button class="rec-open" data-id="' + r.id + '">' +
                 '<div class="mini' + (na ? " na" : "") + '" style="background:' + scoreColor(score) + '">' +
-                (na ? "—" : score) + "</div>" +
+                (na ? "—" : sc10(score)) + "</div>" +
                 '<div class="rec-main"><div class="rec-title">' +
                 esc(r.candidateName || r.originalFilename) + "</div>" +
                 '<div class="rec-meta">' + when +

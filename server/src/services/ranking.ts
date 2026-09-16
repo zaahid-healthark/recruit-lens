@@ -5,6 +5,7 @@ import {
   DECISION_THRESHOLDS,
   TECHNICAL_BORDERLINE_RATE,
   TECHNICAL_PASS_RATE,
+  toDisplayScore,
   EvaluationDto,
   JobRankingDto,
   RankedCandidateDto,
@@ -140,7 +141,7 @@ function buildReasons(c: RankedCandidateDto, hasJd: boolean): string[] {
     reasons.push(
       `Answered ${c.technicalAnswered} of ${plural(c.technicalAsked, "technical question")} ` +
         `adequately or better` +
-        (c.technicalScore !== null ? `, scoring ${c.technicalScore} across them` : "") +
+        (c.technicalScore !== null ? `, scoring ${toDisplayScore(c.technicalScore)} across them` : "") +
         "."
     );
   } else if (c.questionsAsked > 0) {
@@ -168,7 +169,7 @@ function buildReasons(c: RankedCandidateDto, hasJd: boolean): string[] {
   }
 
   if (c.behaviouralScore !== null) {
-    reasons.push(`Behavioural and situational answers scored ${c.behaviouralScore}.`);
+    reasons.push(`Behavioural and situational answers scored ${toDisplayScore(c.behaviouralScore!)}.`);
   }
   if (c.questionsAsked === 0) {
     reasons.push("The recruiter asked nothing substantive — no answers were graded.");
@@ -187,10 +188,10 @@ function buildReasons(c: RankedCandidateDto, hasJd: boolean): string[] {
   if (hasJd && c.fitScore !== null && c.overallScore !== null && band(c.fitScore) !== band(c.overallScore)) {
     reasons.push(
       (c.fitScore > c.overallScore
-        ? `Matches the role on paper (fit ${c.fitScore}) more than the call itself showed ` +
-          `(${c.overallScore}).`
-        : `Interviewed better overall (${c.overallScore}) than this role's specific ` +
-          `requirements were shown to be met (fit ${c.fitScore}).`) +
+        ? `Matches the role on paper (fit ${toDisplayScore(c.fitScore)}) more than the call itself ` +
+          `showed (${toDisplayScore(c.overallScore)}).`
+        : `Interviewed better overall (${toDisplayScore(c.overallScore)}) than this role's specific ` +
+          `requirements were shown to be met (fit ${toDisplayScore(c.fitScore)}).`) +
         " Context for the next round, not part of this decision — a 15-20 minute screen " +
         "cannot probe a whole job description."
     );
@@ -226,10 +227,10 @@ function explainAhead(a: RankedCandidateDto, b: RankedCandidateDto, hasJd: boole
     );
   }
   if (a.technicalScore !== null && b.technicalScore !== null && a.technicalScore !== b.technicalScore) {
-    diffs.push(`technical answers ${a.technicalScore} against ${b.technicalScore}`);
+    diffs.push(`technical answers ${toDisplayScore(a.technicalScore)} against ${toDisplayScore(b.technicalScore)}`);
   }
   if (hasJd && a.fitScore !== null && b.fitScore !== null && a.fitScore !== b.fitScore) {
-    diffs.push(`JD fit ${a.fitScore} against ${b.fitScore}`);
+    diffs.push(`JD fit ${toDisplayScore(a.fitScore)} against ${toDisplayScore(b.fitScore)}`);
   }
   if (a.requirementCounts.met !== b.requirementCounts.met) {
     diffs.push(`met ${a.requirementCounts.met} requirements to ${b.requirementCounts.met}`);
@@ -239,10 +240,10 @@ function explainAhead(a: RankedCandidateDto, b: RankedCandidateDto, hasJd: boole
     b.behaviouralScore !== null &&
     a.behaviouralScore !== b.behaviouralScore
   ) {
-    diffs.push(`behavioural answers ${a.behaviouralScore} against ${b.behaviouralScore}`);
+    diffs.push(`behavioural answers ${toDisplayScore(a.behaviouralScore)} against ${toDisplayScore(b.behaviouralScore)}`);
   }
   if (a.overallScore !== null && b.overallScore !== null && a.overallScore !== b.overallScore) {
-    diffs.push(`overall ${a.overallScore} against ${b.overallScore}`);
+    diffs.push(`overall ${toDisplayScore(a.overallScore)} against ${toDisplayScore(b.overallScore)}`);
   }
 
   // Comparing depth-of-answer scores across interviews of very different
@@ -267,8 +268,8 @@ function explainAhead(a: RankedCandidateDto, b: RankedCandidateDto, hasJd: boole
   if (gap !== null && gap <= TIE_MARGIN) {
     const level =
       gap === 0
-        ? `level with ${label} on the deciding score (${a.decidingScore} each)`
-        : `within ${gap} point${gap === 1 ? "" : "s"} of ${label} on the deciding score`;
+        ? `level with ${label} on the deciding score (${toDisplayScore(a.decidingScore!)} each)`
+        : `within ${(gap / 10).toFixed(1)} of ${label} on the deciding score`;
     return `Ranked above ${label} only on the tie-breaks — ${level}, separated on ${diffs.join(", ")}.${uneven}`;
   }
 
