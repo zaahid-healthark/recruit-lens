@@ -826,10 +826,43 @@
       <!-- ── Saved job descriptions ──────────────────────────────────── -->
       <section id="view-jobs" class="hidden">
         <div class="card">
-          <h2>Job descriptions</h2>
-          <p class="hint" style="margin: 0">Open one to read or edit it.</p>
+          <div class="card-head" style="margin: 0">
+            <div>
+              <h2>Job descriptions</h2>
+              <p class="hint" style="margin: 2px 0 0">Open one to read or edit it.</p>
+            </div>
+            <button id="btn-new-job" class="btn-primary btn-sm">Add</button>
+          </div>
         </div>
         <div id="jobs-list"></div>
+      </section>
+
+      <!-- Adding a JD, reachable from the Jobs screen as well as from Evaluate -->
+      <section id="view-job-new" class="hidden">
+        <div class="card">
+          <h2>New job description</h2>
+          <p class="hint">Upload the file you already have, or paste the text.</p>
+          <div class="field">
+            <label for="nj-title">Job title</label>
+            <input id="nj-title" type="text" placeholder="e.g. Senior Data Engineer" />
+          </div>
+          <div class="field">
+            <label>Description</label>
+            <div class="row" style="margin-bottom: 9px">
+              <button id="nj-file-btn" class="btn-primary btn-sm" type="button">
+                Upload PDF / Word / text
+              </button>
+              <span id="nj-file-status" class="muted" style="align-self: center"></span>
+            </div>
+            <input id="nj-file-input" type="file" accept=".pdf,.docx,.doc,.txt,.md" class="hidden" />
+            <textarea id="nj-text" placeholder="…or paste the description here"></textarea>
+            <p id="nj-count" class="hint" style="margin: 6px 0 0"></p>
+          </div>
+          <div id="nj-error" class="callout err hidden"></div>
+          <div class="row">
+            <button id="nj-save" class="btn-primary" disabled>Save job description</button>
+          </div>
+        </div>
       </section>
 
       <!-- Candidates a person marked for another conversation -->
@@ -949,6 +982,7 @@
         "view-settings",
         "view-job",
         "view-shortlist",
+        "view-job-new",
       ];
       /** Title bar text, and which bottom tab (if any) owns each view. */
       const VIEW_META = {
@@ -959,6 +993,7 @@
         "view-dashboard": { title: "Dashboard", tab: "view-dashboard" },
         "view-jobs": { title: "Job descriptions", tab: null, back: "view-recordings" },
         "view-job": { title: "Job description", tab: null, back: "view-jobs" },
+        "view-job-new": { title: "New job description", tab: null, back: "view-jobs" },
         "view-shortlist": { title: "Next round", tab: null, back: "view-recordings" },
         "view-ranking": { title: "Compare candidates", tab: null, back: "view-recordings" },
         "view-settings": { title: "Settings", tab: null, back: "view-recordings" },
@@ -1984,7 +2019,7 @@
           if (!jobs.length) {
             $("jobs-list").innerHTML =
               '<div class="card"><p class="empty">No job descriptions saved yet.<br />' +
-              "Add one from the Evaluate tab when you upload a call.</p></div>";
+              'Tap <b>Add</b> above to upload or paste one.</p></div>';
             return;
           }
           $("jobs-list").innerHTML =
@@ -2120,6 +2155,90 @@
           if (err.status !== 401) status.textContent = err.message;
         }
       }
+
+      // ── Adding a job description ──────────────────────────────────────
+      /**
+       * Its own screen, reachable from the Jobs list as well as from the
+       * Evaluate form. Previously a JD could only be created while uploading a
+       * call, so the page listing job descriptions was the one place you could
+       * not add one.
+       */
+      function openNewJob() {
+        show("view-job-new");
+        $("nj-title").value = "";
+        $("nj-text").value = "";
+        $("nj-file-status").textContent = "";
+        $("nj-error").classList.add("hidden");
+        updateNjCount();
+      }
+
+      $("btn-new-job").addEventListener("click", openNewJob);
+
+      function updateNjCount() {
+        const n = $("nj-text").value.trim().length;
+        $("nj-count").textContent =
+          n === 0
+            ? ""
+            : n < MIN_JD_CHARS
+              ? MIN_JD_CHARS - n + " more characters needed."
+              : "Requirements will be extracted from this text.";
+        $("nj-save").disabled =
+          !$("nj-title").value.trim() || $("nj-text").value.trim().length < MIN_JD_CHARS;
+      }
+      $("nj-title").addEventListener("input", updateNjCount);
+      $("nj-text").addEventListener("input", updateNjCount);
+
+      $("nj-file-btn").addEventListener("click", () => $("nj-file-input").click());
+      $("nj-file-input").addEventListener("change", async (e) => {
+        const file = e.target.files[0];
+        if (!file) return;
+        $("nj-file-status").textContent = "Reading " + file.name + "…";
+        try {
+          const form = new FormData();
+          form.append("file", file);
+          const out = await api("/jobs/extract-text", { method: "POST", body: form });
+          $("nj-text").value = out.text;
+          $("nj-file-status").textContent =
+            "Loaded" + (out.pages ? " " + out.pages + " page" + (out.pages === 1 ? "" : "s") : "") +
+            " — check it before saving.";
+          // The filename is usually the role; offer it rather than make them type it.
+          if (!$("nj-title").value.trim()) {
+            $("nj-title").value = file.name.replace(/\.[^.]+$/, "").replace(/[_-]+/g, " ").trim();
+          }
+          updateNjCount();
+        } catch (err) {
+          $("nj-file-status").textContent = err.message;
+        } finally {
+          e.target.value = "";
+        }
+      });
+
+      $("nj-save").addEventListener("click", async () => {
+        const btn = $("nj-save");
+        btn.disabled = true;
+        btn.innerHTML = '<span class="spin"></span>Saving…';
+        $("nj-error").classList.add("hidden");
+        try {
+          await api("/jobs", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              title: $("nj-title").value.trim(),
+              jdText: $("nj-text").value.trim(),
+            }),
+          });
+          loadJobs(); // keep the Evaluate picker in step
+          openJobs();
+        } catch (err) {
+          if (err.status !== 401) {
+            $("nj-error").textContent = err.message;
+            $("nj-error").classList.remove("hidden");
+          }
+        } finally {
+          btn.innerHTML = "Save job description";
+          updateNjCount();
+        }
+      });
 
       // ── Next round ────────────────────────────────────────────────────
       /**
