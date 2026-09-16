@@ -47,13 +47,13 @@ function jdMatchInstructions(): string {
   return `
 JD MATCHING (a job description was supplied — see the user message)
 - Extract the JD's distinct requirements: skills, tools, domain knowledge, years/seniority, qualifications, soft skills. Merge duplicates; skip generic filler ("team player", "good communication") unless the JD emphasises it as a real criterion. Aim for the 5-12 that actually decide the hire.
-- Match each requirement against the POOL of candidate evidence you gathered from the whole transcript — not against whether a question about it was asked. A candidate who mentions running Airflow DAGs while describing a project has satisfied an Airflow requirement, even though nobody asked about Airflow.
+- Match each requirement against the POOL of candidate evidence you gathered from the whole transcript — not against whether a question about it was asked. A candidate who mentions using a tool, method or system while describing a project has satisfied a requirement for it, even though nobody asked about that thing directly.
 - Judge each requirement ONLY on transcript evidence, with verdict:
   - "met"            — the transcript shows the candidate satisfies it, from anywhere in the call.
   - "partial"        — some relevant evidence, but short of what the JD asks (e.g. adjacent tool, less depth/seniority).
   - "missing"        — the transcript POSITIVELY shows the candidate does not satisfy it: they said so, could not answer, or described something that falls clearly short. Absence of discussion is never "missing".
   - "not_discussed"  — NEITHER the recruiter raised it NOR the candidate touched on it anywhere in the call. Before using this verdict, re-scan the transcript: candidates routinely cover a requirement while answering about something else. This is an INTERVIEWER gap, not a candidate weakness, and it must never be treated as one.
-- A requirement counts as "met" on DEMONSTRATED evidence, not on a claim. "I'm strong in Spark" is not met; "I rewrote our Spark job to cut the nightly run from 6 hours to 40 minutes" is.
+- A requirement counts as "met" on DEMONSTRATED evidence, not on a claim. "I'm strong in that" is not met; naming something they actually did with it, and what came of it, is.
 - "evidence" quotes or closely paraphrases the transcript. For "not_discussed", say explicitly that it never came up.
 - "fit_score" (0-100 integer, or null) rates fit AGAINST THIS JD, weighted by how central each requirement is to the role. Judge it ONLY over the requirements that were actually probed: "not_discussed" items must never drag it down as if they were failures. Note the blind spots in "verdict_summary" instead.
 - If EVERY requirement came back "not_discussed", set "fit_score" to null — this interview produced no fit evidence at all, and any number would be invented.
@@ -108,8 +108,8 @@ A candidate who knows the basics, answers the recruiter's technical questions se
 
 GENERIC IS NOT THE SAME AS EMPTY — this is the only line that matters here
 You are checking one thing truthfully: does this candidate KNOW the thing, or not? Judge that, and nothing else.
-- Generic and CORRECT → they know it. "I'd use a Type 2 slowly changing dimension, keep start and end dates and a current flag" names the right concept and gets it right. That is a good answer in a one-minute slot, whether or not they went further. Score it as one.
-- Generic and EMPTY → they do not know it. "We follow best practices for historical data" names nothing and could be said by someone who has never done it. That is weak.
+- Generic and CORRECT → they know it. They name the right concept and get it right, even in one sentence. That is a good answer in a one-minute slot, whether or not they went further. Score it as one.
+- Generic and EMPTY → they do not know it. The answer names nothing and could have been given by someone who has never done the work — "we follow best practices for that", "it depends on the requirements", "we handle it as a team". That is weak.
 - Generic and WRONG → they do not know it. Confidently wrong is worse than admitting uncertainty.
 
 The test is whether the answer could only have been given by someone who actually knows the topic. If yes, it counts — brevity and plainness are irrelevant. Nobody is perfect, and perfect answers are not wanted here.
@@ -166,6 +166,8 @@ A candidate who is CONFIDENTLY WRONG is a worse hire than one who admits uncerta
 
 THE TECHNICAL QUESTIONS ARE THE DECIDING EVIDENCE
 The recruiter now asks the technical questions that used to belong to a second call, so how the candidate handled THOSE is the single most important thing in this report. "${PRIMARY_CATEGORY}" therefore carries MORE WEIGHT in "overall_score" than any other category, and the gate turns on it.
+
+"${TECHNICAL_CATEGORY}" means THE KNOWLEDGE THIS ROLE REQUIRES — whatever that is. For an engineer it is engineering; for a clinical, regulatory, commercial or operations role it is that field's own craft, and the questions the Core IT member supplied will reflect it. Never read "technical" as "software". Judge every answer against the role in front of you, inferred from the interview itself and the job description when one is attached.
 
 Judge those answers against what the role actually needs at a BASIC level — the things someone doing this job would know without looking up:
 - Correct and clearly explained, even briefly → the candidate can do this. That is a pass, and often a strong one.
