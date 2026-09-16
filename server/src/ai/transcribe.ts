@@ -28,7 +28,8 @@ function candidateModels(preferred?: string): string[] {
 async function transcribeWithModel(
   filePath: string,
   model: string,
-  trace: EvaluationTrace = null
+  trace: EvaluationTrace = null,
+  audioSeconds: number | null = null
 ): Promise<TranscriptionResult> {
   const openai = getOpenAI();
   const diarize = model.includes("diarize");
@@ -64,6 +65,9 @@ async function transcribeWithModel(
     name: "transcribe",
     model,
     usage: resp?.usage,
+    // Langfuse cannot price the audio models from tokens, so the duration is
+    // what makes an explicit cost possible when a rate is configured.
+    audioSeconds,
     startedAt,
     input: filePath,
     output: text,
@@ -88,7 +92,8 @@ async function transcribeWithModel(
 export async function transcribeAudio(
   filePath: string,
   model?: string,
-  trace: EvaluationTrace = null
+  trace: EvaluationTrace = null,
+  audioSeconds: number | null = null
 ): Promise<TranscriptionResult> {
   // Timed in two halves on purpose. "Transcription is slow" is not actionable
   // until you know whether the minutes go to our own ffmpeg pass or to the
@@ -102,7 +107,7 @@ export async function transcribeAudio(
     let lastError: unknown = null;
     for (const candidate of candidateModels(model)) {
       try {
-        const result = await transcribeWithModel(normalized.path, candidate, trace);
+        const result = await transcribeWithModel(normalized.path, candidate, trace, audioSeconds);
         const doneAt = Date.now();
         log.info(
           `Transcribed with ${candidate} in ${secs(startedAt, doneAt)}s ` +

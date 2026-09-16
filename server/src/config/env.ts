@@ -100,6 +100,15 @@ export const env = {
    * third-party service.
    */
   langfuseCaptureContent: boolEnv(process.env.LANGFUSE_CAPTURE_CONTENT, false),
+  /**
+   * USD per minute of audio, used to price transcription in the cost view.
+   *
+   * Deliberately NOT defaulted. Langfuse has no price for the transcription
+   * models, so without this they report as $0.00 — and a made-up default
+   * would replace "we cannot see this cost" with a confident wrong number,
+   * which is worse. Set it from the rate on your own OpenAI bill.
+   */
+  transcribeUsdPerMinute: floatEnv(process.env.OPENAI_TRANSCRIBE_USD_PER_MINUTE, 0),
   /** Parallelism of the bulk evaluation queue (1 = strictly sequential). */
   bulkConcurrency: Math.max(1, intEnv(process.env.BULK_CONCURRENCY, 1)),
 } as const;

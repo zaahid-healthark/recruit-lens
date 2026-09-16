@@ -88,6 +88,11 @@ export function startEvaluationTrace(input: TraceInput): EvaluationTrace {
 export interface GenerationInput {
   name: string;
   model: string;
+  /**
+   * Audio length, for models Langfuse cannot price from tokens. Only used
+   * when a per-minute rate has been configured.
+   */
+  audioSeconds?: number | null;
   /** Raw `usage` from the OpenAI response, whatever shape that model returns. */
   usage?: unknown;
   /** Only sent when LANGFUSE_CAPTURE_CONTENT is on. */
@@ -136,12 +141,23 @@ export function recordGeneration(trace: EvaluationTrace, gen: GenerationInput): 
   if (!trace) return;
   try {
     const capture = env.langfuseCaptureContent;
+    // Langfuse prices from its own model table and has no entry for the audio
+    // transcription models, so those land at zero — which reads as free when
+    // it is in fact the larger half of the bill. An explicit cost is sent when
+    // a rate is configured; without one the stage stays visibly unpriced
+    // rather than quietly reporting $0.00.
+    const rate = env.transcribeUsdPerMinute;
+    const costDetails =
+      rate > 0 && typeof gen.audioSeconds === "number" && gen.audioSeconds > 0
+        ? { total: (gen.audioSeconds / 60) * rate }
+        : undefined;
     trace.generation({
       name: gen.name,
       model: gen.model,
       startTime: gen.startedAt,
       endTime: new Date(),
       usageDetails: toUsageDetails(gen.usage),
+      costDetails,
       input: capture ? gen.input : undefined,
       output: capture ? gen.output : undefined,
       metadata: {
@@ -226,17 +242,32 @@ export async function fetchCostTraces(limit: number): Promise<CostsDto> {
   // optimising. Observations are fetched separately; traces carry only ids.
   const byStage: CostStageDto[] = [];
   try {
-    const obs = await lf.fetchObservations({ type: "GENERATION", limit: Math.min(limit * 3, 100) });
-    const totals = new Map<string, { cost: number; calls: number }>();
+    // Scoped to THIS app's traces. A Langfuse project is often shared, and an
+    // unfiltered query returns every generation in it — which showed other
+    // applications' models sitting in this app's cost breakdown.
+    const ours = new Set(calls.map((c) => c.traceId).filter(Boolean));
+    const obs = await lf.fetchObservations({
+      type: "GENERATION",
+      limit: Math.min(limit * 4, 100),
+    });
+    const totals = new Map<string, { cost: number; calls: number; unpriced: number }>();
     for (const o of (obs?.data ?? []) as Array<Record<string, any>>) {
+      const traceId = typeof o.traceId === "string" ? o.traceId : "";
+      if (!ours.has(traceId)) continue;
       const name = typeof o.name === "string" ? o.name : "other";
       const cost = typeof o.calculatedTotalCost === "number" ? o.calculatedTotalCost : 0;
-      const entry = totals.get(name) ?? { cost: 0, calls: 0 };
+      const entry = totals.get(name) ?? { cost: 0, calls: 0, unpriced: 0 };
       entry.cost += cost;
       entry.calls += 1;
+      if (cost === 0) entry.unpriced += 1;
       totals.set(name, entry);
     }
-    for (const [name, v] of totals) byStage.push({ name, cost: v.cost, calls: v.calls });
+    for (const [name, v] of totals) {
+      // A stage with calls but no cost is UNPRICED, not free. Saying so is the
+      // difference between "transcription is cheap" and "we cannot see what
+      // transcription costs", which are opposite conclusions.
+      byStage.push({ name, cost: v.cost, calls: v.calls, unpriced: v.unpriced === v.calls });
+    }
     byStage.sort((a, b) => b.cost - a.cost);
   } catch (err) {
     log.warn("Could not read the per-stage cost split — showing totals only.", err);

@@ -2300,12 +2300,24 @@
                   '<div class="bar-row"><div class="bar-label">' + esc(s.name) + "</div>" +
                   '<div class="bar-track"><div class="bar-fill" style="width:' +
                   Math.max(2, Math.round((s.cost / max) * 100)) + '%"></div></div>' +
-                  '<div class="bar-value" style="width:64px">' + money(s.cost) + "</div></div>"
+                  '<div class="bar-value" style="width:64px">' +
+                  (s.unpriced ? "—" : money(s.cost)) + "</div></div>"
               )
               .join("") +
             '<p class="faint" style="margin:10px 0 0">' +
             c.byStage.map((s) => esc(s.name) + " × " + s.calls).join(" · ") +
-            "</p></div>";
+            "</p>" +
+            (c.byStage.some((s) => s.unpriced)
+              ? '<div class="callout warn" style="margin-top:12px"><span>' +
+                "<b>" +
+                c.byStage.filter((s) => s.unpriced).map((s) => esc(s.name)).join(", ") +
+                " could not be priced.</b> Langfuse has no rate for the transcription models, so " +
+                "this shows as unpriced rather than free — it is usually the larger half of the " +
+                "bill. Set <b>OPENAI_TRANSCRIBE_USD_PER_MINUTE</b> in server/.env to the rate on " +
+                "your OpenAI bill and it will be costed from the audio length." +
+                "</span></div>"
+              : "") +
+            "</div>";
         }
 
         html +=

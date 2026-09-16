@@ -302,6 +302,12 @@ export interface CostStageDto {
   name: string;
   cost: number;
   calls: number;
+  /**
+   * True when this stage ran but nothing could be priced. Distinct from a
+   * genuine zero: "we cannot see what transcription costs" and "transcription
+   * is free" are opposite conclusions from the same number.
+   */
+  unpriced?: boolean;
 }
 
 export interface CostsDto {

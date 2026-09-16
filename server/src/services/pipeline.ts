@@ -97,7 +97,12 @@ export async function evaluateRecording(recordingId: string): Promise<void> {
         });
       } else {
         const localPath = await storage.getLocalPath(recording.storagePath);
-        const t = await transcribeAudio(localPath, undefined, trace);
+        const t = await transcribeAudio(
+          localPath,
+          undefined,
+          trace,
+          recording.durationSeconds
+        );
         transcriptText = t.text;
         await prisma.transcript.create({
           data: { recordingId, text: t.text, model: t.model, language: t.language },
