@@ -503,6 +503,32 @@
       details { margin-top: 12px; }
       summary { cursor: pointer; font-size: 13px; font-weight: 600; color: var(--primary); }
       summary:hover { text-decoration: underline; }
+      /* A job description, with its own shape back. No inner scroll box on the
+         detail screen: the page scrolls, so the document reads top to bottom
+         like a document instead of through a letterbox. */
+      .jd { margin-top: 4px; }
+      .jd-h {
+        font-size: 13.5px; font-weight: 700; letter-spacing: 0.2px;
+        margin: 20px 0 8px; color: var(--text);
+      }
+      .jd-h:first-child { margin-top: 0; }
+      .jd-p { font-size: 14px; line-height: 1.7; margin: 0 0 10px; }
+      .jd-list { margin: 0 0 12px; padding-left: 20px; }
+      .jd-list li { font-size: 14px; line-height: 1.7; margin-bottom: 6px; }
+      .jd-list li::marker { color: var(--primary); }
+      /* Only the inline picker preview is boxed — there it is a glance, not a read. */
+      .jd-scroll { max-height: 300px; overflow-y: auto; margin-top: 10px;
+        background: var(--inset); border: 1px solid var(--border);
+        border-radius: 8px; padding: 14px; }
+
+      /* Shortlist rows carry a phone field, so they are taller than list rows */
+      .short { border: 1px solid var(--border); border-radius: 11px; padding: 15px; margin-bottom: 10px; }
+      .short-head { display: flex; align-items: center; gap: 13px; margin-bottom: 12px; }
+      .short-name { flex: 1; min-width: 0; font-size: 15px; font-weight: 650; }
+      .short-meta { font-size: 12.5px; color: var(--subtext); margin-top: 2px; }
+      .phone-row { display: flex; gap: 8px; align-items: center; }
+      .phone-row input { flex: 1; }
+
       pre.transcript, pre.jdtext {
         white-space: pre-wrap; word-wrap: break-word; font-size: 13px; line-height: 1.7;
         font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
@@ -577,6 +603,13 @@
           <span class="drawer-text">
             <span class="drawer-label">Job descriptions</span>
             <span class="drawer-hint">Roles candidates are scored against</span>
+          </span>
+        </button>
+        <button class="drawer-item" data-view="view-shortlist">
+          <span class="drawer-icon">→</span>
+          <span class="drawer-text">
+            <span class="drawer-label">Next round</span>
+            <span class="drawer-hint">Candidates you marked to advance</span>
           </span>
         </button>
         <button class="drawer-item" data-view="view-ranking">
@@ -784,6 +817,11 @@
         <div id="jobs-list"></div>
       </section>
 
+      <!-- Candidates a person marked for another conversation -->
+      <section id="view-shortlist" class="hidden">
+        <div id="shortlist"></div>
+      </section>
+
       <!-- One job, on its own screen — the list is for choosing, this is for reading. -->
       <section id="view-job" class="hidden">
         <div id="job-detail"></div>
@@ -895,6 +933,7 @@
         "view-dashboard",
         "view-settings",
         "view-job",
+        "view-shortlist",
       ];
       /** Title bar text, and which bottom tab (if any) owns each view. */
       const VIEW_META = {
@@ -905,6 +944,7 @@
         "view-dashboard": { title: "Dashboard", tab: "view-dashboard" },
         "view-jobs": { title: "Job descriptions", tab: null, back: "view-recordings" },
         "view-job": { title: "Job description", tab: null, back: "view-jobs" },
+        "view-shortlist": { title: "Next round", tab: null, back: "view-recordings" },
         "view-ranking": { title: "Compare candidates", tab: null, back: "view-recordings" },
         "view-settings": { title: "Settings", tab: null, back: "view-recordings" },
       };
@@ -984,6 +1024,7 @@
         else if (view === "view-dashboard") openDashboard();
         else if (view === "view-jobs") openJobs();
         else if (view === "view-job") openJobs();
+        else if (view === "view-shortlist") openShortlist();
         else if (view === "view-ranking") openRanking();
         else if (view === "view-settings") openSettings();
         else show(view);
@@ -1392,6 +1433,8 @@
           "</p>" +
           '<div class="row" style="margin-top:14px">' +
           '<button class="btn-ghost btn-sm" id="load-audio">▶ Load audio</button>' +
+          '<button class="btn-ghost btn-sm" id="short-btn">' +
+          (rec.shortlistedAt ? "✓ Marked for next round" : "Mark for next round") + "</button>" +
           '<button class="btn-ghost btn-sm" id="trash-btn">' +
           (rec.trashedAt ? "Restore from trash" : "Move to trash") + "</button>" +
           '<span id="trash-status" class="muted" style="align-self:center"></span></div>' +
@@ -1593,7 +1636,25 @@
         wireAudio(rec.id);
         wireReRun(rec.id);
         wireTrash(rec);
+        wireShortlistButton(rec);
         show("view-report");
+      }
+
+      /** Marking is the recruiter's call and is reversible, so it acts immediately. */
+      function wireShortlistButton(rec) {
+        const btn = $("short-btn");
+        if (!btn) return;
+        btn.addEventListener("click", async () => {
+          btn.disabled = true;
+          const mark = !rec.shortlistedAt;
+          try {
+            await setShortlisted(rec.id, mark);
+            if (mark) openShortlist();
+            else { rec.shortlistedAt = null; btn.textContent = "Mark for next round"; btn.disabled = false; }
+          } catch (err) {
+            btn.disabled = false;
+          }
+        });
       }
 
       /** Trash is reversible, so it needs no confirmation — restoring is one tap. */
@@ -1765,23 +1826,6 @@
             "</div>";
         }
 
-        // Category averages carry a score, so they are coloured by band — and
-        // a category nothing has tested yet is skipped rather than drawn at 0.
-        const cats = statList(s.categoryAverages).filter((c) => typeof c.average === "number");
-        if (cats.length) {
-          html +=
-            '<div class="card"><h3>Average by category</h3>' +
-            barRows(
-              cats.map((c) => ({ label: c.name, value: c.average })),
-              (r) => scoreColor(r.value)
-            ) +
-            (cats.length < statList(s.categoryAverages).length
-              ? '<p class="faint" style="margin:10px 0 0">Categories no interview has tested yet are left out ' +
-                "rather than drawn as zero.</p>"
-              : "") +
-            "</div>";
-        }
-
         const byRole = statList(s.byRole);
         if (byRole.length) {
           html +=
@@ -1837,6 +1881,58 @@
         show("view-key");
       });
 
+      /**
+       * Render a pasted job description with its own structure intact.
+       *
+       * JDs arrive as plain text but are almost never plain prose — they are
+       * headings and bullet lists, and a <pre> in a scrolling box threw all of
+       * that away and made the one document a recruiter most needs to read the
+       * least readable thing on the page. This recovers the shape: bullets
+       * become a real list, "Requirements:" becomes a heading, blank lines
+       * separate paragraphs.
+       *
+       * Everything is escaped on the way in — the text came from an uploaded
+       * file, so it is never treated as markup.
+       */
+      const BULLET = /^\s*[-*•·▪●‣⁃>]\s+/;
+      const NUMBERED = /^\s*\d+[.)]\s+/;
+
+      function formatJd(text) {
+        const lines = String(text || "").replace(/\r/g, "").split("\n");
+        let html = "";
+        let list = null; // "ul" | "ol" while a list is open
+
+        const closeList = () => {
+          if (list) { html += "</" + list + ">"; list = null; }
+        };
+
+        for (const raw of lines) {
+          const line = raw.trim();
+          if (!line) { closeList(); continue; }
+
+          const isBullet = BULLET.test(raw);
+          const isNumbered = !isBullet && NUMBERED.test(raw);
+          if (isBullet || isNumbered) {
+            const want = isNumbered ? "ol" : "ul";
+            if (list !== want) { closeList(); html += '<' + want + ' class="jd-list">'; list = want; }
+            html += "<li>" + esc(line.replace(BULLET, "").replace(NUMBERED, "")) + "</li>";
+            continue;
+          }
+
+          closeList();
+          // A heading is a short line that either ends in a colon or is
+          // shouted in capitals — the two ways JDs mark their sections.
+          const isHeading =
+            line.length <= 70 &&
+            (/:$/.test(line) || (line === line.toUpperCase() && /[A-Z]{3}/.test(line)));
+          html += isHeading
+            ? '<h4 class="jd-h">' + esc(line.replace(/:$/, "")) + "</h4>"
+            : '<p class="jd-p">' + esc(line) + "</p>";
+        }
+        closeList();
+        return '<div class="jd">' + (html || '<p class="jd-p muted">Empty.</p>') + "</div>";
+      }
+
       // ── Saved job descriptions ────────────────────────────────────────
       /** Cached so the picker can preview a JD without another round trip. */
       let jobCache = [];
@@ -1855,7 +1951,7 @@
         const words = job.jdText.trim().split(/\s+/).length;
         box.innerHTML =
           "<details><summary>Read this description (" + words + " words)</summary>" +
-          '<pre class="jdtext">' + esc(job.jdText) + "</pre></details>";
+          '<div class="jd-scroll">' + formatJd(job.jdText) + "</div></details>";
       }
 
       /**
@@ -1934,7 +2030,7 @@
           '<span class="muted" data-status="' + j.id + '" style="align-self:center"></span>' +
           "</div></div>" +
           '<div class="card" data-job="' + j.id + '"><h3>Description</h3>' +
-          '<pre class="jdtext">' + esc(j.jdText) + "</pre></div>";
+          formatJd(j.jdText) + "</div>";
         wireJobDetail(j.id);
       }
 
@@ -1944,15 +2040,17 @@
 
         root.querySelector("[data-edit]").addEventListener("click", (e) => {
           const b = e.currentTarget;
-          const pre = card.querySelector("pre.jdtext");
           if (b.textContent === "Save") {
             saveJd(id, card.querySelector("textarea").value.trim(), b, root);
             return;
           }
+          const view = card.querySelector(".jd");
           const ta = document.createElement("textarea");
-          ta.value = pre.textContent;
-          ta.style.minHeight = "320px";
-          pre.replaceWith(ta);
+          // The raw text, not the rendered version — editing formatted output
+          // would quietly rewrite the user's document.
+          ta.value = jobsDetailCache.find((x) => x.id === id).jdText;
+          ta.style.minHeight = "340px";
+          view.replaceWith(ta);
           b.textContent = "Save";
           b.classList.remove("btn-ghost");
           b.classList.add("btn-primary");
@@ -1996,17 +2094,142 @@
           btn.classList.add("btn-ghost");
           btn.classList.remove("btn-primary");
           btn.disabled = false;
-          const pre = document.createElement("pre");
-          pre.className = "jdtext";
-          pre.textContent = text;
-          card.querySelector("textarea").replaceWith(pre);
           const cached = jobsDetailCache.find((x) => x.id === id);
           if (cached) cached.jdText = text;
+          const view = document.createElement("div");
+          view.innerHTML = formatJd(text);
+          card.querySelector("textarea").replaceWith(view.firstChild);
           loadJobs();
         } catch (err) {
           btn.disabled = false;
           if (err.status !== 401) status.textContent = err.message;
         }
+      }
+
+      // ── Next round ────────────────────────────────────────────────────
+      /**
+       * Candidates a person marked as worth another conversation.
+       *
+       * Nothing here is set by the model. The report argues a case; advancing
+       * someone is the recruiter's decision, and this screen is the record of
+       * decisions they made rather than scores the AI produced.
+       */
+      async function setShortlisted(id, shortlisted) {
+        await api("/recordings/" + id, {
+          method: "PATCH",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ shortlisted }),
+        });
+      }
+
+      /**
+       * A number the call recorder left in the filename, if one is plainly
+       * there. Offered as a SUGGESTION only and never saved on its own: these
+       * names also carry dates and timestamps, and a wrong number on a
+       * shortlist means calling the wrong candidate.
+       */
+      function phoneFromFilename(name) {
+        const runs = String(name || "").match(/\d{10,13}/g) || [];
+        for (const run of runs) {
+          // 20260916104444 and friends are timestamps, not phone numbers.
+          if (/^(19|20)\d{6}/.test(run)) continue;
+          return run;
+        }
+        return "";
+      }
+
+      async function openShortlist() {
+        show("view-shortlist");
+        $("shortlist").innerHTML = '<div class="card center"><p class="muted">Loading…</p></div>';
+        try {
+          const list = await api("/recordings?shortlisted=true");
+          if (!list.length) {
+            $("shortlist").innerHTML =
+              '<div class="card"><p class="empty">Nobody marked yet.<br />' +
+              "Open a report and choose <b>Mark for next round</b>.</p></div>";
+            return;
+          }
+          $("shortlist").innerHTML =
+            '<div class="card">' +
+            list
+              .map((r) => {
+                const s = r.evaluationSummary;
+                const score = s ? s.overallScore : null;
+                const na = score === null || score === undefined;
+                const suggestion = r.phoneNumber ? "" : phoneFromFilename(r.originalFilename);
+                return (
+                  '<div class="short" data-row="' + r.id + '">' +
+                  '<div class="short-head">' +
+                  '<div class="mini' + (na ? " na" : "") + '" style="background:' + scoreColor(score) + '">' +
+                  (na ? "—" : score) + "</div>" +
+                  '<div class="short-name">' + esc(r.candidateName || r.originalFilename) +
+                  '<div class="short-meta">' +
+                  (r.job ? esc(r.job.title) : "No job attached") +
+                  (s ? " · " + esc(s.recommendation.split(/[—\-:]/)[0].trim()) : "") +
+                  "</div></div>" +
+                  '<button class="rec-action" data-open="' + r.id + '" title="Open report" aria-label="Open report">' +
+                  '<svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 5l7 7-7 7"/></svg>' +
+                  "</button></div>" +
+                  '<div class="phone-row">' +
+                  '<input type="tel" inputmode="tel" data-phone="' + r.id + '" value="' +
+                  esc(r.phoneNumber || "") + '" placeholder="' +
+                  (suggestion ? esc(suggestion) + " — from the filename, check it" : "Phone number") +
+                  '" />' +
+                  '<button class="btn-ghost btn-sm" data-save-phone="' + r.id + '">Save</button>' +
+                  '<button class="btn-ghost btn-sm" data-unmark="' + r.id + '">Remove</button>' +
+                  "</div>" +
+                  '<div class="muted" data-phone-status="' + r.id + '" style="margin-top:6px"></div>' +
+                  "</div>"
+                );
+              })
+              .join("") +
+            "</div>";
+          wireShortlist();
+        } catch (err) {
+          if (err.status !== 401) {
+            $("shortlist").innerHTML =
+              '<div class="card"><div class="callout err">' + esc(err.message) + "</div></div>";
+          }
+        }
+      }
+
+      function wireShortlist() {
+        const root = $("shortlist");
+        root.querySelectorAll("[data-open]").forEach((b) =>
+          b.addEventListener("click", async () => {
+            try { renderReport(await api("/recordings/" + b.dataset.open)); } catch {}
+          })
+        );
+        root.querySelectorAll("[data-save-phone]").forEach((b) =>
+          b.addEventListener("click", async () => {
+            const id = b.dataset.savePhone;
+            const input = root.querySelector('[data-phone="' + id + '"]');
+            const status = root.querySelector('[data-phone-status="' + id + '"]');
+            b.disabled = true;
+            status.textContent = "Saving…";
+            try {
+              await api("/recordings/" + id, {
+                method: "PATCH",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ phoneNumber: input.value.trim() || null }),
+              });
+              status.textContent = "Saved.";
+            } catch (err) {
+              if (err.status !== 401) status.textContent = err.message;
+            } finally {
+              b.disabled = false;
+            }
+          })
+        );
+        root.querySelectorAll("[data-unmark]").forEach((b) =>
+          b.addEventListener("click", async () => {
+            b.disabled = true;
+            try {
+              await setShortlisted(b.dataset.unmark, false);
+              openShortlist();
+            } catch (err) { b.disabled = false; }
+          })
+        );
       }
 
       // ── Ranking ───────────────────────────────────────────────────────

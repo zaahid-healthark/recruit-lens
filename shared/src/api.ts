@@ -149,6 +149,13 @@ export interface RecordingListItemDto {
    * the ranking and the dashboard.
    */
   trashedAt: string | null;
+  /**
+   * Marked by a person as worth a next round, or null. Never set by the
+   * model — the report advises, the recruiter decides.
+   */
+  shortlistedAt: string | null;
+  /** Contact number, entered by a person. */
+  phoneNumber: string | null;
   errorMessage: string | null;
   evaluationSummary: EvaluationSummaryDto | null;
 }

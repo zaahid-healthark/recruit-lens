@@ -213,6 +213,8 @@ export function toRecordingListItemDto(
     job: r.job ? { id: r.job.id, title: r.job.title } : null,
     status: r.status as RecordingStatus,
     trashedAt: r.trashedAt ? r.trashedAt.toISOString() : null,
+    shortlistedAt: r.shortlistedAt ? r.shortlistedAt.toISOString() : null,
+    phoneNumber: r.phoneNumber,
     errorMessage: r.errorMessage,
     evaluationSummary: r.evaluation ? toEvaluationSummaryDto(r.evaluation) : null,
   };
