@@ -308,6 +308,15 @@ export interface CostStageDto {
    * is free" are opposite conclusions from the same number.
    */
   unpriced?: boolean;
+  /**
+   * Tokens the tracing backend recorded for this stage. Shown because they
+   * separate the two reasons a stage prices at zero: no rate for the model
+   * (tokens present, cost derivable) versus no usage reported at all.
+   */
+  inputTokens?: number;
+  outputTokens?: number;
+  /** True when this app priced the stage from tokens because Langfuse had no rate. */
+  derived?: boolean;
 }
 
 export interface CostsDto {

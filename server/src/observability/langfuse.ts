@@ -145,22 +145,42 @@ function toUsageDetails(usage: unknown): Record<string, number> | undefined {
  * Returns undefined for anything Langfuse already prices, so its own figures
  * are never overridden by ours.
  */
+/**
+ * Cost for models Langfuse has no rate for.
+ *
+ * gpt-4o-transcribe-diarize is absent from Langfuse's model table, so it
+ * prices at zero — which reads as free for what is usually the larger half of
+ * the bill. It IS token-priced and the tokens are recorded, so the cost is
+ * derived from them.
+ *
+ * Returns null for anything else, so Langfuse's own figures are never
+ * overridden by ours.
+ */
+function priceTokens(model: string, input: number, output: number): number | null {
+  if (!model.includes("transcribe")) return null;
+  if (input === 0 && output === 0) return null;
+  const total =
+    (input / 1_000_000) * env.transcribeUsdPer1mInput +
+    (output / 1_000_000) * env.transcribeUsdPer1mOutput;
+  return total > 0 ? total : null;
+}
+
 let warnedNoTranscribeTokens = false;
 
 function priceFromTokens(
   model: string,
   usage: Record<string, number> | undefined,
   rawUsage: unknown
-): { input?: number; output?: number; total: number } | undefined {
+): { total: number } | undefined {
   if (!model.includes("transcribe")) return undefined;
-
   const input = usage?.input ?? 0;
   const output = usage?.output ?? 0;
-  if (input === 0 && output === 0) {
-    // Pricing depends on the API returning token counts for this model. If it
-    // ever stops doing so the stage silently reverts to unpriced, which looks
-    // identical to free — so say once, in the server log, what actually came
-    // back. Once per process: this would otherwise fire on every evaluation.
+  const total = priceTokens(model, input, output);
+
+  if (total === null) {
+    // Pricing depends on the API reporting token counts. If it stops doing so
+    // the stage silently reverts to unpriced, which looks identical to free —
+    // so say once, in the server log, what actually came back.
     if (!warnedNoTranscribeTokens) {
       warnedNoTranscribeTokens = true;
       const keys =
@@ -168,21 +188,16 @@ function priceFromTokens(
           ? Object.keys(rawUsage as Record<string, unknown>).join(", ")
           : String(rawUsage);
       log.warn(
-        `Transcription returned no token counts, so it cannot be priced ` +
+        `Transcription (${model}) returned no token counts, so it cannot be priced ` +
           `(usage keys: ${keys || "none"}). The Costs screen will show it as unpriced.`
       );
     }
     return undefined;
   }
-
-  const inCost = (input / 1_000_000) * env.transcribeUsdPer1mInput;
-  const outCost = (output / 1_000_000) * env.transcribeUsdPer1mOutput;
-  const total = inCost + outCost;
-  if (total <= 0) return undefined;
   log.info(
     `Transcription priced from tokens: ${input} in + ${output} out = $${total.toFixed(4)}.`
   );
-  return { input: inCost, output: outCost, total };
+  return { total };
 }
 
 /** Records one model call against a trace. Safe to call with a null trace. */
@@ -262,58 +277,125 @@ export async function fetchCostTraces(limit: number): Promise<CostsDto> {
   const traces = await lf.fetchTraces({ name: "evaluate-recording", limit });
   const rows = (traces?.data ?? []) as Array<Record<string, any>>;
 
-  const calls: EvaluationCostDto[] = rows.map((t) => {
-    const meta = (t.metadata ?? {}) as Record<string, unknown>;
-    const num = (v: unknown): number | null =>
-      typeof v === "number" && Number.isFinite(v) ? v : null;
-    return {
-      traceId: String(t.id ?? ""),
-      recordingId: typeof meta.recordingId === "string" ? meta.recordingId : (t.sessionId ?? null),
-      candidateName: typeof meta.candidateName === "string" ? meta.candidateName : null,
-      jobTitle: typeof meta.jobTitle === "string" ? meta.jobTitle : null,
-      audioMinutes: num(meta.audioMinutes),
-      cost: num(t.totalCost) ?? 0,
-      latencySeconds: num(t.latency),
-      at: String(t.timestamp ?? new Date().toISOString()),
-      traceUrl: typeof t.htmlPath === "string" ? env.langfuseBaseUrl + t.htmlPath : null,
-    };
-  });
+  const num = (v: unknown): number | null =>
+    typeof v === "number" && Number.isFinite(v) ? v : null;
 
-  // The stage split is the number worth knowing — it says whether
-  // transcription really is the larger half, which decides what is worth
-  // optimising. Observations are fetched separately; traces carry only ids.
+  // Observations are read BEFORE the per-call figures are assembled, because a
+  // stage Langfuse cannot price is costed from its tokens here and that has to
+  // be added to the trace total. Traces carry only ids and a total; the tokens
+  // live on the observations.
+  const traceIds = new Set(rows.map((t) => String(t.id ?? "")).filter(Boolean));
   const byStage: CostStageDto[] = [];
+  const derivedPerTrace = new Map<string, number>();
   try {
     // Scoped to THIS app's traces. A Langfuse project is often shared, and an
     // unfiltered query returns every generation in it — which showed other
     // applications' models sitting in this app's cost breakdown.
-    const ours = new Set(calls.map((c) => c.traceId).filter(Boolean));
-    const obs = await lf.fetchObservations({
-      type: "GENERATION",
-      limit: Math.min(limit * 4, 100),
-    });
-    const totals = new Map<string, { cost: number; calls: number; unpriced: number }>();
-    for (const o of (obs?.data ?? []) as Array<Record<string, any>>) {
+    //
+    // Bounded by the oldest trace being shown and paged: one page of 100 is
+    // not enough when another application writes to the same project, and
+    // ours would simply be crowded out of the newest rows — the stage split
+    // would then silently omit calls rather than report them wrongly.
+    const oldest = rows
+      .map((t) => Date.parse(String(t.timestamp ?? "")))
+      .filter((n) => Number.isFinite(n))
+      .sort((a, b) => a - b)[0];
+    const fromStartTime = Number.isFinite(oldest)
+      ? new Date(oldest - 60_000).toISOString() // a minute of slack for clock skew
+      : undefined;
+
+    const observations: Array<Record<string, any>> = [];
+    const PAGE = 100;
+    const MAX_PAGES = 5; // cap the work; a reporting screen must not hang
+    for (let page = 1; page <= MAX_PAGES; page++) {
+      const obs = await lf.fetchObservations({
+        type: "GENERATION",
+        limit: PAGE,
+        page,
+        ...(fromStartTime ? { fromStartTime } : {}),
+      } as Parameters<typeof lf.fetchObservations>[0]);
+      const data = (obs?.data ?? []) as Array<Record<string, any>>;
+      observations.push(...data);
+      if (data.length < PAGE) break;
+    }
+
+    const totals = new Map<
+      string,
+      { cost: number; calls: number; unpriced: number; input: number; output: number; derived: boolean }
+    >();
+    for (const o of observations) {
       const traceId = typeof o.traceId === "string" ? o.traceId : "";
-      if (!ours.has(traceId)) continue;
+      if (!traceIds.has(traceId)) continue;
       const name = typeof o.name === "string" ? o.name : "other";
-      const cost = typeof o.calculatedTotalCost === "number" ? o.calculatedTotalCost : 0;
-      const entry = totals.get(name) ?? { cost: 0, calls: 0, unpriced: 0 };
+      const model = String(o.model ?? "");
+
+      // usageDetails/costDetails are the live fields; usage and
+      // calculatedTotalCost are deprecated and are not populated on every
+      // ingestion path — reading only those is what made transcription look
+      // unpriced even though the tokens were there all along.
+      const usage = (o.usageDetails ?? {}) as Record<string, number>;
+      const costs = (o.costDetails ?? {}) as Record<string, number>;
+      const input = num(usage.input) ?? num(o.promptTokens) ?? 0;
+      const output = num(usage.output) ?? num(o.completionTokens) ?? 0;
+      let cost = num(costs.total) ?? num(o.calculatedTotalCost) ?? 0;
+
+      let derived = false;
+      if (cost === 0) {
+        const own = priceTokens(model, input, output);
+        if (own !== null) {
+          cost = own;
+          derived = true;
+          derivedPerTrace.set(traceId, (derivedPerTrace.get(traceId) ?? 0) + own);
+        }
+      }
+
+      const entry =
+        totals.get(name) ?? { cost: 0, calls: 0, unpriced: 0, input: 0, output: 0, derived: false };
       entry.cost += cost;
       entry.calls += 1;
+      entry.input += input;
+      entry.output += output;
       if (cost === 0) entry.unpriced += 1;
+      if (derived) entry.derived = true;
       totals.set(name, entry);
     }
     for (const [name, v] of totals) {
       // A stage with calls but no cost is UNPRICED, not free. Saying so is the
       // difference between "transcription is cheap" and "we cannot see what
       // transcription costs", which are opposite conclusions.
-      byStage.push({ name, cost: v.cost, calls: v.calls, unpriced: v.unpriced === v.calls });
+      byStage.push({
+        name,
+        cost: v.cost,
+        calls: v.calls,
+        unpriced: v.unpriced === v.calls,
+        inputTokens: v.input || undefined,
+        outputTokens: v.output || undefined,
+        derived: v.derived || undefined,
+      });
     }
     byStage.sort((a, b) => b.cost - a.cost);
   } catch (err) {
     log.warn("Could not read the per-stage cost split — showing totals only.", err);
   }
+
+  const calls: EvaluationCostDto[] = rows.map((t) => {
+    const meta = (t.metadata ?? {}) as Record<string, unknown>;
+    const traceId = String(t.id ?? "");
+    return {
+      traceId,
+      recordingId: typeof meta.recordingId === "string" ? meta.recordingId : (t.sessionId ?? null),
+      candidateName: typeof meta.candidateName === "string" ? meta.candidateName : null,
+      jobTitle: typeof meta.jobTitle === "string" ? meta.jobTitle : null,
+      audioMinutes: num(meta.audioMinutes),
+      // Langfuse's total plus whatever it could not price itself. Additive
+      // rather than a recomputed sum, because the observation page is capped
+      // and summing a partial set would silently undercount.
+      cost: (num(t.totalCost) ?? 0) + (derivedPerTrace.get(traceId) ?? 0),
+      latencySeconds: num(t.latency),
+      at: String(t.timestamp ?? new Date().toISOString()),
+      traceUrl: typeof t.htmlPath === "string" ? env.langfuseBaseUrl + t.htmlPath : null,
+    };
+  });
 
   const totalCost = calls.reduce((sum, c) => sum + c.cost, 0);
   const priced = calls.filter((c) => c.cost > 0);

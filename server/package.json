@@ -2,7 +2,7 @@
   "name": "@interview-evaluator/server",
   "version": "1.0.0",
   "private": true,
-  "description": "Interview Evaluator backend — Express + Prisma + OpenAI pipeline",
+  "description": "Interview Evaluator backend \u2014 Express + Prisma + OpenAI pipeline",
   "main": "src/index.ts",
   "scripts": {
     "dev": "tsx watch src/index.ts",
@@ -15,7 +15,8 @@
     "drive:sync": "tsx scripts/driveSyncAll.ts",
     "score:check": "tsx scripts/scoringCheck.ts",
     "typecheck": "tsc --noEmit",
-    "postinstall": "prisma generate"
+    "postinstall": "prisma generate",
+    "cost:check": "tsx scripts/costCheck.ts"
   },
   "prisma": {
     "seed": "tsx prisma/seed.ts"

@@ -2228,6 +2228,8 @@
        * total of zero.
        */
       const money = (n) => "$" + (n < 0.01 && n > 0 ? n.toFixed(4) : n.toFixed(2));
+      const tok = (n) =>
+        !n ? "0" : n >= 1000 ? (n / 1000).toFixed(n >= 10000 ? 0 : 1) + "k" : String(n);
 
       async function openCosts() {
         show("view-costs");
@@ -2305,16 +2307,31 @@
               )
               .join("") +
             '<p class="faint" style="margin:10px 0 0">' +
-            c.byStage.map((s) => esc(s.name) + " × " + s.calls).join(" · ") +
+            c.byStage
+              .map(
+                (s) =>
+                  esc(s.name) + " × " + s.calls +
+                  // The tokens answer the question an unpriced stage raises:
+                  // whether the usage is missing, or only the rate is.
+                  (s.inputTokens || s.outputTokens
+                    ? " (" + tok(s.inputTokens) + "→" + tok(s.outputTokens) + " tok)"
+                    : "")
+              )
+              .join(" · ") +
             "</p>" +
+            (c.byStage.some((s) => s.derived)
+              ? '<p class="faint" style="margin:6px 0 0">' +
+                c.byStage.filter((s) => s.derived).map((s) => esc(s.name)).join(", ") +
+                " priced from tokens here — Langfuse has no rate for that model." +
+                "</p>"
+              : "") +
             (c.byStage.some((s) => s.unpriced)
               ? '<div class="callout warn" style="margin-top:12px"><span>' +
                 "<b>" +
                 c.byStage.filter((s) => s.unpriced).map((s) => esc(s.name)).join(", ") +
-                " could not be priced.</b> Shown as unpriced rather than free. Transcription is " +
-                "costed from the token counts the model returns; if this persists, those counts " +
-                "are missing from the response. Evaluations before this was added stay unpriced — " +
-                "only new ones are costed." +
+                " could not be priced.</b> Shown as unpriced rather than free. No token counts " +
+                "were recorded for it, so there is nothing to price it from — check the server " +
+                "log for what the model returned." +
                 "</span></div>"
               : "") +
             "</div>";
