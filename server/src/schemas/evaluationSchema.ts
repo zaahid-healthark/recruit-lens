@@ -1,6 +1,8 @@
 import {
   ANSWER_VERDICTS,
   BEHAVIOURAL_CATEGORIES,
+  COMMUNICATION_CATEGORY,
+  COMMUNICATION_FLOOR,
   CLASSIFICATION_CONFIDENCE_LEVELS,
   JD_REQUIREMENT_VERDICTS,
   MATRIX_CATEGORIES,
@@ -375,6 +377,31 @@ export function applyScoringGuards(result: ParsedLlmEvaluation): ParsedLlmEvalua
   ) {
     const worst = Math.min(...graded.map((q) => q.score));
     if (result.overall_score < worst) result.overall_score = worst;
+  }
+
+  // Answering every question put to you IS being understood.
+  //
+  // The communication floor can demote an otherwise advancing candidate, and
+  // the likeliest way to score beneath it wrongly is to read the recruiter's
+  // habits as the candidate's failing: on this call the recruiter repeats
+  // answers back to confirm them, and asks for a repeat when the phone line
+  // was poor. The prompt says not to count either. This is the backstop, and
+  // it rests on evidence rather than on trust — a candidate whose every answer
+  // was graded acceptable was, by definition, understood well enough to be
+  // graded. It lifts to the floor only, never higher: a genuinely hard-to-
+  // follow candidate still scores poorly, they just stop being blocked by it.
+  if (
+    graded.length >= 2 &&
+    graded.every((q) => q.verdict === "strong" || q.verdict === "adequate")
+  ) {
+    const communication = result.categories.find((c) => c.name === COMMUNICATION_CATEGORY);
+    if (
+      communication &&
+      communication.score !== null &&
+      communication.score < COMMUNICATION_FLOOR
+    ) {
+      communication.score = COMMUNICATION_FLOOR;
+    }
   }
 
   // A JD nobody probed produces no fit evidence; 0 would read as a bad

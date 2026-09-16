@@ -98,13 +98,14 @@ function guardCase(
   verdicts: Array<"strong" | "adequate" | "weak" | "not_answered">,
   scores: number[],
   overall: number,
-  expect: { overall: number; questions?: number[]; technical?: number }
+  expect: { overall: number; questions?: number[]; technical?: number; communication?: number },
+  communication = 50
 ): boolean {
   const evaluation = {
     overall_score: overall,
     recommendation: "Maybe — see summary",
     categories: [
-      { name: "Communication Skills", score: 50, summary: "", evidence: "", recommendation: "" },
+      { name: "Communication Skills", score: communication, summary: "", evidence: "", recommendation: "" },
       { name: "Technical Knowledge", score: 58, summary: "", evidence: "", recommendation: "" },
       { name: "Problem Solving", score: 55, summary: "", evidence: "", recommendation: "" },
     ],
@@ -126,13 +127,15 @@ function guardCase(
   }
   const gotQ: number[] = assessed.questions.map((q) => q.score);
   const gotT: number | null = assessed.technical_score;
+  const gotC = out.categories.find((c) => c.name === "Communication Skills")?.score ?? null;
   const ok =
     out.overall_score === expect.overall &&
+    (expect.communication === undefined || expect.communication === gotC) &&
     (!expect.questions || expect.questions.every((v, i) => v === gotQ[i])) &&
     (expect.technical === undefined || expect.technical === gotT);
   console.log(
     (ok ? "PASS  " : "FAIL  ") + label.padEnd(38) +
-    `overall ${out.overall_score}  answers [${gotQ.join(", ")}]  technical ${gotT}` +
+    `overall ${out.overall_score}  answers [${gotQ.join(", ")}]  technical ${gotT}  comm ${gotC}` +
     (ok ? "" : `   (expected overall ${expect.overall}` +
       (expect.questions ? `, answers [${expect.questions.join(", ")}]` : "") +
       (expect.technical !== undefined ? `, technical ${expect.technical}` : "") + ")")
@@ -169,6 +172,12 @@ const guards: boolean[] = [
     { overall: 56, technical: 56 }),
   // One weak answer and the overall floor does not apply at all.
   guardCase("one weak answer present", ["adequate", "weak"], [60, 30], 45, { overall: 45 }),
+  // Answered everything, but the recruiter's "come again" was read as their failing.
+  guardCase("all adequate, communication 22", ["adequate", "adequate"], [58, 60], 58,
+    { overall: 58, communication: 35 }, 22),
+  // A weak answer present, so the communication backstop does not apply.
+  guardCase("weak answer, communication 22", ["adequate", "weak"], [58, 30], 45,
+    { overall: 45, communication: 22 }, 22),
   // Never lowers a score the model already put above the answers.
   guardCase("overall already above answers", ["adequate", "adequate"], [58, 60], 70, { overall: 70 }),
 ];
