@@ -120,7 +120,10 @@
       .scrim.open { opacity: 1; pointer-events: auto; }
       .drawer {
         position: fixed; top: 0; bottom: 0; left: 0; z-index: 41;
-        width: min(316px, 82vw); overflow-y: auto;
+        /* Narrow enough to leave a comfortable strip of the page beside it:
+           tapping anywhere off the panel closes it, which is how the drawer is
+           meant to be dismissed now that there is no close button. */
+        width: min(300px, 76vw); overflow-y: auto;
         background: var(--card);
         border-top-right-radius: 18px; border-bottom-right-radius: 18px;
         box-shadow: 4px 0 24px rgba(15, 23, 42, 0.22);
@@ -134,10 +137,9 @@
         position: relative;
         padding: 2px 16px 18px; border-bottom: 1px solid var(--border);
       }
-      .drawer-close { position: absolute; top: -4px; right: 8px; }
       .logo-panel {
         background: var(--logo-bg); border-radius: 10px;
-        padding: 16px 18px; margin: 0 40px 12px 0;
+        padding: 16px 18px; margin: 0 0 12px;
         display: grid; place-items: center;
       }
       .logo-img { display: block; width: 100%; max-width: 168px; height: auto; }
@@ -286,7 +288,13 @@
         transition: border-color 0.15s, background 0.15s;
       }
       .drop:hover, .drop.over { border-color: var(--primary); background: var(--primary-soft); }
-      .drop strong { display: block; font-size: 14.5px; font-weight: 700; margin-bottom: 4px; }
+      .drop strong {
+        display: block; font-size: 14.5px; font-weight: 700; margin-bottom: 4px;
+        /* Call recorders produce long unbroken names like
+           phone_20260825-104444_9160325704.amr, which have no natural break
+           point and ran straight off a phone screen. */
+        overflow-wrap: anywhere;
+      }
       .drop span { font-size: 13px; color: var(--subtext); }
       .drop.has-file { border-style: solid; border-color: var(--primary); background: var(--primary-soft); }
 
@@ -323,7 +331,7 @@
         display: flex; align-items: flex-start; gap: 14px;
         justify-content: space-between; margin-bottom: 4px;
       }
-      .card-sub { font-size: 13px; color: var(--subtext); margin: 4px 0 0; }
+      .card-sub { font-size: 13px; color: var(--subtext); margin: 4px 0 0; overflow-wrap: anywhere; }
       .lead {
         font-size: 14px; line-height: 1.7; margin: 16px 0 0;
         padding: 14px 16px; background: var(--inset); border-radius: 10px;
@@ -518,11 +526,6 @@
     <div id="scrim" class="scrim"></div>
     <aside id="drawer" class="drawer" aria-label="Menu">
       <div class="drawer-brand">
-        <button id="btn-close-menu" class="icon-btn drawer-close" aria-label="Close menu">
-          <svg viewBox="0 0 24 24" width="20" height="20" aria-hidden="true">
-            <path d="M6 6l12 12M18 6L6 18" stroke="currentColor" stroke-width="2" stroke-linecap="round" fill="none"/>
-          </svg>
-        </button>
         <!-- The mark is white with a transparent ground, so it needs a dark
              panel behind it to exist at all in light mode. Inlined rather than
              linked for the same reason the CSS is: a relative asset path is
@@ -587,18 +590,13 @@
       <section id="view-upload" class="hidden">
         <div class="card">
           <h2>Evaluate an interview</h2>
-          <p class="hint">
-            Upload a screening call. It is transcribed, every question the recruiter asked is
-            graded individually, and the candidate is scored against the job description if you
-            attach one.
-          </p>
+          <p class="hint">Upload a call. Every question asked gets graded.</p>
 
           <!-- Step 1 — the recording -->
           <div class="step">
             <div class="step-n">1</div>
             <div class="step-body">
-              <div class="step-title">The recording</div>
-              <p class="step-hint">The audio file from your phone's call recorder.</p>
+              <div class="step-title">Recording</div>
               <div id="drop" class="drop">
                 <strong id="drop-title">Choose an audio file</strong>
                 <span id="drop-sub">or drag it here — MP3, M4A, WAV, AMR, OGG, 3GP</span>
@@ -616,10 +614,7 @@
             <div class="step-n">2</div>
             <div class="step-body">
               <div class="step-title">Job description</div>
-              <p class="step-hint">
-                With a JD attached, each requirement is checked off individually and the candidate
-                gets a fit score for this role — which is also what ranking compares candidates on.
-              </p>
+              <p class="step-hint">Adds a fit score and a per-requirement check.</p>
 
               <div class="seg" id="jd-modes">
                 <button type="button" data-mode="existing" class="on">Saved job</button>
@@ -653,8 +648,7 @@
 
               <div id="jd-none" class="hidden">
                 <p class="muted" style="margin: 0">
-                  Generic evaluation — the candidate is scored on the interview itself, with no
-                  requirement-by-requirement matching and no fit score.
+                  Scored on the interview alone — no fit score.
                 </p>
               </div>
             </div>
@@ -667,14 +661,11 @@
               <div class="step-title">
                 Custom instructions <span class="optional">— optional</span>
               </div>
-              <p class="step-hint">
-                Anything specific you want weighed for this candidate. Directs what the scoring
-                pays attention to; it cannot invent evidence that is not in the call.
-              </p>
+              <p class="step-hint">Anything to weigh more heavily for this candidate.</p>
               <textarea
                 id="instructions"
                 style="min-height: 88px"
-                placeholder="e.g. Weigh hands-on SQL depth above everything else. This is a junior role, so calibrate to 1–2 years. Ignore the missing cloud experience — we will train for it."
+                placeholder="e.g. Weigh hands-on SQL depth most. Junior role — calibrate to 1–2 years."
               ></textarea>
               <p id="instr-count" class="hint" style="margin: 6px 0 0"></p>
             </div>
@@ -904,7 +895,6 @@
         $("scrim").classList.remove("open");
       }
       $("btn-menu").addEventListener("click", openMenu);
-      $("btn-close-menu").addEventListener("click", closeMenu);
       $("scrim").addEventListener("click", closeMenu);
       document.addEventListener("keydown", (e) => {
         if (e.key === "Escape") closeMenu();
@@ -1082,8 +1072,8 @@
           n === 0
             ? ""
             : n < MIN_JD_CHARS
-              ? MIN_JD_CHARS - n + " more characters needed — requirements are extracted from this text."
-              : "Each requirement will be checked off individually against the candidate.";
+              ? MIN_JD_CHARS - n + " more characters needed."
+              : "Requirements will be extracted from this text.";
       }
 
       function updateInstrCount() {
@@ -1092,8 +1082,8 @@
           n === 0
             ? ""
             : n > MAX_INSTRUCTION_CHARS
-              ? n - MAX_INSTRUCTION_CHARS + " characters over the limit — trim it to " + MAX_INSTRUCTION_CHARS + "."
-              : n + " / " + MAX_INSTRUCTION_CHARS + " characters";
+              ? n - MAX_INSTRUCTION_CHARS + " over the limit."
+              : n + " / " + MAX_INSTRUCTION_CHARS;
       }
 
       function refreshSubmit() {
