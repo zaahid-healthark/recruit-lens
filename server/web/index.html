@@ -50,32 +50,35 @@
            contrast with the page and would leave the mark invisible. */
         --logo-bg: #17304f;
       }
-      @media (prefers-color-scheme: dark) {
-        :root {
-          color-scheme: dark;
-          --bg: #131519;
-          --card: #1a1d22;
-          --inset: #202329;
-          --text: #e9e8e5;
-          --subtext: #9aa0a8;
-          --faint: #71777f;
-          --border: #2a2e35;
-          --border-strong: #3a3f48;
-          --primary: #8fb3dd;
-          --primary-hover: #a8c6e9;
-          --primary-soft: #1e2833;
-          --on-primary: #11161d;
-          --success: #4ade80;
-          --success-soft: #16301f;
-          --warning: #fbbf24;
-          --warning-soft: #352a12;
-          --danger: #f87171;
-          --danger-soft: #3a1d1d;
-          --info: #7dd3fc;
-          --info-soft: #14293a;
-          --ring: rgba(143, 179, 221, 0.4);
-          --logo-bg: #17304f;
-        }
+      /*
+        Light is the default — it matches the mobile app, and two products in
+        different colour schemes side by side read as two products. Dark is a
+        deliberate choice the user makes, stamped as data-theme on <html>, so
+        nobody's phone setting silently flips a page they showed a colleague.
+      */
+      :root[data-theme="dark"] {
+        color-scheme: dark;
+        --bg: #131519;
+        --card: #1a1d22;
+        --inset: #202329;
+        --text: #e9e8e5;
+        --subtext: #9aa0a8;
+        --faint: #71777f;
+        --border: #2a2e35;
+        --border-strong: #3a3f48;
+        --primary: #8fb3dd;
+        --primary-hover: #a8c6e9;
+        --primary-soft: #1e2833;
+        --on-primary: #11161d;
+        --success: #4ade80;
+        --success-soft: #16301f;
+        --warning: #fbbf24;
+        --warning-soft: #352a12;
+        --danger: #f87171;
+        --danger-soft: #3a1d1d;
+        --info: #7dd3fc;
+        --info-soft: #14293a;
+        --ring: rgba(143, 179, 221, 0.4);
       }
 
       * { box-sizing: border-box; }
@@ -308,43 +311,106 @@
       .callout.warn { background: var(--warning-soft); color: var(--warning); }
       .callout.err { background: var(--danger-soft); color: var(--danger); }
 
-      /* ── Report: the graded Q&A ──────────────────────────────────────
-         Each answer is its own block with an inset rule, so a long report
-         reads as a sequence of judgements rather than one wall of text. The
-         old version ran question, verdict, answer and quote together at the
-         same weight and they blurred into each other. */
+      /* ── Report ──────────────────────────────────────────────────────
+         Built to be READ, not scanned and abandoned. Three rules:
+           1. Every graded item is its own bounded box. Hairline dividers were
+              not enough isolation — two answers ran together as one wall.
+           2. Every number is labelled. An unexplained chip in a header makes a
+              reader stop and guess, which is worse than no chip.
+           3. The verdict word carries the weight, not the whole sentence. A
+              three-line bold paragraph has no emphasis left to give.        */
       .card-head {
-        display: flex; align-items: flex-start; gap: 12px;
-        justify-content: space-between; margin-bottom: 14px;
+        display: flex; align-items: flex-start; gap: 14px;
+        justify-content: space-between; margin-bottom: 4px;
       }
+      .card-sub { font-size: 13px; color: var(--subtext); margin: 4px 0 0; }
       .lead {
-        font-size: 14px; line-height: 1.65; margin: 0 0 4px;
-        padding-bottom: 18px; border-bottom: 1px solid var(--border);
+        font-size: 14px; line-height: 1.7; margin: 16px 0 0;
+        padding: 14px 16px; background: var(--inset); border-radius: 10px;
       }
-      .qa-list { margin-top: 4px; }
+
+      /* Verdict */
+      .verdict { display: flex; align-items: flex-start; gap: 20px; flex-wrap: wrap; }
+      .verdict-body { flex: 1; min-width: 240px; }
+      .verdict-label {
+        display: inline-block; font-size: 13px; font-weight: 700;
+        letter-spacing: 0.4px; text-transform: uppercase;
+        border-radius: 6px; padding: 5px 11px; margin-bottom: 10px;
+      }
+      .verdict-reason { font-size: 15px; line-height: 1.6; font-weight: 600; margin: 0; }
+      .verdict-summary {
+        font-size: 14px; line-height: 1.7; color: var(--subtext);
+        margin: 14px 0 0; padding-top: 14px; border-top: 1px solid var(--border);
+      }
+
+      /* Labelled aggregates, so no number appears without saying what it is */
+      .stat-chips { display: flex; gap: 8px; flex-wrap: wrap; margin: 14px 0 0; }
+      .stat-chip {
+        display: flex; align-items: baseline; gap: 7px;
+        background: var(--inset); border: 1px solid var(--border);
+        border-radius: 9px; padding: 8px 12px;
+      }
+      .stat-chip .k {
+        font-size: 10.5px; font-weight: 700; letter-spacing: 0.6px;
+        text-transform: uppercase; color: var(--faint);
+      }
+      .stat-chip .v { font-size: 16px; font-weight: 700; font-variant-numeric: tabular-nums; }
+
+      /* One graded answer — a bounded box, not a row between hairlines */
+      .qa-list { display: flex; flex-direction: column; gap: 12px; margin-top: 18px; }
       .qa {
-        padding: 18px 0 20px; border-top: 1px solid var(--border);
+        border: 1px solid var(--border); border-radius: 11px;
+        background: var(--card); overflow: hidden;
       }
-      .qa:first-child { border-top: none; }
-      .qa:last-child { padding-bottom: 2px; }
-      .qa-head { display: flex; align-items: flex-start; gap: 10px; }
+      .qa-head {
+        display: flex; align-items: flex-start; gap: 11px;
+        padding: 14px 15px; background: var(--inset);
+        border-bottom: 1px solid var(--border);
+      }
       .qa-n {
         width: 22px; height: 22px; flex: none; margin-top: 1px; border-radius: 6px;
-        background: var(--inset); color: var(--faint);
+        background: var(--card); border: 1px solid var(--border); color: var(--faint);
         display: grid; place-items: center; font-size: 11.5px; font-weight: 700;
       }
       .qa-q { flex: 1; font-size: 14.5px; font-weight: 650; line-height: 1.5; }
-      .qa-meta { display: flex; align-items: center; gap: 9px; margin: 10px 0 0 32px; }
+      .qa-body { padding: 14px 15px 16px; }
+      .qa-meta { display: flex; align-items: center; gap: 9px; margin-bottom: 11px; }
       .kind {
         font-size: 10.5px; font-weight: 700; letter-spacing: 0.6px;
         text-transform: uppercase; color: var(--faint);
       }
-      .qa-answer { font-size: 13.5px; line-height: 1.65; margin: 12px 0 0 32px; }
-      .qa .evidence { margin: 12px 0 0 32px; }
+      .qa-answer { font-size: 13.5px; line-height: 1.7; margin: 0; }
       blockquote.evidence {
-        font-size: 13px; color: var(--subtext); font-style: italic; line-height: 1.65;
-        padding: 2px 0 2px 14px; border-left: 2px solid var(--border-strong);
+        font-size: 13px; color: var(--subtext); font-style: italic; line-height: 1.7;
+        margin: 12px 0 0; padding: 2px 0 2px 14px;
+        border-left: 2px solid var(--border-strong);
       }
+
+      /* JD requirements, grouped by verdict and boxed the same way */
+      .req-group { margin-top: 18px; }
+      .req-group-title {
+        font-size: 11px; font-weight: 700; letter-spacing: 0.7px;
+        text-transform: uppercase; margin-bottom: 9px;
+      }
+      .req-list { display: flex; flex-direction: column; gap: 8px; }
+      .req {
+        border: 1px solid var(--border); border-left-width: 3px;
+        border-radius: 9px; padding: 12px 14px; background: var(--card);
+      }
+      .req-name { font-size: 13.5px; font-weight: 650; line-height: 1.5; }
+      .req .evidence { margin-top: 8px; }
+
+      /* Matrix rows keep the boxed treatment so the whole report is consistent */
+      .cat {
+        border: 1px solid var(--border); border-radius: 11px;
+        padding: 14px 15px; background: var(--card); margin-bottom: 10px;
+      }
+      .cat:last-child { margin-bottom: 0; }
+      .cat-head {
+        display: flex; align-items: center; gap: 12px;
+        justify-content: space-between; margin-bottom: 9px;
+      }
+      .cat-name { font-size: 14px; font-weight: 700; }
 
       /* ── Candidate rows: open on the left, trash on the right ─────── */
       .rec-open {
@@ -437,6 +503,9 @@
       </button>
       <span id="topbar-title" class="topbar-title">Recordings</span>
       <div class="spacer"></div>
+      <button id="btn-theme" class="icon-btn" aria-label="Switch theme" title="Switch theme">
+        <svg id="theme-icon" viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"></svg>
+      </button>
       <button id="btn-back" class="icon-btn hidden" aria-label="Back">
         <svg viewBox="0 0 24 24" width="22" height="22" aria-hidden="true">
           <path d="M15 5l-7 7 7 7" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" fill="none"/>
@@ -795,6 +864,35 @@
         closeMenu();
         window.scrollTo(0, 0);
       }
+
+      // ── Theme ─────────────────────────────────────────────────────────
+      /**
+       * Light unless the user says otherwise, remembered per browser.
+       *
+       * Deliberately not tied to prefers-color-scheme: the mobile app has no
+       * dark theme, and letting the device flip this one would leave the two
+       * looking like different products depending on whose phone it is.
+       */
+      const THEME_STORAGE = "recruitlens.theme";
+      const SUN = '<circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M4.9 4.9l1.4 1.4M17.7 17.7l1.4 1.4M2 12h2M20 12h2M4.9 19.1l1.4-1.4M17.7 6.3l1.4-1.4"/>';
+      const MOON = '<path d="M21 12.8A9 9 0 1 1 11.2 3a7 7 0 0 0 9.8 9.8z"/>';
+
+      function applyTheme(theme) {
+        document.documentElement.setAttribute("data-theme", theme);
+        // Offer the other one: a moon while light, a sun while dark.
+        $("theme-icon").innerHTML = theme === "dark" ? SUN : MOON;
+        $("btn-theme").title = theme === "dark" ? "Switch to light" : "Switch to dark";
+      }
+
+      let theme = "light";
+      try { theme = localStorage.getItem(THEME_STORAGE) === "dark" ? "dark" : "light"; } catch {}
+      applyTheme(theme);
+
+      $("btn-theme").addEventListener("click", () => {
+        theme = theme === "dark" ? "light" : "dark";
+        try { localStorage.setItem(THEME_STORAGE, theme); } catch {}
+        applyTheme(theme);
+      });
 
       // ── Drawer ────────────────────────────────────────────────────────
       function openMenu() {
@@ -1160,6 +1258,35 @@
        * add direction and try again, and hiding it there would send them back
        * to the upload form to start over.
        */
+      /**
+       * The recommendation arrives as one string: "No hire — the transcript
+       * shows…". Rendering the whole thing bold gave a three-line paragraph
+       * with no emphasis left in it. Split so the verdict word carries the
+       * weight and the reasoning reads as prose.
+       */
+      const VERDICT_STYLES = {
+        "strong hire": ["var(--success)", "var(--success-soft)"],
+        hire: ["var(--success)", "var(--success-soft)"],
+        maybe: ["var(--warning)", "var(--warning-soft)"],
+        "no hire": ["var(--danger)", "var(--danger-soft)"],
+        "insufficient evidence": ["var(--subtext)", "var(--inset)"],
+      };
+
+      function splitRecommendation(text) {
+        const t = String(text || "").trim();
+        // Longest first, so "Strong hire" is not swallowed by "hire".
+        const labels = Object.keys(VERDICT_STYLES).sort((a, b) => b.length - a.length);
+        for (const label of labels) {
+          if (t.toLowerCase().startsWith(label)) {
+            let rest = t.slice(label.length);
+            // Drop whatever punctuation joins the label to the reason.
+            rest = rest.replace(/^[\s:;,.–—-]+/, "");
+            return { label, rest, style: VERDICT_STYLES[label] };
+          }
+        }
+        return { label: null, rest: t, style: null };
+      }
+
       function reRunCard(rec, hasEvaluation) {
         return (
           '<div class="card"><h3>' +
@@ -1220,12 +1347,18 @@
         }
 
         // ── Verdict ──
+        const v = splitRecommendation(e.recommendation);
         html +=
-          '<div class="card"><div class="score-wrap">' +
+          '<div class="card"><div class="verdict">' +
           scoreBlock(e.overallScore) +
-          '<div style="flex:1;min-width:220px">' +
-          '<p style="font-size:15px;font-weight:800;margin:0 0 6px">' + esc(e.recommendation) + "</p>" +
-          '<p class="body" style="margin:0">' + esc(e.overallSummary) + "</p></div></div>";
+          '<div class="verdict-body">' +
+          (v.label
+            ? '<span class="verdict-label" style="color:' + v.style[0] + ";background:" + v.style[1] +
+              '">' + esc(v.label) + "</span>"
+            : "") +
+          (v.rest ? '<p class="verdict-reason">' + esc(v.rest) + "</p>" : "") +
+          (e.overallSummary ? '<p class="verdict-summary">' + esc(e.overallSummary) + "</p>" : "") +
+          "</div></div>";
         if (e.coverageNote) {
           html += '<div class="callout">' + esc(e.coverageNote) + "</div>";
         }
@@ -1243,26 +1376,35 @@
         // thing to do rather than something to agonise over.
         html += reRunCard(rec, true);
 
-        // ── Graded Q&A — only when the recruiter actually asked something ──
+        // ── Graded Q&A — only when the recruiter asked something ──
         if (e.questionAssessment) {
           const qa = e.questionAssessment;
           const strong = qa.questions.filter((q) => q.verdict === "strong").length;
-          const headline = qa.technicalScore !== null ? qa.technicalScore : qa.behaviouralScore;
-          const aggregates = []
-            .concat(qa.technicalScore !== null ? ["Technical <b>" + qa.technicalScore + "</b>"] : [])
-            .concat(qa.behaviouralScore !== null ? ["Behavioural <b>" + qa.behaviouralScore + "</b>"] : []);
+          // Every figure is labelled. The old header carried a bare chip that
+          // duplicated one of these and said nothing about which.
+          const chips = []
+            .concat(
+              qa.technicalScore !== null
+                ? ['<div class="stat-chip"><span class="k">Technical</span><span class="v" style="color:' +
+                    scoreColor(qa.technicalScore) + '">' + qa.technicalScore + "</span></div>"]
+                : []
+            )
+            .concat(
+              qa.behaviouralScore !== null
+                ? ['<div class="stat-chip"><span class="k">Behavioural</span><span class="v" style="color:' +
+                    scoreColor(qa.behaviouralScore) + '">' + qa.behaviouralScore + "</span></div>"]
+                : []
+            )
+            .concat([
+              '<div class="stat-chip"><span class="k">Answered strongly</span><span class="v">' +
+                strong + " / " + qa.questions.length + "</span></div>",
+            ]);
           html +=
-            '<div class="card"><div class="card-head">' +
-            "<div><h2>Questions asked</h2>" +
-            '<p class="muted" style="margin:3px 0 0">' + strong + " of " + qa.questions.length +
-            " answered strongly" + (aggregates.length ? " · " + aggregates.join(" · ") : "") +
-            "</p></div>" +
-            (headline !== null && headline !== undefined
-              ? '<div class="chip" style="background:' + scoreColor(headline) + '">' + headline + "</div>"
-              : "") +
-            "</div>";
-          if (qa.summary) html += '<p class="lead">' + esc(qa.summary) + "</p>";
-          html += '<div class="qa-list">';
+            '<div class="card"><h2>Questions asked</h2>' +
+            '<p class="card-sub">Every question the recruiter put to the candidate, graded one at a time.</p>' +
+            '<div class="stat-chips">' + chips.join("") + "</div>" +
+            (qa.summary ? '<p class="lead">' + esc(qa.summary) + "</p>" : "") +
+            '<div class="qa-list">';
           qa.questions.forEach((q, i) => {
             const m = ANSWER_META[q.verdict] || ANSWER_META.not_answered;
             html +=
@@ -1270,14 +1412,13 @@
               '<span class="qa-n">' + (i + 1) + "</span>" +
               '<span class="qa-q">' + esc(q.question) + "</span>" +
               '<span class="chip" style="background:' + scoreColor(q.score) + '">' + q.score + "</span>" +
-              "</div>" +
-              '<div class="qa-meta">' +
+              '</div><div class="qa-body"><div class="qa-meta">' +
               '<span class="pill" style="color:' + m[1] + ";background:" + m[2] + '">' + m[0] + "</span>" +
               '<span class="kind">' + esc(KIND_LABELS[q.kind] || q.kind) + "</span>" +
               "</div>" +
               (q.answerSummary ? '<p class="qa-answer">' + esc(q.answerSummary) + "</p>" : "") +
               (q.evidence ? '<blockquote class="evidence">' + esc(q.evidence) + "</blockquote>" : "") +
-              "</div>";
+              "</div></div>";
           });
           html += "</div></div>";
         }
@@ -1285,46 +1426,68 @@
         // ── JD match ──
         if (e.jdMatch) {
           const j = e.jdMatch;
-          const notAsked = j.requirements.filter((r) => r.verdict === "not_discussed").length;
+          const counts = {};
+          j.requirements.forEach((r) => { counts[r.verdict] = (counts[r.verdict] || 0) + 1; });
+          const total = j.requirements.length;
           html +=
-            '<div class="card"><div class="card-head">' +
-            "<div><h2>Job description match</h2>" +
-            '<p class="muted" style="margin:3px 0 0">' + esc(rec.job ? rec.job.title : "") + "</p></div>" +
-            '<div class="chip' + (j.fitScore === null ? " na" : "") + '" style="background:' +
-            scoreColor(j.fitScore) + '">' + (j.fitScore === null ? "No data" : j.fitScore + " fit") +
-            "</div></div>";
-          if (j.verdictSummary) html += '<p class="lead">' + esc(j.verdictSummary) + "</p>";
-          if (notAsked > 0) {
+            '<div class="card"><h2>Job description match</h2>' +
+            '<p class="card-sub">' + esc(rec.job ? rec.job.title : "") +
+            " — each requirement judged on transcript evidence alone.</p>" +
+            '<div class="stat-chips">' +
+            '<div class="stat-chip"><span class="k">Fit</span><span class="v" style="color:' +
+            scoreColor(j.fitScore) + '">' + (j.fitScore === null ? "—" : j.fitScore) + "</span></div>" +
+            '<div class="stat-chip"><span class="k">Met</span><span class="v">' +
+            (counts.met || 0) + " / " + total + "</span></div>" +
+            (counts.not_discussed
+              ? '<div class="stat-chip"><span class="k">Never asked</span><span class="v">' +
+                counts.not_discussed + "</span></div>"
+              : "") +
+            "</div>" +
+            (j.verdictSummary ? '<p class="lead">' + esc(j.verdictSummary) + "</p>" : "");
+          if (counts.not_discussed) {
             html +=
-              '<div class="callout">' + notAsked + " requirement" + (notAsked === 1 ? "" : "s") +
-              " never came up in this interview — worth probing in the next round.</div>";
+              '<div class="callout">' + counts.not_discussed + " requirement" +
+              (counts.not_discussed === 1 ? " was" : "s were") +
+              " never raised in this interview, so " +
+              (counts.not_discussed === 1 ? "it is" : "they are") +
+              " left out of the fit score rather than counted against the candidate.</div>";
           }
-          const order = ["met", "partial", "missing", "not_discussed"];
-          [...j.requirements]
-            .sort((a, b) => order.indexOf(a.verdict) - order.indexOf(b.verdict))
-            .forEach((r) => {
-              const m = VERDICT_META[r.verdict] || VERDICT_META.not_discussed;
-              html +=
-                '<div class="item"><div class="item-name">' + esc(r.requirement) + "</div>" +
-                '<span class="pill" style="color:' + m[1] + ";background:" + m[2] + '">' + m[0] + "</span>" +
-                (r.evidence ? '<p class="evidence">' + esc(r.evidence) + "</p>" : "") +
-                "</div>";
-            });
+          // Grouped by verdict: a reader wants "what did they have / what is
+          // missing", not the JD's arbitrary ordering.
+          ["met", "partial", "missing", "not_discussed"].forEach((verdict) => {
+            const items = j.requirements.filter((r) => r.verdict === verdict);
+            if (!items.length) return;
+            const m = VERDICT_META[verdict];
+            html +=
+              '<div class="req-group"><div class="req-group-title" style="color:' + m[1] + '">' +
+              m[0] + " · " + items.length + '</div><div class="req-list">' +
+              items
+                .map(
+                  (r) =>
+                    '<div class="req" style="border-left-color:' + m[1] + '">' +
+                    '<div class="req-name">' + esc(r.requirement) + "</div>" +
+                    (r.evidence ? '<blockquote class="evidence">' + esc(r.evidence) + "</blockquote>" : "") +
+                    "</div>"
+                )
+                .join("") +
+              "</div></div>";
+          });
           html += "</div>";
         }
 
         // ── Matrix ──
-        html += '<div class="card"><h2 style="margin-bottom:6px">Scoring matrix</h2>' +
-          '<p class="muted" style="margin:0 0 4px">Five areas, scored only where the interview tested them.</p>';
+        html +=
+          '<div class="card"><h2>Scoring matrix</h2>' +
+          '<p class="card-sub" style="margin-bottom:16px">Five areas, scored only where the interview actually tested them.</p>';
         e.categories.forEach((c) => {
           const na = c.score === null;
           html +=
-            '<div class="item"><div class="item-head">' +
-            '<div class="item-name">' + esc(c.name) + "</div>" +
-            '<div class="chip' + (na ? " na" : "") + '" style="background:' + scoreColor(c.score) + '">' +
-            (na ? "Not assessed" : c.score) + "</div></div>" +
-            (c.summary ? '<p class="body">' + esc(c.summary) + "</p>" : "") +
-            (c.evidence ? '<p class="evidence">' + esc(c.evidence) + "</p>" : "") +
+            '<div class="cat"><div class="cat-head">' +
+            '<span class="cat-name">' + esc(c.name) + "</span>" +
+            '<span class="chip' + (na ? " na" : "") + '" style="background:' + scoreColor(c.score) + '">' +
+            (na ? "Not assessed" : c.score) + "</span></div>" +
+            (c.summary ? '<p class="qa-answer">' + esc(c.summary) + "</p>" : "") +
+            (c.evidence ? '<blockquote class="evidence">' + esc(c.evidence) + "</blockquote>" : "") +
             "</div>";
         });
         html += "</div>";
