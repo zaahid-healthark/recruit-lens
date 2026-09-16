@@ -273,6 +273,56 @@ export interface InstructionPresetDto {
   updatedAt: string;
 }
 
+/**
+ * What one evaluation cost, read back from the tracing backend.
+ *
+ * Costs live in Langfuse because that is where token usage is priced. These
+ * types exist so the figures can be shown next to the candidates they belong
+ * to, rather than leaving someone to match traces to reports by timestamp.
+ */
+export interface EvaluationCostDto {
+  traceId: string;
+  /** The recording this priced — the exact join back to a report. */
+  recordingId: string | null;
+  candidateName: string | null;
+  jobTitle: string | null;
+  /** Length of the audio, which is what drives the transcription half. */
+  audioMinutes: number | null;
+  /** USD. Zero can mean genuinely free OR that the backend lacks a price. */
+  cost: number;
+  /** Wall-clock seconds for the whole evaluation. */
+  latencySeconds: number | null;
+  at: string;
+  /** Deep link to the full trace, for when the summary is not enough. */
+  traceUrl: string | null;
+}
+
+/** Cost aggregated by stage — transcription against scoring against repairs. */
+export interface CostStageDto {
+  name: string;
+  cost: number;
+  calls: number;
+}
+
+export interface CostsDto {
+  /** False when no Langfuse keys are set; the UI explains how to turn it on. */
+  configured: boolean;
+  /** Present when tracing is on but could not be read. */
+  error?: string;
+  calls: EvaluationCostDto[];
+  totalCost: number;
+  /** Null when nothing priced above zero — an average of zeroes misleads. */
+  averageCost: number | null;
+  byStage: CostStageDto[];
+  currency: string;
+  /**
+   * True when calls were traced but every one priced at zero, which almost
+   * always means the tracing backend has no rate for these models rather than
+   * that the calls were free.
+   */
+  missingPricing?: boolean;
+}
+
 /** Structured error body returned by the API on any failure. */
 export interface ApiErrorBody {
   error: {

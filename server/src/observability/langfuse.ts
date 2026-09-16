@@ -1,3 +1,4 @@
+import { CostStageDto, CostsDto, EvaluationCostDto } from "@interview-evaluator/shared";
 import { Langfuse } from "langfuse";
 import { env } from "../config/env";
 import { log } from "../lib/logger";
@@ -177,4 +178,81 @@ export async function flushLangfuse(): Promise<void> {
   } catch (err) {
     log.warn("Langfuse flush failed — traces for this run may be incomplete.", err);
   }
+}
+
+/**
+ * Read back what recent evaluations cost.
+ *
+ * Read-only and best-effort: this powers a reporting screen, so Langfuse being
+ * unreachable makes that screen unavailable, never an evaluation. Traces are
+ * keyed by recording id, which is what lets a cost sit next to the candidate
+ * it belongs to instead of being matched up by timestamp.
+ */
+export async function fetchCostTraces(limit: number): Promise<CostsDto> {
+  const lf = getClient();
+  if (!lf) {
+    return {
+      configured: false,
+      calls: [],
+      totalCost: 0,
+      averageCost: null,
+      byStage: [],
+      currency: "USD",
+    };
+  }
+
+  const traces = await lf.fetchTraces({ name: "evaluate-recording", limit });
+  const rows = (traces?.data ?? []) as Array<Record<string, any>>;
+
+  const calls: EvaluationCostDto[] = rows.map((t) => {
+    const meta = (t.metadata ?? {}) as Record<string, unknown>;
+    const num = (v: unknown): number | null =>
+      typeof v === "number" && Number.isFinite(v) ? v : null;
+    return {
+      traceId: String(t.id ?? ""),
+      recordingId: typeof meta.recordingId === "string" ? meta.recordingId : (t.sessionId ?? null),
+      candidateName: typeof meta.candidateName === "string" ? meta.candidateName : null,
+      jobTitle: typeof meta.jobTitle === "string" ? meta.jobTitle : null,
+      audioMinutes: num(meta.audioMinutes),
+      cost: num(t.totalCost) ?? 0,
+      latencySeconds: num(t.latency),
+      at: String(t.timestamp ?? new Date().toISOString()),
+      traceUrl: typeof t.htmlPath === "string" ? env.langfuseBaseUrl + t.htmlPath : null,
+    };
+  });
+
+  // The stage split is the number worth knowing — it says whether
+  // transcription really is the larger half, which decides what is worth
+  // optimising. Observations are fetched separately; traces carry only ids.
+  const byStage: CostStageDto[] = [];
+  try {
+    const obs = await lf.fetchObservations({ type: "GENERATION", limit: Math.min(limit * 3, 100) });
+    const totals = new Map<string, { cost: number; calls: number }>();
+    for (const o of (obs?.data ?? []) as Array<Record<string, any>>) {
+      const name = typeof o.name === "string" ? o.name : "other";
+      const cost = typeof o.calculatedTotalCost === "number" ? o.calculatedTotalCost : 0;
+      const entry = totals.get(name) ?? { cost: 0, calls: 0 };
+      entry.cost += cost;
+      entry.calls += 1;
+      totals.set(name, entry);
+    }
+    for (const [name, v] of totals) byStage.push({ name, cost: v.cost, calls: v.calls });
+    byStage.sort((a, b) => b.cost - a.cost);
+  } catch (err) {
+    log.warn("Could not read the per-stage cost split — showing totals only.", err);
+  }
+
+  const totalCost = calls.reduce((sum, c) => sum + c.cost, 0);
+  const priced = calls.filter((c) => c.cost > 0);
+  return {
+    configured: true,
+    calls,
+    totalCost,
+    // An average over rows that all priced at zero would read as "free"
+    // rather than "unpriced", so it is withheld instead.
+    averageCost: priced.length ? totalCost / priced.length : null,
+    byStage,
+    currency: "USD",
+    missingPricing: calls.length > 0 && priced.length === 0,
+  };
 }

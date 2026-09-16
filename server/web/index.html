@@ -540,6 +540,11 @@
         background: var(--inset); border: 1px solid var(--border);
         border-radius: 8px; padding: 14px; }
 
+      .cost-amount {
+        flex: none; font-size: 14px; font-weight: 700; font-variant-numeric: tabular-nums;
+        padding-left: 12px;
+      }
+
       /* Shortlist rows carry a phone field, so they are taller than list rows */
       .short { border: 1px solid var(--border); border-radius: 11px; padding: 15px; margin-bottom: 10px; }
       .short-head { display: flex; align-items: center; gap: 13px; margin-bottom: 12px; }
@@ -650,6 +655,13 @@
 
       <div class="drawer-group">
         <div class="drawer-group-title">Manage</div>
+        <button class="drawer-item" data-view="view-costs">
+          <span class="drawer-icon">$</span>
+          <span class="drawer-text">
+            <span class="drawer-label">Costs</span>
+            <span class="drawer-hint">What each evaluation cost</span>
+          </span>
+        </button>
         <button class="drawer-item" data-view="view-settings">
           <span class="drawer-icon">⚙</span>
           <span class="drawer-text">
@@ -886,6 +898,11 @@
         </div>
       </section>
 
+      <!-- What each evaluation cost -->
+      <section id="view-costs" class="hidden">
+        <div id="costs"></div>
+      </section>
+
       <!-- Reusable scoring steers -->
       <section id="view-instructions" class="hidden">
         <div class="card">
@@ -1017,6 +1034,7 @@
         "view-shortlist",
         "view-job-new",
         "view-instructions",
+        "view-costs",
       ];
       /** Title bar text, and which bottom tab (if any) owns each view. */
       const VIEW_META = {
@@ -1030,6 +1048,7 @@
         "view-job-new": { title: "New job description", tab: null, back: "view-jobs" },
         "view-shortlist": { title: "Next round", tab: null, back: "view-recordings" },
         "view-instructions": { title: "Saved instructions", tab: null, back: "view-recordings" },
+        "view-costs": { title: "Costs", tab: null, back: "view-recordings" },
         "view-ranking": { title: "Compare candidates", tab: null, back: "view-recordings" },
         "view-settings": { title: "Settings", tab: null, back: "view-recordings" },
       };
@@ -1111,6 +1130,7 @@
         else if (view === "view-job") openJobs();
         else if (view === "view-shortlist") openShortlist();
         else if (view === "view-instructions") openInstructions();
+        else if (view === "view-costs") openCosts();
         else if (view === "view-ranking") openRanking();
         else if (view === "view-settings") openSettings();
         else show(view);
@@ -2194,6 +2214,139 @@
           btn.disabled = false;
           if (err.status !== 401) status.textContent = err.message;
         }
+      }
+
+      // ── Costs ─────────────────────────────────────────────────────────
+      /**
+       * What each evaluation cost, priced by the tracing backend and shown
+       * next to the candidate it paid for.
+       *
+       * Deliberately careful about zero: an unpriced call and a free one look
+       * identical in the data, and reporting "$0.00" for work that definitely
+       * cost money is worse than reporting nothing. Where every row prices at
+       * zero the screen says the backend has no rate rather than showing a
+       * total of zero.
+       */
+      const money = (n) => "$" + (n < 0.01 && n > 0 ? n.toFixed(4) : n.toFixed(2));
+
+      async function openCosts() {
+        show("view-costs");
+        $("costs").innerHTML = '<div class="card center"><p class="muted">Loading…</p></div>';
+        try {
+          renderCosts(await api("/costs"));
+        } catch (err) {
+          if (err.status !== 401) {
+            $("costs").innerHTML =
+              '<div class="card"><div class="callout err">' + esc(err.message) + "</div></div>";
+          }
+        }
+      }
+
+      function renderCosts(c) {
+        if (!c.configured) {
+          $("costs").innerHTML =
+            '<div class="card"><h2>Cost tracing is off</h2>' +
+            '<p class="hint">Add your Langfuse keys to <b>server/.env</b> on the server and ' +
+            "restart, and every evaluation from then on is priced here.</p>" +
+            '<pre class="jdtext">LANGFUSE_PUBLIC_KEY="pk-lf-…"\nLANGFUSE_SECRET_KEY="sk-lf-…"\n' +
+            'LANGFUSE_BASE_URL="https://cloud.langfuse.com"</pre>' +
+            '<p class="faint" style="margin-top:12px">Only model names, token counts and timings ' +
+            "are sent. Interview content stays on your server unless you turn it on explicitly.</p>" +
+            "</div>";
+          return;
+        }
+        if (c.error) {
+          $("costs").innerHTML =
+            '<div class="card"><h2>Could not read costs</h2>' +
+            '<div class="callout err">' + esc(c.error) + "</div>" +
+            '<p class="faint" style="margin-top:12px">Evaluations are unaffected — this screen ' +
+            "reads from the tracing backend, it is not part of scoring.</p></div>";
+          return;
+        }
+        if (!c.calls.length) {
+          $("costs").innerHTML =
+            '<div class="card"><p class="empty">No traced evaluations yet.<br />' +
+            "Evaluate a call and its cost appears here.</p></div>";
+          return;
+        }
+
+        let html = "";
+        if (c.missingPricing) {
+          html +=
+            '<div class="card"><div class="callout warn"><span>' +
+            "<b>Calls were traced but none could be priced.</b> That almost always means the " +
+            "tracing backend has no rate for these models rather than that the calls were free — " +
+            "the token counts are there, the prices are not.</span></div></div>";
+        }
+
+        html +=
+          '<div class="stat-grid">' +
+          '<div class="stat"><div class="stat-value">' + money(c.totalCost) +
+          '</div><div class="stat-label">Total, last ' + c.calls.length + " calls</div></div>" +
+          '<div class="stat"><div class="stat-value">' +
+          (c.averageCost === null ? "—" : money(c.averageCost)) +
+          '</div><div class="stat-label">Average per call</div></div>' +
+          "</div>";
+
+        // The split is the actionable number: it says whether transcription
+        // really is the larger half, which decides what is worth optimising.
+        if (c.byStage.length) {
+          const max = Math.max(...c.byStage.map((s) => s.cost), 0.0001);
+          html +=
+            '<div class="card"><h3>Where the money goes</h3>' +
+            c.byStage
+              .map(
+                (s) =>
+                  '<div class="bar-row"><div class="bar-label">' + esc(s.name) + "</div>" +
+                  '<div class="bar-track"><div class="bar-fill" style="width:' +
+                  Math.max(2, Math.round((s.cost / max) * 100)) + '%"></div></div>' +
+                  '<div class="bar-value" style="width:64px">' + money(s.cost) + "</div></div>"
+              )
+              .join("") +
+            '<p class="faint" style="margin:10px 0 0">' +
+            c.byStage.map((s) => esc(s.name) + " × " + s.calls).join(" · ") +
+            "</p></div>";
+        }
+
+        html +=
+          '<div class="card"><h3>Per candidate</h3>' +
+          c.calls
+            .map((call) => {
+              const when = new Date(call.at).toLocaleDateString(undefined, {
+                day: "numeric", month: "short",
+              });
+              const bits = []
+                .concat(call.jobTitle ? [esc(call.jobTitle)] : [])
+                .concat(call.audioMinutes ? [call.audioMinutes + " min audio"] : [])
+                .concat(call.latencySeconds ? [Math.round(call.latencySeconds) + "s to run"] : []);
+              return (
+                '<div class="rec">' +
+                '<button class="rec-open"' +
+                (call.recordingId ? ' data-open-cost="' + call.recordingId + '"' : " disabled") +
+                '><div class="rec-main"><div class="rec-title">' +
+                esc(call.candidateName || "Untitled recording") + "</div>" +
+                '<div class="rec-meta">' + when + (bits.length ? " · " + bits.join(" · ") : "") +
+                "</div></div>" +
+                '<div class="cost-amount">' + (call.cost > 0 ? money(call.cost) : "—") + "</div>" +
+                "</button></div>"
+              );
+            })
+            .join("") +
+          "</div>";
+
+        $("costs").innerHTML = html;
+        $("costs").querySelectorAll("[data-open-cost]").forEach((b) =>
+          b.addEventListener("click", async () => {
+            try {
+              const rec = await api("/recordings/" + b.dataset.openCost);
+              renderReport(rec);
+            } catch (err) {
+              // A traced recording can have been deleted since; that is not an
+              // error worth shouting about on a cost screen.
+              if (err.status === 404) b.disabled = true;
+            }
+          })
+        );
       }
 
       // ── Saved instructions ────────────────────────────────────────────

@@ -4,6 +4,7 @@ import path from "path";
 import { env } from "./config/env";
 import { apiKeyAuth } from "./middleware/apiKey";
 import { errorHandler, notFoundHandler } from "./middleware/errorHandler";
+import { costsRouter } from "./routes/costs";
 import { dashboardRouter } from "./routes/dashboard";
 import { evaluateRouter } from "./routes/evaluate";
 import { instructionsRouter } from "./routes/instructions";
@@ -57,6 +58,7 @@ export function createApp(): express.Express {
   app.use("/instructions", instructionsRouter);
   app.use("/evaluate", evaluateRouter);
   app.use("/dashboard", dashboardRouter);
+  app.use("/costs", costsRouter);
   app.use("/taxonomy", taxonomyRouter);
 
   app.use(notFoundHandler);
