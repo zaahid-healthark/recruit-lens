@@ -141,6 +141,12 @@ export interface RecordingListItemDto {
   /** True when the app sent this without a human confirming it first. */
   autoImported: boolean;
   status: RecordingStatus;
+  /**
+   * Soft-deleted at this time, or null. Trashed recordings keep their
+   * transcript and scores and stay restorable; they drop out of the library,
+   * the ranking and the dashboard.
+   */
+  trashedAt: string | null;
   errorMessage: string | null;
   evaluationSummary: EvaluationSummaryDto | null;
 }

@@ -62,6 +62,10 @@ model Recording {
   /// Job being screened for. SetNull so deleting a job never destroys recordings.
   jobId                 String?
   job                   Job?            @relation(fields: [jobId], references: [id], onDelete: SetNull)
+  /// Soft delete. Set to hide a candidate from the library, ranking and
+  /// dashboard without destroying the transcript, scores or audio — a hiring
+  /// record that can be restored, which a DELETE cannot.
+  trashedAt             DateTime?
   status                RecordingStatus @default(UNEVALUATED)
   errorMessage          String?
   /// Google Drive mirror file IDs (null until mirrored / when mirror disabled)
@@ -74,6 +78,7 @@ model Recording {
   @@index([status])
   @@index([importedAt])
   @@index([jobId])
+  @@index([trashedAt])
 }
 
 model Transcript {

@@ -97,6 +97,8 @@ const updateBodySchema = z
     notes: z.string().trim().max(2000).nullable().optional(),
     /** Display filename. The stored file's key is untouched — this is a label. */
     originalFilename: z.string().trim().min(1).max(300).optional(),
+    /** Soft delete: true moves to trash, false restores. Never destroys anything. */
+    trashed: z.boolean().optional(),
     /** Changed between runs to re-score with a different steer; null clears it. */
     customInstructions: z
       .string()
@@ -109,6 +111,15 @@ const updateBodySchema = z
 
 const listQuerySchema = z.object({
   status: z.enum(RECORDING_STATUSES).optional(),
+  /**
+   * Trash is opt-in: a plain list never shows soft-deleted recordings, so
+   * nothing that was put away can quietly reappear in the library, and
+   * "trashed=true" is the only way to see them.
+   */
+  trashed: z
+    .enum(["true", "false", "1", "0"])
+    .optional()
+    .transform((v) => v === "true" || v === "1"),
   department: z.string().optional(),
   subCategory: z.string().optional(),
   jobId: z.string().uuid().optional(),
@@ -217,6 +228,7 @@ recordingsRouter.get(
         : {};
     const recordings = await prisma.recording.findMany({
       where: {
+        trashedAt: q.trashed ? { not: null } : null,
         ...(q.status ? { status: q.status } : {}),
         ...(q.jobId ? { jobId: q.jobId } : {}),
         ...evaluationFilter,
@@ -373,6 +385,7 @@ recordingsRouter.patch(
     if (body.customInstructions !== undefined) {
       data.customInstructions = body.customInstructions || null;
     }
+    if (body.trashed !== undefined) data.trashedAt = body.trashed ? new Date() : null;
     if (body.originalFilename !== undefined) data.originalFilename = body.originalFilename;
 
     const updated = await prisma.recording.update({

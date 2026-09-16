@@ -255,6 +255,10 @@ export async function getJobRanking(jobId: string): Promise<JobRankingDto> {
     where: { id: jobId },
     include: {
       recordings: {
+        // Trashing a candidate has to remove them from the decision, not just
+        // from the library — otherwise they keep appearing in a ranking that
+        // someone hires from.
+        where: { trashedAt: null },
         include: { evaluation: true },
         orderBy: { importedAt: "desc" },
       },

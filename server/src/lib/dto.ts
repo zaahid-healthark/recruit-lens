@@ -212,6 +212,7 @@ export function toRecordingListItemDto(
     autoImported: r.autoImported,
     job: r.job ? { id: r.job.id, title: r.job.title } : null,
     status: r.status as RecordingStatus,
+    trashedAt: r.trashedAt ? r.trashedAt.toISOString() : null,
     errorMessage: r.errorMessage,
     evaluationSummary: r.evaluation ? toEvaluationSummaryDto(r.evaluation) : null,
   };

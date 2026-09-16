@@ -89,7 +89,12 @@ const listQuerySchema = z.object({
 
 /** recordingCount + averageOverallScore both come from this one include. */
 const jobInclude = {
-  recordings: { select: { evaluation: { select: { overallScore: true } } } },
+  // Trashed candidates drop out of the count and the average, so a job's
+  // headline figures match what the ranking and dashboard actually show.
+  recordings: {
+    where: { trashedAt: null },
+    select: { evaluation: { select: { overallScore: true } } },
+  },
 } as const;
 
 export const jobsRouter = Router();

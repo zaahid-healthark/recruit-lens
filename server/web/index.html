@@ -45,6 +45,10 @@
         --info-soft: #e3f0f8;
         --muted: #9ca3af;
         --ring: rgba(30, 58, 95, 0.32);
+        /* The company mark is white on transparent, so its panel must stay
+           dark in BOTH themes — unlike --primary, which lightens on dark to
+           contrast with the page and would leave the mark invisible. */
+        --logo-bg: #17304f;
       }
       @media (prefers-color-scheme: dark) {
         :root {
@@ -70,6 +74,7 @@
           --info: #7dd3fc;
           --info-soft: #14293a;
           --ring: rgba(143, 179, 221, 0.4);
+          --logo-bg: #17304f;
         }
       }
 
@@ -123,15 +128,22 @@
       }
       .drawer.open { transform: translateX(0); }
       .drawer-brand {
-        display: flex; align-items: center; gap: 12px;
-        padding: 0 16px 18px; border-bottom: 1px solid var(--border);
+        position: relative;
+        padding: 2px 16px 18px; border-bottom: 1px solid var(--border);
       }
+      .drawer-close { position: absolute; top: -4px; right: 8px; }
+      .logo-panel {
+        background: var(--logo-bg); border-radius: 10px;
+        padding: 16px 18px; margin: 0 40px 12px 0;
+        display: grid; place-items: center;
+      }
+      .logo-img { display: block; width: 100%; max-width: 168px; height: auto; }
       .logo {
         width: 34px; height: 34px; border-radius: 9px; flex: none;
         background: var(--primary); color: var(--on-primary);
         display: grid; place-items: center; font-weight: 700; font-size: 15px;
       }
-      .brand-name { font-size: 15px; font-weight: 700; letter-spacing: -0.015em; }
+      .brand-name { font-size: 16px; font-weight: 700; letter-spacing: -0.015em; }
       .brand-sub { font-size: 12px; color: var(--subtext); }
       .drawer-group { padding: 16px 10px 0; }
       .drawer-group-title {
@@ -296,6 +308,58 @@
       .callout.warn { background: var(--warning-soft); color: var(--warning); }
       .callout.err { background: var(--danger-soft); color: var(--danger); }
 
+      /* ── Report: the graded Q&A ──────────────────────────────────────
+         Each answer is its own block with an inset rule, so a long report
+         reads as a sequence of judgements rather than one wall of text. The
+         old version ran question, verdict, answer and quote together at the
+         same weight and they blurred into each other. */
+      .card-head {
+        display: flex; align-items: flex-start; gap: 12px;
+        justify-content: space-between; margin-bottom: 14px;
+      }
+      .lead {
+        font-size: 14px; line-height: 1.65; margin: 0 0 4px;
+        padding-bottom: 18px; border-bottom: 1px solid var(--border);
+      }
+      .qa-list { margin-top: 4px; }
+      .qa {
+        padding: 18px 0 20px; border-top: 1px solid var(--border);
+      }
+      .qa:first-child { border-top: none; }
+      .qa:last-child { padding-bottom: 2px; }
+      .qa-head { display: flex; align-items: flex-start; gap: 10px; }
+      .qa-n {
+        width: 22px; height: 22px; flex: none; margin-top: 1px; border-radius: 6px;
+        background: var(--inset); color: var(--faint);
+        display: grid; place-items: center; font-size: 11.5px; font-weight: 700;
+      }
+      .qa-q { flex: 1; font-size: 14.5px; font-weight: 650; line-height: 1.5; }
+      .qa-meta { display: flex; align-items: center; gap: 9px; margin: 10px 0 0 32px; }
+      .kind {
+        font-size: 10.5px; font-weight: 700; letter-spacing: 0.6px;
+        text-transform: uppercase; color: var(--faint);
+      }
+      .qa-answer { font-size: 13.5px; line-height: 1.65; margin: 12px 0 0 32px; }
+      .qa .evidence { margin: 12px 0 0 32px; }
+      blockquote.evidence {
+        font-size: 13px; color: var(--subtext); font-style: italic; line-height: 1.65;
+        padding: 2px 0 2px 14px; border-left: 2px solid var(--border-strong);
+      }
+
+      /* ── Candidate rows: open on the left, trash on the right ─────── */
+      .rec-open {
+        display: flex; align-items: center; gap: 14px; flex: 1; min-width: 0;
+        text-align: left; padding: 13px 8px; border: none; background: none;
+        color: var(--text); border-radius: 0; font-weight: 400;
+      }
+      .rec-action {
+        flex: none; width: 38px; height: 38px; padding: 0; margin-right: 4px;
+        display: grid; place-items: center; border-radius: 9px;
+        background: none; border: none; color: var(--faint);
+      }
+      .rec-action:hover { background: var(--danger-soft); color: var(--danger); }
+      .rec-action:disabled { opacity: 0.4; }
+
       .item { padding: 16px 0; border-top: 1px solid var(--border); }
       .item:first-of-type { border-top: none; padding-top: 4px; }
       .item-head { display: flex; align-items: flex-start; gap: 12px; justify-content: space-between; }
@@ -315,9 +379,8 @@
       ul.bullets li { margin-bottom: 6px; font-size: 13.5px; line-height: 1.6; }
 
       .rec {
-        display: flex; align-items: center; gap: 14px; width: 100%; text-align: left;
-        padding: 13px 8px; border: none; border-top: 1px solid var(--border);
-        background: none; color: var(--text); border-radius: 0; font-weight: 400;
+        display: flex; align-items: center; width: 100%;
+        border-top: 1px solid var(--border);
       }
       .rec:first-of-type { border-top: none; }
       .rec:hover { background: var(--inset); }
@@ -386,16 +449,20 @@
     <div id="scrim" class="scrim"></div>
     <aside id="drawer" class="drawer" aria-label="Menu">
       <div class="drawer-brand">
-        <div class="logo">R</div>
-        <div style="flex: 1">
-          <div class="brand-name">RecruitLens</div>
-          <div class="brand-sub">Interview evaluation</div>
-        </div>
-        <button id="btn-close-menu" class="icon-btn" aria-label="Close menu">
+        <button id="btn-close-menu" class="icon-btn drawer-close" aria-label="Close menu">
           <svg viewBox="0 0 24 24" width="20" height="20" aria-hidden="true">
             <path d="M6 6l12 12M18 6L6 18" stroke="currentColor" stroke-width="2" stroke-linecap="round" fill="none"/>
           </svg>
         </button>
+        <!-- The mark is white with a transparent ground, so it needs a dark
+             panel behind it to exist at all in light mode. Inlined rather than
+             linked for the same reason the CSS is: a relative asset path is
+             what breaks first behind the /interview/api/ prefix. -->
+        <div class="logo-panel">
+          <img class="logo-img" alt="Healthark" src="data:image/png;base64,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" />
+        </div>
+        <div class="brand-name">RecruitLens</div>
+        <div class="brand-sub">Interview evaluation</div>
       </div>
 
       <div class="drawer-group">
@@ -558,6 +625,7 @@
             <button type="button" data-filter="EVALUATED">Evaluated</button>
             <button type="button" data-filter="UNEVALUATED">Not evaluated</button>
             <button type="button" data-filter="FAILED">Failed</button>
+            <button type="button" data-filter="trash">Trash</button>
           </div>
         </div>
         <div class="card">
@@ -639,17 +707,17 @@
     </div>
 
     <nav class="bottomnav" id="bottomnav">
-      <button type="button" data-view="view-recordings">
-        <svg viewBox="0 0 24 24" width="21" height="21" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-          <path d="M12 2a3 3 0 0 1 3 3v7a3 3 0 0 1-6 0V5a3 3 0 0 1 3-3z"/><path d="M19 10v2a7 7 0 0 1-14 0v-2"/><path d="M12 19v3"/>
-        </svg>
-        Recordings
-      </button>
       <button type="button" data-view="view-upload">
         <svg viewBox="0 0 24 24" width="21" height="21" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
           <path d="M12 16V4"/><path d="M7 9l5-5 5 5"/><path d="M4 16v2a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-2"/>
         </svg>
         Evaluate
+      </button>
+      <button type="button" data-view="view-recordings">
+        <svg viewBox="0 0 24 24" width="21" height="21" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+          <path d="M12 2a3 3 0 0 1 3 3v7a3 3 0 0 1-6 0V5a3 3 0 0 1 3-3z"/><path d="M19 10v2a7 7 0 0 1-14 0v-2"/><path d="M12 19v3"/>
+        </svg>
+        Candidates
       </button>
       <button type="button" data-view="view-dashboard">
         <svg viewBox="0 0 24 24" width="21" height="21" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
@@ -694,7 +762,7 @@
       ];
       /** Title bar text, and which bottom tab (if any) owns each view. */
       const VIEW_META = {
-        "view-recordings": { title: "Recordings", tab: "view-recordings" },
+        "view-recordings": { title: "Candidates", tab: "view-recordings" },
         "view-upload": { title: "Evaluate", tab: "view-upload" },
         "view-progress": { title: "Evaluating…", tab: "view-upload" },
         "view-report": { title: "Report", tab: null, back: "view-recordings" },
@@ -1127,7 +1195,11 @@
             ? " · " + Math.floor(rec.durationSeconds / 60) + "m " + (rec.durationSeconds % 60) + "s"
             : "") +
           "</p>" +
-          '<button class="btn-ghost btn-sm" id="load-audio" style="margin-top:12px">▶ Load audio</button>' +
+          '<div class="row" style="margin-top:14px">' +
+          '<button class="btn-ghost btn-sm" id="load-audio">▶ Load audio</button>' +
+          '<button class="btn-ghost btn-sm" id="trash-btn">' +
+          (rec.trashedAt ? "Restore from trash" : "Move to trash") + "</button>" +
+          '<span id="trash-status" class="muted" style="align-self:center"></span></div>' +
           '<div id="audio-slot"></div></div>';
 
         if (rec.status === "FAILED" || !e) {
@@ -1180,29 +1252,34 @@
             .concat(qa.technicalScore !== null ? ["Technical <b>" + qa.technicalScore + "</b>"] : [])
             .concat(qa.behaviouralScore !== null ? ["Behavioural <b>" + qa.behaviouralScore + "</b>"] : []);
           html +=
-            '<div class="card"><div class="item-head" style="margin-bottom:10px">' +
+            '<div class="card"><div class="card-head">' +
             "<div><h2>Questions asked</h2>" +
-            '<p class="muted">' + strong + " of " + qa.questions.length + " answered strongly" +
-            (aggregates.length ? " · " + aggregates.join(" · ") : "") + "</p></div>" +
+            '<p class="muted" style="margin:3px 0 0">' + strong + " of " + qa.questions.length +
+            " answered strongly" + (aggregates.length ? " · " + aggregates.join(" · ") : "") +
+            "</p></div>" +
             (headline !== null && headline !== undefined
               ? '<div class="chip" style="background:' + scoreColor(headline) + '">' + headline + "</div>"
               : "") +
             "</div>";
-          if (qa.summary) html += '<p class="body" style="margin-top:0">' + esc(qa.summary) + "</p>";
-          qa.questions.forEach((q) => {
+          if (qa.summary) html += '<p class="lead">' + esc(qa.summary) + "</p>";
+          html += '<div class="qa-list">';
+          qa.questions.forEach((q, i) => {
             const m = ANSWER_META[q.verdict] || ANSWER_META.not_answered;
             html +=
-              '<div class="item"><div class="item-head">' +
-              '<div class="item-name">' + esc(q.question) + "</div>" +
-              '<div class="chip" style="background:' + scoreColor(q.score) + '">' + q.score + "</div></div>" +
+              '<div class="qa"><div class="qa-head">' +
+              '<span class="qa-n">' + (i + 1) + "</span>" +
+              '<span class="qa-q">' + esc(q.question) + "</span>" +
+              '<span class="chip" style="background:' + scoreColor(q.score) + '">' + q.score + "</span>" +
+              "</div>" +
+              '<div class="qa-meta">' +
               '<span class="pill" style="color:' + m[1] + ";background:" + m[2] + '">' + m[0] + "</span>" +
-              '<span class="muted" style="margin-left:8px;font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.3px">' +
-              esc(KIND_LABELS[q.kind] || q.kind) + "</span>" +
-              (q.answerSummary ? '<p class="body">' + esc(q.answerSummary) + "</p>" : "") +
-              (q.evidence ? '<p class="evidence">' + esc(q.evidence) + "</p>" : "") +
+              '<span class="kind">' + esc(KIND_LABELS[q.kind] || q.kind) + "</span>" +
+              "</div>" +
+              (q.answerSummary ? '<p class="qa-answer">' + esc(q.answerSummary) + "</p>" : "") +
+              (q.evidence ? '<blockquote class="evidence">' + esc(q.evidence) + "</blockquote>" : "") +
               "</div>";
           });
-          html += "</div>";
+          html += "</div></div>";
         }
 
         // ── JD match ──
@@ -1210,13 +1287,13 @@
           const j = e.jdMatch;
           const notAsked = j.requirements.filter((r) => r.verdict === "not_discussed").length;
           html +=
-            '<div class="card"><div class="item-head" style="margin-bottom:10px">' +
+            '<div class="card"><div class="card-head">' +
             "<div><h2>Job description match</h2>" +
-            '<p class="muted">' + esc(rec.job ? rec.job.title : "") + "</p></div>" +
+            '<p class="muted" style="margin:3px 0 0">' + esc(rec.job ? rec.job.title : "") + "</p></div>" +
             '<div class="chip' + (j.fitScore === null ? " na" : "") + '" style="background:' +
             scoreColor(j.fitScore) + '">' + (j.fitScore === null ? "No data" : j.fitScore + " fit") +
             "</div></div>";
-          if (j.verdictSummary) html += '<p class="body" style="margin-top:0">' + esc(j.verdictSummary) + "</p>";
+          if (j.verdictSummary) html += '<p class="lead">' + esc(j.verdictSummary) + "</p>";
           if (notAsked > 0) {
             html +=
               '<div class="callout">' + notAsked + " requirement" + (notAsked === 1 ? "" : "s") +
@@ -1237,7 +1314,8 @@
         }
 
         // ── Matrix ──
-        html += '<div class="card"><h2 style="margin-bottom:12px">Scoring matrix</h2>';
+        html += '<div class="card"><h2 style="margin-bottom:6px">Scoring matrix</h2>' +
+          '<p class="muted" style="margin:0 0 4px">Five areas, scored only where the interview tested them.</p>';
         e.categories.forEach((c) => {
           const na = c.score === null;
           html +=
@@ -1283,7 +1361,31 @@
         $("report").innerHTML = html;
         wireAudio(rec.id);
         wireReRun(rec.id);
+        wireTrash(rec);
         show("view-report");
+      }
+
+      /** Trash is reversible, so it needs no confirmation — restoring is one tap. */
+      function wireTrash(rec) {
+        const btn = $("trash-btn");
+        if (!btn) return;
+        btn.addEventListener("click", async () => {
+          btn.disabled = true;
+          const toTrash = !rec.trashedAt;
+          $("trash-status").textContent = toTrash ? "Moving…" : "Restoring…";
+          try {
+            await setTrashed(rec.id, toTrash);
+            recFilter = toTrash ? "all" : "all";
+            $("rec-filters")
+              .querySelectorAll("button")
+              .forEach((b) => b.classList.toggle("on", b.dataset.filter === "all"));
+            show("view-recordings");
+            loadRecent();
+          } catch (err) {
+            btn.disabled = false;
+            if (err.status !== 401) $("trash-status").textContent = err.message;
+          }
+        });
       }
 
       /**
@@ -1780,16 +1882,36 @@
         loadRecent();
       });
 
+      /**
+       * Move a recording to the trash, or bring it back.
+       *
+       * Soft: the transcript, the scores and the audio all survive, and the
+       * candidate simply drops out of the library, the ranking and the
+       * dashboard. Deleting a hiring record outright is a different and much
+       * heavier thing, and nothing in the UI offers it.
+       */
+      async function setTrashed(id, trashed) {
+        await api("/recordings/" + id, {
+          method: "PATCH",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ trashed }),
+        });
+      }
+
       async function loadRecent() {
         try {
-          const all = await api("/recordings");
-          const list = recFilter === "all" ? all : all.filter((r) => r.status === recFilter);
+          const inTrash = recFilter === "trash";
+          const all = await api("/recordings" + (inTrash ? "?trashed=true" : ""));
+          const list =
+            inTrash || recFilter === "all" ? all : all.filter((r) => r.status === recFilter);
           if (!list.length) {
             $("recent").innerHTML =
               '<p class="empty">' +
-              (all.length
-                ? "Nothing matches this filter."
-                : "No recordings yet.<br />Upload a call from the Evaluate tab.") +
+              (inTrash
+                ? "Trash is empty."
+                : all.length
+                  ? "Nothing matches this filter."
+                  : "No candidates yet.<br />Upload a call from the Evaluate tab.") +
               "</p>";
             return;
           }
@@ -1802,7 +1924,8 @@
                 day: "numeric", month: "short",
               });
               return (
-                '<button class="rec" data-id="' + r.id + '">' +
+                '<div class="rec">' +
+                '<button class="rec-open" data-id="' + r.id + '">' +
                 '<div class="mini' + (na ? " na" : "") + '" style="background:' + scoreColor(score) + '">' +
                 (na ? "—" : score) + "</div>" +
                 '<div class="rec-main"><div class="rec-title">' +
@@ -1810,17 +1933,38 @@
                 '<div class="rec-meta">' + when +
                 (r.job ? " · " + esc(r.job.title) : "") +
                 (r.status !== "EVALUATED" ? " · " + r.status.toLowerCase() : "") +
-                "</div></div></button>"
+                "</div></div></button>" +
+                '<button class="rec-action" data-' + (inTrash ? "restore" : "trash") + '="' + r.id +
+                '" title="' + (inTrash ? "Restore" : "Move to trash") + '" aria-label="' +
+                (inTrash ? "Restore" : "Move to trash") + '">' +
+                (inTrash
+                  ? '<svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 12a9 9 0 1 0 3-6.7"/><path d="M3 4v5h5"/></svg>'
+                  : '<svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 6h18"/><path d="M8 6V4h8v2"/><path d="M19 6l-1 14H6L5 6"/></svg>') +
+                "</button></div>"
               );
             })
             .join("");
-          $("recent").querySelectorAll(".rec").forEach((b) =>
+
+          $("recent").querySelectorAll(".rec-open").forEach((b) =>
             b.addEventListener("click", async () => {
               try {
                 const rec = await api("/recordings/" + b.dataset.id);
                 if (rec.status === "TRANSCRIBING" || rec.status === "SCORING") pollUntilDone(rec.id);
                 else renderReport(rec);
               } catch (err) { /* 401 already handled */ }
+            })
+          );
+          $("recent").querySelectorAll("[data-trash], [data-restore]").forEach((b) =>
+            b.addEventListener("click", async (e) => {
+              e.stopPropagation();
+              b.disabled = true;
+              const id = b.dataset.trash || b.dataset.restore;
+              try {
+                await setTrashed(id, !!b.dataset.trash);
+                loadRecent();
+              } catch (err) {
+                b.disabled = false;
+              }
             })
           );
         } catch (err) {
@@ -1853,7 +1997,9 @@
       }
 
       function start() {
-        show("view-recordings");
+        // Evaluating a call is what someone opens this for; the library is one
+        // tap away and is where they go afterwards.
+        show("view-upload");
         loadJobs();
         loadRecent();
       }

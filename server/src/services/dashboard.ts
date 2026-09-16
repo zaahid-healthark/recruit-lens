@@ -11,7 +11,14 @@ const TOP_N = 8;
 
 /** Aggregate stats for the Dashboard screen. Computed in JS — trivial at recruiter-library scale. */
 export async function getDashboardStats(): Promise<DashboardStatsDto> {
-  const byStatus = await prisma.recording.groupBy({ by: ["status"], _count: { _all: true } });
+  // Every figure below is "live recordings only": a trashed candidate is out
+  // of the pipeline, so counting them would keep a filled role looking open.
+  const live = { trashedAt: null } as const;
+  const byStatus = await prisma.recording.groupBy({
+    by: ["status"],
+    where: live,
+    _count: { _all: true },
+  });
   const count = (s: string): number =>
     byStatus.find((b) => b.status === s)?._count._all ?? 0;
   const totals = {
@@ -23,6 +30,7 @@ export async function getDashboardStats(): Promise<DashboardStatsDto> {
   };
 
   const evaluations = await prisma.evaluation.findMany({
+    where: { recording: live },
     select: {
       overallScore: true,
       department: true,
@@ -106,7 +114,10 @@ export async function getDashboardStats(): Promise<DashboardStatsDto> {
     select: {
       id: true,
       title: true,
-      recordings: { select: { evaluation: { select: { overallScore: true } } } },
+      recordings: {
+        where: live,
+        select: { evaluation: { select: { overallScore: true } } },
+      },
     },
   });
   const byJob = jobs
@@ -142,7 +153,7 @@ export async function getDashboardStats(): Promise<DashboardStatsDto> {
   }
   // Only the window is fetched, and only the one column needed to bucket it.
   const recent = await prisma.recording.findMany({
-    where: { importedAt: { gte: startOfWindow } },
+    where: { ...live, importedAt: { gte: startOfWindow } },
     select: { importedAt: true },
   });
   for (const r of recent) {
