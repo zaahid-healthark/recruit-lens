@@ -234,13 +234,19 @@
       .faint { color: var(--faint); font-size: 12.5px; }
 
       label { display: block; font-size: 13px; font-weight: 600; margin: 0 0 6px; }
-      input[type="text"], input[type="password"], textarea, select {
+      /* Every text-like control, by exclusion rather than by listing types:
+         a phone field typed as "tel" silently missed the old allow-list and
+         rendered as a raw browser input next to styled ones. */
+      input:not([type="checkbox"]):not([type="radio"]):not([type="file"]),
+      textarea, select {
         width: 100%; padding: 10px 12px; font: inherit; font-size: 14px; color: var(--text);
         background: var(--inset); border: 1px solid var(--border); border-radius: 8px;
+        -webkit-appearance: none; appearance: none;
       }
+      select { -webkit-appearance: menulist; appearance: menulist; }
       textarea { min-height: 150px; resize: vertical; line-height: 1.6; }
       input::placeholder, textarea::placeholder { color: var(--faint); }
-      input:focus, textarea:focus, select:focus {
+      input:not([type="checkbox"]):not([type="radio"]):focus, textarea:focus, select:focus {
         outline: none; border-color: var(--primary); box-shadow: 0 0 0 3px var(--ring);
       }
       .field { margin-bottom: 16px; }
@@ -258,25 +264,31 @@
       .btn-sm { padding: 7px 12px; font-size: 13px; border-radius: 7px; }
       .row { display: flex; gap: 10px; flex-wrap: wrap; }
 
-      .step { display: flex; gap: 16px; padding: 22px 0; border-top: 1px solid var(--border); }
+      /* The number sits INLINE with its title rather than in a gutter. As a
+         gutter it indented every field below it by 40px, which on a 320px
+         phone is an eighth of the screen and made the whole form look shoved
+         to the right. */
+      .step { padding: 20px 0; border-top: 1px solid var(--border); }
       .step:first-of-type { border-top: none; padding-top: 4px; }
       .step:last-of-type { padding-bottom: 4px; }
+      .step-head { display: flex; align-items: center; gap: 9px; margin-bottom: 4px; }
       .step-n {
-        width: 24px; height: 24px; border-radius: 50%; flex: none; margin-top: 1px;
+        width: 22px; height: 22px; border-radius: 50%; flex: none;
         background: var(--primary-soft); color: var(--primary);
-        display: grid; place-items: center; font-weight: 700; font-size: 12px;
+        display: grid; place-items: center; font-weight: 700; font-size: 11.5px;
       }
-      .step-body { flex: 1; min-width: 0; }
-      .step-title { font-size: 15px; font-weight: 700; letter-spacing: -0.01em; margin-bottom: 3px; }
+      .step-body { min-width: 0; }
+      .step-title { font-size: 15px; font-weight: 700; letter-spacing: -0.01em; }
       .step-hint { font-size: 13.5px; color: var(--subtext); margin: 0 0 14px; }
       .optional { font-weight: 500; color: var(--faint); font-size: 13px; }
 
       .seg {
-        display: inline-flex; gap: 3px; padding: 3px; margin-bottom: 14px; flex-wrap: wrap;
+        display: flex; gap: 3px; padding: 3px; margin-bottom: 14px;
         background: var(--inset); border: 1px solid var(--border); border-radius: 9px;
       }
       .seg button {
-        padding: 6px 13px; font-size: 13px; font-weight: 600; border-radius: 6px;
+        flex: 1 1 0; min-width: 0; text-align: center;
+        padding: 7px 8px; font-size: 12.5px; font-weight: 600; border-radius: 6px;
         border: 1px solid transparent; background: none; color: var(--subtext);
       }
       .seg button:hover { color: var(--text); }
@@ -442,9 +454,10 @@
 
       /* ── Job detail ─────────────────────────────────────────────────── */
       .job-row {
-        display: flex; align-items: center; gap: 14px; width: 100%; text-align: left;
+        display: flex; align-items: center; gap: 14px; text-align: left;
         padding: 15px 8px; border: none; border-top: 1px solid var(--border);
         background: none; color: var(--text); border-radius: 0; font-weight: 400;
+        margin: 0 -8px; width: calc(100% + 16px);
       }
       .job-row:first-of-type { border-top: none; }
       .job-row:hover { background: var(--inset); }
@@ -456,11 +469,11 @@
       /* ── Candidate rows: open on the left, trash on the right ─────── */
       .rec-open {
         display: flex; align-items: center; gap: 14px; flex: 1; min-width: 0;
-        text-align: left; padding: 13px 8px; border: none; background: none;
+        text-align: left; padding: 13px 0; border: none; background: none;
         color: var(--text); border-radius: 0; font-weight: 400;
       }
       .rec-action {
-        flex: none; width: 38px; height: 38px; padding: 0; margin-right: 4px;
+        flex: none; width: 38px; height: 38px; padding: 0;
         display: grid; place-items: center; border-radius: 9px;
         background: none; border: none; color: var(--faint);
       }
@@ -488,6 +501,7 @@
       .rec {
         display: flex; align-items: center; width: 100%;
         border-top: 1px solid var(--border);
+        margin: 0 -8px; padding: 0 8px; width: calc(100% + 16px);
       }
       .rec:first-of-type { border-top: none; }
       .rec:hover { background: var(--inset); }
@@ -524,10 +538,11 @@
       /* Shortlist rows carry a phone field, so they are taller than list rows */
       .short { border: 1px solid var(--border); border-radius: 11px; padding: 15px; margin-bottom: 10px; }
       .short-head { display: flex; align-items: center; gap: 13px; margin-bottom: 12px; }
-      .short-name { flex: 1; min-width: 0; font-size: 15px; font-weight: 650; }
+      .short-name { flex: 1; min-width: 0; font-size: 15px; font-weight: 650; overflow-wrap: anywhere; }
       .short-meta { font-size: 12.5px; color: var(--subtext); margin-top: 2px; }
-      .phone-row { display: flex; gap: 8px; align-items: center; }
-      .phone-row input { flex: 1; }
+      .phone-row { display: flex; gap: 8px; flex-wrap: wrap; }
+      .phone-row input { flex: 1 1 100%; }
+      .phone-row button { flex: 1 1 0; min-width: 96px; }
 
       pre.transcript, pre.jdtext {
         white-space: pre-wrap; word-wrap: break-word; font-size: 13px; line-height: 1.7;
@@ -660,9 +675,8 @@
 
           <!-- Step 1 — the recording -->
           <div class="step">
-            <div class="step-n">1</div>
+            <div class="step-head"><span class="step-n">1</span><span class="step-title">Recording</span></div>
             <div class="step-body">
-              <div class="step-title">Recording</div>
               <div id="drop" class="drop">
                 <strong id="drop-title">Choose an audio file</strong>
                 <span id="drop-sub">or drag it here — MP3, M4A, WAV, AMR, OGG, 3GP</span>
@@ -677,14 +691,13 @@
 
           <!-- Step 2 — the job description -->
           <div class="step">
-            <div class="step-n">2</div>
+            <div class="step-head"><span class="step-n">2</span><span class="step-title">Job description</span></div>
             <div class="step-body">
-              <div class="step-title">Job description</div>
               <p class="step-hint">Adds a fit score and a per-requirement check.</p>
 
               <div class="seg" id="jd-modes">
                 <button type="button" data-mode="existing" class="on">Saved job</button>
-                <button type="button" data-mode="new">Upload or paste a new one</button>
+                <button type="button" data-mode="new">Add new</button>
                 <button type="button" data-mode="none">No JD</button>
               </div>
 
@@ -722,11 +735,8 @@
 
           <!-- Step 3 — the steer -->
           <div class="step">
-            <div class="step-n">3</div>
+            <div class="step-head"><span class="step-n">3</span><span class="step-title">Custom instructions <span class="optional">— optional</span></span></div>
             <div class="step-body">
-              <div class="step-title">
-                Custom instructions <span class="optional">— optional</span>
-              </div>
               <p class="step-hint">Anything to weigh more heavily for this candidate.</p>
               <textarea
                 id="instructions"
@@ -1973,7 +1983,7 @@
             return;
           }
           $("jobs-list").innerHTML =
-            '<div class="card" style="padding:6px 14px">' +
+            '<div class="card" style="padding:4px 16px">' +
             jobs
               .map((j) => {
                 const words = j.jdText.trim().split(/\s+/).length;
