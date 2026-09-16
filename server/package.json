@@ -17,7 +17,8 @@
     "typecheck": "tsc --noEmit",
     "postinstall": "prisma generate",
     "cost:check": "tsx scripts/costCheck.ts",
-    "gate:check": "tsx scripts/gateCheck.ts"
+    "gate:check": "tsx scripts/gateCheck.ts",
+    "prompt:check": "tsx scripts/promptCheck.ts"
   },
   "prisma": {
     "seed": "tsx prisma/seed.ts"
