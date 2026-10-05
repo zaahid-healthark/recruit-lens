@@ -87,6 +87,17 @@ export interface QuestionAssessmentDto {
 
 /** Compact evaluation info embedded in list rows. */
 export interface EvaluationSummaryDto {
+  /**
+   * The screening gate's decision, derived from the stored evidence by the
+   * same rule the ranking applies. This is the one verdict the UI shows: the
+   * model's recommendation text is commentary, and showing both is how a
+   * report once said "Maybe" beside a score in the fit band.
+   */
+  decision: CandidateDecision;
+  /** Technical questions asked, and how many were answered adequately or better. */
+  technicalAsked: number;
+  technicalAnswered: number;
+  technicalScore: number | null;
   /** Null when the call covered too little to score the candidate at all. */
   overallScore: number | null;
   roleDesignation: string;
@@ -114,7 +125,22 @@ export interface EvaluationDto extends EvaluationSummaryDto {
   createdAt: string;
 }
 
+/** One diarized turn of the call, timed so the UI can play audio from it. */
+export interface TranscriptSegmentDto {
+  /** The diarization label as the model returned it ("A", "B", ...). */
+  speaker: string;
+  /** Seconds from the start of the recording; null when the model gave none. */
+  start: number | null;
+  end: number | null;
+  text: string;
+}
+
 export interface TranscriptDto {
+  /**
+   * Timed turns. Null for transcripts made before timings were kept, and for
+   * models that do not return them; the plain text is always present.
+   */
+  segments: TranscriptSegmentDto[] | null;
   text: string;
   model: string;
   language: string | null;
@@ -154,6 +180,8 @@ export interface RecordingListItemDto {
    * model — the report advises, the recruiter decides.
    */
   shortlistedAt: string | null;
+  /** Set when a human marked the candidate as not going forward. */
+  rejectedAt: string | null;
   /** Contact number, entered by a person. */
   phoneNumber: string | null;
   errorMessage: string | null;
@@ -198,6 +226,12 @@ export interface DashboardStatsDto {
    */
   byDay: { date: string; count: number }[];
   scoreHistogram: { band: string; count: number }[];
+  /** Live recordings a human moved to the next round. */
+  shortlisted: number;
+  /** Evaluated candidates by the gate's decision — the same rule the ranking applies. */
+  decisionMix: { decision: CandidateDecision; count: number }[];
+  /** Median minutes from upload to a finished report; null with nothing evaluated. */
+  medianTurnaroundMinutes: number | null;
 }
 
 /**

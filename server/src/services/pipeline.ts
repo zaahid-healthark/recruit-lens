@@ -105,7 +105,15 @@ export async function evaluateRecording(recordingId: string): Promise<void> {
         );
         transcriptText = t.text;
         await prisma.transcript.create({
-          data: { recordingId, text: t.text, model: t.model, language: t.language },
+          data: {
+            recordingId,
+            text: t.text,
+            model: t.model,
+            language: t.language,
+            segmentsJson: t.segments
+              ? (t.segments as unknown as Prisma.InputJsonValue)
+              : Prisma.DbNull,
+          },
         });
       }
     }

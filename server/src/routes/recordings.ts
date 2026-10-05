@@ -101,6 +101,8 @@ const updateBodySchema = z
     trashed: z.boolean().optional(),
     /** Human shortlist decision: true marks for a next round, false unmarks. */
     shortlisted: z.boolean().optional(),
+    /** Human rejection: true marks as not going forward, false clears it. */
+    rejected: z.boolean().optional(),
     /** Contact number for a shortlisted candidate; null clears it. */
     phoneNumber: z.string().trim().max(40).nullable().optional(),
     /** Changed between runs to re-score with a different steer; null clears it. */
@@ -126,6 +128,11 @@ const listQuerySchema = z.object({
     .transform((v) => v === "true" || v === "1"),
   /** Only candidates a human marked for a next round. */
   shortlisted: z
+    .enum(["true", "false", "1", "0"])
+    .optional()
+    .transform((v) => v === "true" || v === "1"),
+  /** Only candidates a human marked as not going forward. */
+  rejected: z
     .enum(["true", "false", "1", "0"])
     .optional()
     .transform((v) => v === "true" || v === "1"),
@@ -239,6 +246,7 @@ recordingsRouter.get(
       where: {
         trashedAt: q.trashed ? { not: null } : null,
         ...(q.shortlisted ? { shortlistedAt: { not: null } } : {}),
+        ...(q.rejected ? { rejectedAt: { not: null } } : {}),
         ...(q.status ? { status: q.status } : {}),
         ...(q.jobId ? { jobId: q.jobId } : {}),
         ...evaluationFilter,
@@ -396,8 +404,16 @@ recordingsRouter.patch(
       data.customInstructions = body.customInstructions || null;
     }
     if (body.trashed !== undefined) data.trashedAt = body.trashed ? new Date() : null;
+    // The two decisions exclude each other: advancing a candidate withdraws a
+    // rejection and rejecting one withdraws the shortlist, so a record can
+    // never carry both outcomes at once.
     if (body.shortlisted !== undefined) {
       data.shortlistedAt = body.shortlisted ? new Date() : null;
+      if (body.shortlisted) data.rejectedAt = null;
+    }
+    if (body.rejected !== undefined) {
+      data.rejectedAt = body.rejected ? new Date() : null;
+      if (body.rejected) data.shortlistedAt = null;
     }
     if (body.phoneNumber !== undefined) data.phoneNumber = body.phoneNumber || null;
     if (body.originalFilename !== undefined) data.originalFilename = body.originalFilename;

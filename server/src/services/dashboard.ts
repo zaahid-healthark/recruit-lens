@@ -1,5 +1,13 @@
-import { DashboardStatsDto, MATRIX_CATEGORIES, SCORE_BANDS } from "@interview-evaluator/shared";
+import {
+  CANDIDATE_DECISIONS,
+  CandidateDecision,
+  DashboardStatsDto,
+  MATRIX_CATEGORIES,
+  SCORE_BANDS,
+} from "@interview-evaluator/shared";
+import { toEvaluationDto } from "../lib/dto";
 import { prisma } from "../lib/prisma";
+import { summariseGate } from "./gate";
 
 /** "2026-08-26" in the server's local timezone. */
 function localDayKey(date: Date): string {
@@ -29,15 +37,36 @@ export async function getDashboardStats(): Promise<DashboardStatsDto> {
     failed: count("FAILED"),
   };
 
+  // Whole rows: the decision mix runs every evaluation through the same gate
+  // the report and ranking use, which needs the questions and the JD match.
   const evaluations = await prisma.evaluation.findMany({
     where: { recording: live },
-    select: {
-      overallScore: true,
-      department: true,
-      subCategory: true,
-      roleDesignation: true,
-      categoriesJson: true,
-    },
+    include: { recording: { select: { importedAt: true } } },
+  });
+
+  const mix = new Map<CandidateDecision, number>(CANDIDATE_DECISIONS.map((d) => [d, 0]));
+  const turnaround: number[] = [];
+  for (const e of evaluations) {
+    const decision = summariseGate(toEvaluationDto(e)).decision;
+    mix.set(decision, (mix.get(decision) ?? 0) + 1);
+    // Upload to finished report. A re-evaluation keeps the first createdAt, and
+    // anything past a week is a re-import or a stuck job, not turnaround.
+    const minutes = (e.createdAt.getTime() - e.recording.importedAt.getTime()) / 60_000;
+    if (minutes >= 0 && minutes <= 7 * 24 * 60) turnaround.push(minutes);
+  }
+  const decisionMix = CANDIDATE_DECISIONS.map((decision) => ({
+    decision,
+    count: mix.get(decision) ?? 0,
+  }));
+  turnaround.sort((a, b) => a - b);
+  const mid = Math.floor(turnaround.length / 2);
+  const medianTurnaroundMinutes = turnaround.length
+    ? Math.round(
+        turnaround.length % 2 ? turnaround[mid] : (turnaround[mid - 1] + turnaround[mid]) / 2
+      )
+    : null;
+  const shortlisted = await prisma.recording.count({
+    where: { ...live, shortlistedAt: { not: null } },
   });
 
   // Only evaluations that produced a score count toward the mean. A call too
@@ -141,7 +170,7 @@ export async function getDashboardStats(): Promise<DashboardStatsDto> {
   // Throughput over the recent window. Counted in local time so "today" means
   // what the recruiter's phone shows, and zero-filled so a quiet day reads as
   // a gap in the bar chart rather than vanishing from the axis.
-  const DAYS = 14;
+  const DAYS = 30;
   const dayCounts = new Map<string, number>();
   const startOfWindow = new Date();
   startOfWindow.setHours(0, 0, 0, 0);
@@ -172,5 +201,8 @@ export async function getDashboardStats(): Promise<DashboardStatsDto> {
     byRole,
     byJob,
     scoreHistogram,
+    shortlisted,
+    decisionMix,
+    medianTurnaroundMinutes,
   };
 }

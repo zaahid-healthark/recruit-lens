@@ -16,8 +16,10 @@ import {
   QuestionAssessmentDto,
   QuestionKind,
   TranscriptDto,
+  TranscriptSegmentDto,
 } from "@interview-evaluator/shared";
 import { Evaluation, InstructionPreset, Job, Recording, Transcript } from "@prisma/client";
+import { summariseGate } from "../services/gate";
 
 function asStringArray(value: unknown): string[] {
   return Array.isArray(value) ? value.filter((v): v is string => typeof v === "string") : [];
@@ -171,7 +173,19 @@ export function toJobDto(
 }
 
 export function toEvaluationSummaryDto(e: Evaluation): EvaluationSummaryDto {
+  // Decided here, from the stored evidence, so every list row and every report
+  // carries the gate's verdict rather than each screen re-deriving its own.
+  const gate = summariseGate({
+    categories: asCategories(e.categoriesJson),
+    questionAssessment: asQuestionAssessment(e.questionAssessmentJson),
+    overallScore: e.overallScore,
+    jdMatch: asJdMatch(e.jdMatchJson),
+  });
   return {
+    decision: gate.decision,
+    technicalAsked: gate.technicalAsked,
+    technicalAnswered: gate.technicalAnswered,
+    technicalScore: gate.technicalScore,
     overallScore: e.overallScore,
     roleDesignation: e.roleDesignation,
     department: e.department,
@@ -197,8 +211,25 @@ export function toEvaluationDto(e: Evaluation): EvaluationDto {
   };
 }
 
+function asSegments(value: unknown): TranscriptSegmentDto[] | null {
+  if (!Array.isArray(value)) return null;
+  const num = (v: unknown): number | null =>
+    typeof v === "number" && Number.isFinite(v) ? v : null;
+  const segments = value
+    .filter((s): s is Record<string, unknown> => typeof s === "object" && s !== null)
+    .map((s) => ({
+      speaker: typeof s.speaker === "string" && s.speaker ? s.speaker : "?",
+      start: num(s.start),
+      end: num(s.end),
+      text: typeof s.text === "string" ? s.text.trim() : "",
+    }))
+    .filter((s) => s.text.length > 0);
+  return segments.length > 0 ? segments : null;
+}
+
 export function toTranscriptDto(t: Transcript): TranscriptDto {
   return {
+    segments: asSegments(t.segmentsJson),
     text: t.text,
     model: t.model,
     language: t.language,
@@ -225,6 +256,7 @@ export function toRecordingListItemDto(
     status: r.status as RecordingStatus,
     trashedAt: r.trashedAt ? r.trashedAt.toISOString() : null,
     shortlistedAt: r.shortlistedAt ? r.shortlistedAt.toISOString() : null,
+    rejectedAt: r.rejectedAt ? r.rejectedAt.toISOString() : null,
     phoneNumber: r.phoneNumber,
     errorMessage: r.errorMessage,
     evaluationSummary: r.evaluation ? toEvaluationSummaryDto(r.evaluation) : null,

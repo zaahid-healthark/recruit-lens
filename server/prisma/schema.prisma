@@ -65,6 +65,11 @@ model Recording {
   /// Marked by a human, after reading the report, as worth a next round.
   /// The AI never sets this: advancing a candidate is the recruiter's call.
   shortlistedAt         DateTime?
+  /// Marked by a human as not going forward. Mutually exclusive with
+  /// shortlistedAt: the two are the recruiter's decision, and a candidate
+  /// cannot be both. Distinct from trash, which hides a record; a rejection
+  /// is an outcome that stays visible.
+  rejectedAt            DateTime?
   /// Contact number for a shortlisted candidate. Typed and saved by a person —
   /// never inferred and stored on its own, because a wrong number in a
   /// shortlist means calling the wrong candidate.
@@ -87,6 +92,7 @@ model Recording {
   @@index([jobId])
   @@index([trashedAt])
   @@index([shortlistedAt])
+  @@index([rejectedAt])
 }
 
 /// A reusable scoring steer. Recruiters converge on a handful of phrasings —
@@ -110,6 +116,10 @@ model Transcript {
   recordingId String    @unique
   recording   Recording @relation(fields: [recordingId], references: [id], onDelete: Cascade)
   text        String
+  /// Timed diarized turns [{ speaker, start, end, text }], so the report can
+  /// play the audio from any line. Null for transcripts made before timings
+  /// were kept; `text` is always the full transcript.
+  segmentsJson Json?
   model       String
   language    String?
   createdAt   DateTime  @default(now())

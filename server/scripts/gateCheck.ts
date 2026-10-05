@@ -17,7 +17,7 @@ process.env.API_KEY ||= "test";
 
 import { CandidateDecision, toDisplayScore } from "@interview-evaluator/shared";
 import { applyScoringGuards } from "../src/schemas/evaluationSchema";
-import { decisionFor, GateEvidence } from "../src/services/ranking";
+import { decisionFor, GateEvidence } from "../src/services/gate";
 
 interface Case {
   name: string;

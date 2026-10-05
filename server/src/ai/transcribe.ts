@@ -1,3 +1,4 @@
+import { TranscriptSegmentDto } from "@interview-evaluator/shared";
 import fs from "fs";
 import { env } from "../config/env";
 import { log } from "../lib/logger";
@@ -10,6 +11,8 @@ import {
 import { getOpenAI } from "./openaiClient";
 
 export interface TranscriptionResult {
+  /** Timed diarized turns, when the model returned them; null otherwise. */
+  segments: TranscriptSegmentDto[] | null;
   text: string;
   model: string;
   language: string | null;
@@ -18,6 +21,9 @@ export interface TranscriptionResult {
 interface DiarizedSegment {
   speaker?: string;
   text?: string;
+  /** Seconds from the start of the audio. */
+  start?: number;
+  end?: number;
 }
 
 /**
@@ -78,7 +84,22 @@ async function transcribeWithModel(
     metadata: { diarized: diarize, characters: text.length },
   });
 
+  // Kept so the report can play the audio from any line. Only diarized output
+  // carries speaker-labelled turns; anything else stores the text alone.
+  const timed =
+    segments && segments.some((seg) => seg.speaker)
+      ? segments
+          .map((seg) => ({
+            speaker: String(seg.speaker ?? "?"),
+            start: typeof seg.start === "number" && Number.isFinite(seg.start) ? seg.start : null,
+            end: typeof seg.end === "number" && Number.isFinite(seg.end) ? seg.end : null,
+            text: (seg.text ?? "").trim(),
+          }))
+          .filter((seg) => seg.text.length > 0)
+      : [];
+
   return {
+    segments: timed.length > 0 ? timed : null,
     text,
     model,
     language: typeof resp?.language === "string" ? resp.language : null,
