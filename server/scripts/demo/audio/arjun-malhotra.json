@@ -1,0 +1,131 @@
+{
+  "durationSeconds": 140.96,
+  "segments": [
+    {
+      "speaker": "A",
+      "start": 0.5,
+      "end": 2.7,
+      "text": "Hi, is this Arjun Malhotra?"
+    },
+    {
+      "speaker": "B",
+      "start": 3.26,
+      "end": 4.32,
+      "text": "Yes, hi."
+    },
+    {
+      "speaker": "A",
+      "start": 5.12,
+      "end": 16.9,
+      "text": "Hi Arjun, this is Ananya from Healthark's talent acquisition team. I'm calling about the Market Access Consultant role in our strategy counselling practice. Is now a good time?"
+    },
+    {
+      "speaker": "B",
+      "start": 17.51,
+      "end": 18.98,
+      "text": "Sure, I have time."
+    },
+    {
+      "speaker": "A",
+      "start": 19.5,
+      "end": 22.83,
+      "text": "Great. Tell me a bit about your background."
+    },
+    {
+      "speaker": "B",
+      "start": 23.59,
+      "end": 39.98,
+      "text": "I have about four years of experience. I started in pharma sales with a mid sized company, then moved to a consulting firm two years ago, where I work on commercial strategy projects. Recently I supported a launch readiness project for a biosimilar, mainly on the forecasting and the slides."
+    },
+    {
+      "speaker": "A",
+      "start": 40.55,
+      "end": 42.16,
+      "text": "And your current notice period?"
+    },
+    {
+      "speaker": "B",
+      "start": 42.64,
+      "end": 43.37,
+      "text": "Thirty days."
+    },
+    {
+      "speaker": "A",
+      "start": 43.99,
+      "end": 55.02,
+      "text": "Perfect. The practice has shared a few technical questions. First. What does an HTA body like NICE assess when it reviews a new oncology drug?"
+    },
+    {
+      "speaker": "B",
+      "start": 55.55,
+      "end": 63.04,
+      "text": "They mainly look at whether the drug is safe, and whether the price is fair compared to other countries. And they check if doctors will actually use it."
+    },
+    {
+      "speaker": "A",
+      "start": 63.48,
+      "end": 69.96,
+      "text": "Okay. Second. Can you explain what an ICER is, and how it's used?"
+    },
+    {
+      "speaker": "B",
+      "start": 70.54,
+      "end": 77.58,
+      "text": "ICER. I've heard the term, it's a cost metric. I don't remember the exact formula, honestly."
+    },
+    {
+      "speaker": "A",
+      "start": 78.07,
+      "end": 83.27,
+      "text": "No problem. Third. What goes into a global value dossier?"
+    },
+    {
+      "speaker": "B",
+      "start": 84.23,
+      "end": 98.31,
+      "text": "A value dossier has the disease background and burden of illness, the clinical trial results, the economic case, like budget impact and cost effectiveness, and the key value messages for payers. Each country team then adapts it for their local submission."
+    },
+    {
+      "speaker": "A",
+      "start": 98.85,
+      "end": 105.61,
+      "text": "Got it. Last one. How does international reference pricing affect the launch sequence in Europe?"
+    },
+    {
+      "speaker": "B",
+      "start": 106.06,
+      "end": 111.57,
+      "text": "I'm not sure about that one. I think companies launch everywhere at the same time, if they can?"
+    },
+    {
+      "speaker": "A",
+      "start": 112.16,
+      "end": 122.76,
+      "text": "Okay, thanks. Just to confirm, for the dossier you said disease burden, clinical evidence, the economic case and payer messages, right?"
+    },
+    {
+      "speaker": "B",
+      "start": 123.26,
+      "end": 124.67,
+      "text": "Yes, exactly."
+    },
+    {
+      "speaker": "A",
+      "start": 125.31,
+      "end": 133.54,
+      "text": "Alright, that's all from me today. We'll share the feedback once the practice lead has reviewed the call. Any questions?"
+    },
+    {
+      "speaker": "B",
+      "start": 134.09,
+      "end": 136.5,
+      "text": "No, I'm good. Thank you."
+    },
+    {
+      "speaker": "A",
+      "start": 136.96,
+      "end": 140.16,
+      "text": "Thanks, Arjun. Have a nice day."
+    }
+  ]
+}

@@ -1,0 +1,137 @@
+{
+  "durationSeconds": 271.1,
+  "segments": [
+    {
+      "speaker": "A",
+      "start": 0.5,
+      "end": 3.11,
+      "text": "Hi, am I speaking with Siddharth Menon?"
+    },
+    {
+      "speaker": "B",
+      "start": 3.67,
+      "end": 6.28,
+      "text": "Yes, speaking. Hi."
+    },
+    {
+      "speaker": "A",
+      "start": 7.08,
+      "end": 20.51,
+      "text": "Hi Siddharth, this is Ananya from the talent acquisition team at Healthark. You applied for the Azure Data Engineer role on our claims and EHR pipelines team. Is this a good time for a fifteen minute screening call?"
+    },
+    {
+      "speaker": "B",
+      "start": 21.12,
+      "end": 24.59,
+      "text": "Yes, absolutely. Please go ahead."
+    },
+    {
+      "speaker": "A",
+      "start": 25.11,
+      "end": 28.82,
+      "text": "Great. Could you quickly walk me through your current role?"
+    },
+    {
+      "speaker": "B",
+      "start": 29.58,
+      "end": 54.92,
+      "text": "Sure. I'm a data engineer at a health tech analytics company in Pune, with about five years of experience. For the last two years I've been building ingestion pipelines for pharmacy and medical claims on Azure. Data Factory for orchestration, Databricks with PySpark for the transformations, and Delta Lake as the storage layer. We process roughly forty million claim lines a month."
+    },
+    {
+      "speaker": "A",
+      "start": 55.49,
+      "end": 60.3,
+      "text": "That's helpful. And what are your notice period and expected compensation?"
+    },
+    {
+      "speaker": "B",
+      "start": 60.78,
+      "end": 71.42,
+      "text": "My notice period is sixty days, but my manager has agreed to release me in thirty. My current CTC is twenty one lakhs, and I'm expecting around twenty eight."
+    },
+    {
+      "speaker": "A",
+      "start": 72.37,
+      "end": 87.33,
+      "text": "Noted. Our engineering team has shared a few technical questions. First one. Claims often arrive late, or get adjusted after they're paid. How would you handle late arriving or corrected claims in a Delta table?"
+    },
+    {
+      "speaker": "B",
+      "start": 88.19,
+      "end": 113.41,
+      "text": "I'd land the raw files in a bronze layer as they are, then use a Delta MERGE on the claim ID and line number into silver. Adjustments come with a version number or an adjudication date, so the MERGE only updates when the incoming record is newer. For the patient and provider dimensions I keep SCD Type 2, with effective from and effective to dates, so historical reports don't change when an address changes."
+    },
+    {
+      "speaker": "A",
+      "start": 114.18,
+      "end": 127.72,
+      "text": "So, MERGE on the business key, and only take the newer version. Got it. Second question. How do you design incremental loads in Data Factory, and what happens when a run fails halfway?"
+    },
+    {
+      "speaker": "B",
+      "start": 128.63,
+      "end": 155.01,
+      "text": "I use a watermark table. Each source has a last loaded timestamp, the copy activity filters on modified date greater than the watermark, and the watermark only moves after the downstream notebook succeeds. So if a run fails halfway, the watermark hasn't moved, and the rerun picks up the same window. Because the load itself is a MERGE, rerunning it is idempotent, and we don't get duplicates."
+    },
+    {
+      "speaker": "A",
+      "start": 155.5,
+      "end": 164.29,
+      "text": "Okay. Third one. A Databricks job that used to take twenty minutes now takes two hours. Where do you look first?"
+    },
+    {
+      "speaker": "B",
+      "start": 165.25,
+      "end": 194.12,
+      "text": "First the Spark UI, to find the slow stage. Usually it's data skew, one payer or one large provider with far more rows than the rest, so a few tasks run forever. I'd check the partition sizes, salt the skewed key, or turn on adaptive query execution with skew join handling. I'd also check for small files. Running OPTIMIZE with Z ORDER on the columns we filter by, like service date, helps a lot."
+    },
+    {
+      "speaker": "A",
+      "start": 194.66,
+      "end": 197.58,
+      "text": "Sorry, come again, the last part?"
+    },
+    {
+      "speaker": "B",
+      "start": 198.03,
+      "end": 206.35,
+      "text": "OPTIMIZE with Z ORDER on service date. It compacts the small files and clusters the data, so queries can skip files."
+    },
+    {
+      "speaker": "A",
+      "start": 206.94,
+      "end": 215.71,
+      "text": "Got it, thanks. Last one. This data includes PHI. How do you control access to it on the platform?"
+    },
+    {
+      "speaker": "B",
+      "start": 216.54,
+      "end": 241.99,
+      "text": "We keep direct identifiers in a separate restricted schema, and analysts only see tokenized patient IDs. Access goes through Unity Catalog groups, with column masking on fields like date of birth and ZIP code. Secrets live in Key Vault, never in notebooks. I haven't written the de-identification rules myself, our compliance team owns those, but I implemented the masking."
+    },
+    {
+      "speaker": "A",
+      "start": 242.96,
+      "end": 253.25,
+      "text": "That covers everything from my side. The hiring manager will review the report, and if it's a fit we'll schedule the technical round. Do you have any questions for me?"
+    },
+    {
+      "speaker": "B",
+      "start": 253.8,
+      "end": 258.56,
+      "text": "Just one. Is the team working more on claims or on EHR data right now?"
+    },
+    {
+      "speaker": "A",
+      "start": 259.02,
+      "end": 266.51,
+      "text": "Mostly claims this quarter, with an EHR integration starting next quarter. Thanks for your time, Siddharth."
+    },
+    {
+      "speaker": "B",
+      "start": 267.11,
+      "end": 270.3,
+      "text": "Thank you, Ananya. Have a good day."
+    }
+  ]
+}

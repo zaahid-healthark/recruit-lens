@@ -1,0 +1,137 @@
+{
+  "durationSeconds": 226.05,
+  "segments": [
+    {
+      "speaker": "A",
+      "start": 0.5,
+      "end": 2.88,
+      "text": "Hello, is this Kavitha Raghunathan?"
+    },
+    {
+      "speaker": "B",
+      "start": 3.44,
+      "end": 5.43,
+      "text": "Yes, this is Kavitha."
+    },
+    {
+      "speaker": "A",
+      "start": 6.23,
+      "end": 18.4,
+      "text": "Hi Kavitha, Karthik here, from Healthark's talent team. I'm calling about the Senior Biostatistician role in our real world evidence practice. Do you have about fifteen minutes now?"
+    },
+    {
+      "speaker": "B",
+      "start": 19.01,
+      "end": 22.38,
+      "text": "Yes, I do. Please go ahead."
+    },
+    {
+      "speaker": "A",
+      "start": 22.9,
+      "end": 26.9,
+      "text": "Thanks. Could you tell me briefly about your current work?"
+    },
+    {
+      "speaker": "B",
+      "start": 27.66,
+      "end": 53.06,
+      "text": "I'm a biostatistician at a CRO in Bengaluru, with six years of experience. For the last three years I've worked on oncology real world studies, mostly on EHR derived data for non small cell lung cancer and multiple myeloma. I write the statistical analysis plans, program in SAS and R, and present the results to our sponsors' medical affairs teams."
+    },
+    {
+      "speaker": "A",
+      "start": 53.63,
+      "end": 54.91,
+      "text": "And your notice period?"
+    },
+    {
+      "speaker": "B",
+      "start": 55.39,
+      "end": 61.31,
+      "text": "Ninety days, unfortunately. I can try to negotiate it down to sixty."
+    },
+    {
+      "speaker": "A",
+      "start": 62.26,
+      "end": 74.87,
+      "text": "Okay, noted. The practice lead has shared four technical questions. First. When would you use propensity score matching, versus inverse probability of treatment weighting?"
+    },
+    {
+      "speaker": "B",
+      "start": 75.73,
+      "end": 108.4,
+      "text": "Both balance the confounders between treatment groups. Matching is intuitive and easy to explain, but you lose the unmatched patients, so the sample shrinks, and you're estimating the effect in the treated. IPTW keeps everyone and estimates the average treatment effect in the whole population, but extreme weights can make it unstable, so I check the weight distribution and trim or stabilize them. Either way, I check balance with standardized mean differences under point one."
+    },
+    {
+      "speaker": "A",
+      "start": 108.84,
+      "end": 115.7,
+      "text": "Got it. Second. What is immortal time bias, and how would you avoid it in an EHR cohort?"
+    },
+    {
+      "speaker": "B",
+      "start": 116.61,
+      "end": 131.65,
+      "text": "Immortal time bias is when patients are lost to follow up before the study ends, so their outcomes are missing. I would handle it by censoring at the last visit, and maybe a sensitivity analysis excluding patients with short follow up."
+    },
+    {
+      "speaker": "A",
+      "start": 132.47,
+      "end": 145.19,
+      "text": "Okay, so censoring at the last visit. Third. You have overall survival for two treatment groups. How do you compare them, and how do you check that a Cox model is appropriate?"
+    },
+    {
+      "speaker": "B",
+      "start": 146.15,
+      "end": 166.68,
+      "text": "I'd start with Kaplan Meier curves and a log rank test, then a Cox model adjusted for the confounders. For the proportional hazards assumption I'd look at Schoenfeld residuals and log minus log plots. If the hazards cross, I'd consider time varying coefficients, or restricted mean survival time."
+    },
+    {
+      "speaker": "A",
+      "start": 167.22,
+      "end": 175.54,
+      "text": "Great. And the last one. About thirty percent of baseline ECOG scores are missing. What would you do?"
+    },
+    {
+      "speaker": "B",
+      "start": 175.99,
+      "end": 186.84,
+      "text": "I would probably use multiple imputation, or just add a missing category. It depends on the data. We usually go with what the sponsor prefers."
+    },
+    {
+      "speaker": "A",
+      "start": 187.43,
+      "end": 191.06,
+      "text": "Could you say a bit more about when multiple imputation is appropriate?"
+    },
+    {
+      "speaker": "B",
+      "start": 191.56,
+      "end": 198.74,
+      "text": "When the data is missing at random, I think. Honestly, I'd need to look at the dataset first."
+    },
+    {
+      "speaker": "A",
+      "start": 199.71,
+      "end": 210.84,
+      "text": "Understood. That's all the questions from my end. The practice lead will review your profile, and we'll get back to you within the week. Anything you'd like to ask?"
+    },
+    {
+      "speaker": "B",
+      "start": 211.39,
+      "end": 213.43,
+      "text": "Is the role mostly oncology?"
+    },
+    {
+      "speaker": "A",
+      "start": 213.89,
+      "end": 221.55,
+      "text": "Oncology is about half the portfolio, the rest is immunology and rare diseases. Thanks a lot, Kavitha."
+    },
+    {
+      "speaker": "B",
+      "start": 222.15,
+      "end": 225.25,
+      "text": "Thank you, Karthik. Bye."
+    }
+  ]
+}

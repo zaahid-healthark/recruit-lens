@@ -20,6 +20,7 @@ import { taxonomyDto } from "../src/config/taxonomy";
 import { toInstructionPresetDto, toJobDto, toRecordingDetailDto, toRecordingListItemDto } from "../src/lib/dto";
 import { rankJob } from "../src/services/ranking";
 import * as fx from "./fixtures/uiFixtures";
+import { buildDemo } from "./demo/build";
 
 const PORT = Number(process.env.UI_PREVIEW_PORT || 8091);
 const KEY = "preview";
@@ -30,6 +31,13 @@ const recordings = new Map<string, { rec: Recording; evaluation: Evaluation | nu
 );
 const jobs = new Map<string, Job>(fx.jobs.map((j) => [j.id, { ...j }]));
 const presets = new Map(fx.presets.map((p) => [p.id, { ...p }]));
+
+// The candidates `npm run seed:demo` writes, served here too so they can be
+// checked before seeding — the same rows, and their real audio.
+const demo = buildDemo();
+for (const j of demo.jobs) jobs.set(j.id, j);
+for (const d of demo.rows) recordings.set(d.recording.id, { rec: d.recording, evaluation: d.evaluation, transcript: d.transcript });
+const demoAudio = new Map(demo.rows.map((d) => [d.recording.id, d.audioPath]));
 let counter = 0;
 
 const withRelations = (id: string) => {
@@ -124,6 +132,8 @@ app.get("/recordings/:id", (req, res) => {
 
 app.get("/recordings/:id/audio", (req, res) => {
   if (!recordings.has(req.params.id)) return notFound(res, "Recording");
+  const demoFile = demoAudio.get(req.params.id);
+  if (demoFile) return res.type("audio/mpeg").sendFile(demoFile);
   res.setHeader("Content-Type", "audio/wav");
   res.setHeader("Content-Length", String(AUDIO.length));
   res.end(AUDIO);
