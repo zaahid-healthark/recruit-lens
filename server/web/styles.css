@@ -2544,6 +2544,45 @@ a.pipe-row:hover {
   width: 100%;
   height: 40px;
 }
+/* A row that opens and closes the section beneath it */
+.disclosure {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+  padding: 14px 16px;
+  border: 0;
+  background: transparent;
+  color: var(--text);
+  font: inherit;
+  font-weight: 600;
+  text-align: left;
+  cursor: pointer;
+}
+.disclosure:hover {
+  background: var(--hover);
+}
+.disclosure[aria-expanded="false"] {
+  border-radius: 0 0 calc(var(--r-lg) - 1px) calc(var(--r-lg) - 1px);
+}
+.disclosure[aria-expanded="true"] {
+  border-bottom: 1px solid var(--border);
+}
+.disclosure svg {
+  width: 18px;
+  height: 18px;
+  flex: none;
+  color: var(--text-3);
+}
+.disclosure svg:last-child {
+  transition: transform 0.16s;
+}
+.disclosure[aria-expanded="true"] svg:last-child {
+  transform: rotate(180deg);
+}
+.disclosure .faint {
+  font-weight: 400;
+}
 .transcript-tools {
   display: flex;
   gap: 8px;
@@ -3556,7 +3595,12 @@ body.has-actionbar .toasts {
   .hero-actions,
   .expand,
   .player,
+  .disclosure,
   .transcript-tools {
+    display: none !important;
+  }
+  /* The PDF matches the screen: a folded transcript stays out of it. */
+  .section:has(.disclosure[aria-expanded="false"]) {
     display: none !important;
   }
   .main {

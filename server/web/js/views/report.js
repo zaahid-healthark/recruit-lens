@@ -726,33 +726,59 @@ function recordingCard(rec, signal) {
   });
   render();
 
+  if (!segments.length) {
+    return h("div", { class: "card" }, playerSlot, h("p", { class: "muted small", style: { padding: "14px 16px", margin: "0" } }, "No transcript was stored for this call."));
+  }
+
   const speakersKnown = new Set(segments.map((s) => s.speaker).filter(Boolean)).size === 2;
-  return h(
+  const panel = h(
     "div",
-    { class: "card" },
-    playerSlot,
-    segments.length
-      ? h(
-          "div",
-          { class: "transcript-tools" },
-          h("div", { class: "input-wrap grow", style: { maxWidth: "360px" } }, icon("search"), search),
-          counter,
-          speakersKnown
-            ? C.btn({
-                label: "Swap speakers",
-                icon: "refresh",
-                size: "sm",
-                variant: "ghost",
-                onClick: () => {
-                  swapped = !swapped;
-                  render();
-                },
-              })
-            : null
-        )
-      : null,
+    { id: `transcript-${rec.id}`, hidden: true },
+    h(
+      "div",
+      { class: "transcript-tools" },
+      h("div", { class: "input-wrap grow", style: { maxWidth: "360px" } }, icon("search"), search),
+      counter,
+      speakersKnown
+        ? C.btn({
+            label: "Swap speakers",
+            icon: "refresh",
+            size: "sm",
+            variant: "ghost",
+            onClick: () => {
+              swapped = !swapped;
+              render();
+            },
+          })
+        : null
+    ),
     list
   );
+
+  // Folded away until asked for: a 15-minute call is a long read, and the
+  // report above it is what most visits are for.
+  const toggleLabel = h("span", null, "Show transcript");
+  const toggle = h(
+    "button",
+    {
+      class: "disclosure",
+      type: "button",
+      "aria-expanded": "false",
+      "aria-controls": panel.id,
+      onClick: () => {
+        const open = panel.hidden;
+        panel.hidden = !open;
+        toggle.setAttribute("aria-expanded", String(open));
+        toggleLabel.textContent = open ? "Hide transcript" : "Show transcript";
+      },
+    },
+    icon("fileText"),
+    toggleLabel,
+    h("span", { class: "faint small grow" }, F.plural(segments.length, "line")),
+    icon("chevronDown")
+  );
+
+  return h("div", { class: "card" }, playerSlot, toggle, panel);
 }
 
 function highlight(text, q) {
