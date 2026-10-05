@@ -217,8 +217,10 @@ export function legend(items) {
 
 /**
  * A stacked bar drawn to scale against the largest in its set, so one row
- * shows both how many there are and what they are. The track behind it is the
- * scale, not a target. segments: [{ label, value, tone }].
+ * shows both how many there are and what they are. Every segment carries its
+ * count — a colour alone never has to be measured by eye — and a segment too
+ * narrow to hold its number keeps it in the tooltip and the label.
+ * segments: [{ label, value, tone }].
  */
 export function scaledStack(segments, max) {
   const shown = segments.filter((seg) => seg.value > 0);
@@ -231,11 +233,15 @@ export function scaledStack(segments, max) {
           "div",
           { class: "sstack-fill", style: { width: `${Math.max(3, (total / Math.max(1, max)) * 100)}%` } },
           shown.map((seg) =>
-            h("span", {
-              class: ["sstack-seg", seg.tone === "neutral" ? "is-neutral" : `bg-${seg.tone}`],
-              style: { flex: String(seg.value) },
-              title: `${seg.label}: ${seg.value}`,
-            })
+            h(
+              "span",
+              {
+                class: ["sstack-seg", seg.tone === "neutral" ? "is-neutral" : `bg-${seg.tone}`],
+                style: { flex: String(seg.value) },
+                title: `${seg.label}: ${seg.value}`,
+              },
+              h("span", { class: "sstack-num", "aria-hidden": "true" }, String(seg.value))
+            )
           )
         )
       : null
@@ -243,32 +249,48 @@ export function scaledStack(segments, max) {
 }
 
 /**
- * Columns of counts with their values on top. A column marked `muted` is
- * drawn lighter: same data, flagged as the part worth questioning.
- * buckets: [{ label, value, muted, title }].
+ * Parts of a whole as a donut, each arc coloured by what it is, with the
+ * total in the middle. The legend beside it carries the numbers.
+ * segments: [{ label, value, tone }].
  */
-export function countColumns(buckets) {
-  const max = Math.max(1, ...buckets.map((b) => b.value));
-  return h(
-    "div",
-    { role: "img", "aria-label": buckets.map((b) => `${b.label}: ${b.value}`).join(", ") },
-    h(
-      "div",
-      { class: "dist" },
-      buckets.map((b) =>
-        h(
-          "div",
-          { class: "dist-col", title: b.title ?? `${b.label}: ${b.value}` },
-          h("span", { class: ["dist-val", !b.value && "faint"] }, String(b.value)),
-          h("span", { class: ["dist-bar", b.muted ? "is-muted" : "is-ink"], style: { height: `${b.value ? Math.max(3, (b.value / max) * 100) : 0}%` } })
-        )
-      )
-    ),
-    h(
-      "div",
-      { class: "dist-axis", "aria-hidden": "true" },
-      buckets.map((b) => h("span", { class: "num" }, b.label))
-    )
+export function donut(segments, { size = 148, stroke = 20, num, sub, label } = {}) {
+  const r = (size - stroke) / 2;
+  const c = size / 2;
+  const circ = 2 * Math.PI * r;
+  const shown = segments.filter((seg) => seg.value > 0);
+  const total = shown.reduce((sum, seg) => sum + seg.value, 0);
+  const gap = shown.length > 1 ? 2 : 0;
+  let start = 0;
+  const arcs = shown.map((seg) => {
+    const length = (seg.value / total) * circ;
+    const dash = Math.max(0.5, length - gap);
+    const arc = s(
+      "circle",
+      {
+        cx: c,
+        cy: c,
+        r,
+        fill: "none",
+        "stroke-width": stroke,
+        "stroke-dasharray": `${dash.toFixed(2)} ${(circ - dash).toFixed(2)}`,
+        "stroke-dashoffset": (-start).toFixed(2),
+        transform: `rotate(-90 ${c} ${c})`,
+        class: `donut-arc s-${seg.tone}`,
+      },
+      s("title", {}, `${seg.label}: ${seg.value}`)
+    );
+    start += length;
+    return arc;
+  });
+  const numSize = Math.round(size * 0.22);
+  const subSize = Math.max(11, Math.round(size * 0.085));
+  return s(
+    "svg",
+    { class: "donut", width: size, height: size, viewBox: `0 0 ${size} ${size}`, role: "img", "aria-label": label ?? (shown.map((seg) => `${seg.label} ${seg.value}`).join(", ") || "None") },
+    s("circle", { cx: c, cy: c, r, fill: "none", "stroke-width": stroke, class: "ring-track" }),
+    ...arcs,
+    s("text", { x: c, y: c + numSize * 0.12, "text-anchor": "middle", class: "ring-num", "font-size": numSize }, num ?? String(total)),
+    sub ? s("text", { x: c, y: c + numSize * 0.12 + subSize + 6, "text-anchor": "middle", class: "ring-sub", "font-size": subSize }, sub) : null
   );
 }
 

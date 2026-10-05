@@ -2009,25 +2009,41 @@ button.strip-row:hover {
   border: 1.5px dashed var(--neutral);
 }
 
-/* Scaled stacked bar: length is how many, segments are what they are */
+/* Scaled stacked bar: length is how many, segments are what they are, and
+   each segment says its own count. No track behind it: a grey track read as
+   the grey "no verdict" segment. */
 .sstack {
-  height: 14px;
-  border-radius: 4px;
-  background: var(--track);
-  overflow: hidden;
+  height: 24px;
 }
 .sstack-fill {
   display: flex;
   gap: 2px;
   height: 100%;
+  border-radius: 5px;
+  overflow: hidden;
 }
 .sstack-seg {
+  display: grid;
+  place-items: center;
   height: 100%;
   min-width: 4px;
+  container-type: inline-size;
+  color: var(--on-primary);
+  font-size: 12px;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+  line-height: 1;
 }
-.sstack-seg.is-neutral {
-  background: var(--neutral);
-  opacity: 0.45;
+.sstack-seg.is-neutral,
+.sstack-seg.bg-muted {
+  opacity: 1;
+  background: color-mix(in srgb, var(--neutral) 40%, transparent);
+  color: var(--text);
+}
+@container (max-width: 15px) {
+  .sstack-num {
+    display: none;
+  }
 }
 .bg-next {
   background: var(--primary);
@@ -2090,6 +2106,122 @@ a.pipe-row:hover {
   }
   .pipe-row:not(.is-compact) .pipe-count {
     grid-area: count;
+  }
+}
+
+/* Rows that filter the dashboard when clicked */
+button.pipe-row {
+  width: calc(100% + 24px);
+  border: 0;
+  background: transparent;
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+button.pipe-row:hover {
+  background: var(--hover);
+}
+.pipe-row.is-active {
+  background: var(--primary-soft);
+}
+.pipe-row.is-active .cell-title {
+  color: var(--primary-ink);
+}
+
+/* Dashboard filters, under the page heading */
+.dash-filters {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  margin: -8px 0 20px;
+}
+.dash-filters .select,
+.card-tools .select {
+  width: auto;
+  min-width: 150px;
+  max-width: 240px;
+}
+.card-tools {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+}
+@media (max-width: 599px) {
+  .dash-filters {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+  .dash-filters .select {
+    width: 100%;
+    min-width: 0;
+    max-width: none;
+  }
+  .dash-filters .btn {
+    grid-column: 1 / -1;
+    justify-self: start;
+  }
+}
+
+/* Screening outcomes: the AI's split as a donut, your decisions as a bar */
+.outcome {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  align-items: center;
+  gap: 24px;
+}
+.donut {
+  flex: none;
+}
+.outcome-legend {
+  display: grid;
+  gap: 2px;
+}
+.outcome-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin: 0 -8px;
+  padding: 7px 8px;
+  border-radius: var(--r-sm);
+  color: inherit;
+  font-size: 13.5px;
+  text-decoration: none !important;
+}
+a.outcome-row:hover {
+  background: var(--hover);
+}
+.outcome-label {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  font-weight: 600;
+}
+.outcome-num {
+  color: var(--text-3);
+  white-space: nowrap;
+}
+.outcome-num b {
+  color: var(--text);
+  font-weight: 650;
+}
+.outcome-human {
+  margin-top: 20px;
+  padding-top: 18px;
+  border-top: 1px solid var(--border);
+}
+.outcome-human .fact-label {
+  margin-bottom: 10px;
+}
+@media (max-width: 420px) {
+  .outcome {
+    grid-template-columns: minmax(0, 1fr);
+    justify-items: center;
+  }
+  .outcome-legend {
+    width: 100%;
   }
 }
 
@@ -2166,54 +2298,35 @@ a.pipe-row:hover {
   }
 }
 
-/* Count columns */
-.dist {
-  display: flex;
-  align-items: flex-end;
-  gap: 10px;
-  height: 168px;
-  padding-top: 8px;
-  border-bottom: 1px solid var(--grid);
+/* Headline figures inside a card: what it is, the number, what it rests on */
+.facts {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 16px 24px;
 }
-.dist-col {
-  flex: 1 1 0;
-  height: 100%;
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  justify-content: flex-end;
-  gap: 6px;
+.facts + .facts {
+  margin-top: 18px;
+  padding-top: 18px;
+  border-top: 1px solid var(--border);
+}
+.fact {
   min-width: 0;
 }
-.dist-bar {
-  width: 100%;
-  max-width: 64px;
-  border-radius: 6px 6px 0 0;
-  transition: height 0.5s cubic-bezier(0.2, 0.7, 0.2, 1);
-}
-.dist-bar.is-ink {
-  background: var(--bar);
-}
-.dist-bar.is-muted {
-  background: var(--neutral);
-  opacity: 0.45;
-}
-.dist-val {
+.fact-label {
   font-size: 13px;
+  font-weight: 600;
+  color: var(--text-2);
+}
+.fact-value {
+  margin-top: 6px;
+  font-size: 28px;
+  line-height: 1.1;
   font-weight: 650;
-  font-variant-numeric: tabular-nums;
+  letter-spacing: -0.02em;
 }
-.dist-axis {
-  display: flex;
-  gap: 10px;
-  margin-top: 8px;
-}
-.dist-axis > span {
-  flex: 1 1 0;
-  min-width: 0;
-  text-align: center;
-  font-size: 11.5px;
-  line-height: 1.35;
+.fact-sub {
+  margin-top: 4px;
+  font-size: 12.5px;
   color: var(--text-3);
 }
 

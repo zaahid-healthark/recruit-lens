@@ -1,15 +1,17 @@
 /**
- * Home: what happened in a period, and what needs a decision now.
+ * Home: what the screening produced, then the to-do list for whoever acts on
+ * it.
  *
- * Every number is computed from the same candidate list the Candidates screen
+ * Every number comes from the same candidate list the Candidates screen
  * shows, through the same decision the reports carry, so the dashboard can
- * never disagree with the list it summarises. The period changes everything
- * except "awaiting your decision", which is a to-do list, not a statistic.
+ * never disagree with the list it summarises. The period and the department,
+ * role and job filters narrow every card. The to-do cards ignore the period:
+ * a candidate who has waited a fortnight matters whatever range is selected.
  */
 
 import { h, mount } from "../dom.js";
 import { icon } from "../icons.js";
-import { getRecordings, serverIsOutdated } from "../api.js";
+import { Costs, getRecordings, serverIsOutdated } from "../api.js";
 import { navigate, replaceQuery } from "../router.js";
 import { setActive } from "../shell.js";
 import * as C from "../components.js";
@@ -23,9 +25,34 @@ const RANGES = [
   { value: "all", label: "All time" },
 ];
 
+const GROUPS = [
+  { value: "job", label: "Job" },
+  { value: "dept", label: "Department" },
+  { value: "role", label: "Role" },
+];
+
+const SORTS = [
+  { value: "count", label: "Most candidates" },
+  { value: "fit", label: "Highest fit rate" },
+  { value: "moved", label: "Most moved on" },
+];
+
+/** Stands for "no value" in a filter: no job attached, or not classified yet. */
+const NONE = "none";
+const FILTER_KEYS = ["dept", "role", "job"];
+
+// Department and role come from the evaluation's classification, so a call
+// still being evaluated has neither yet. Role is the taxonomy's sub-category
+// (Data Engineering, HEOR…): a fixed list, so it groups cleanly where the
+// model's free-text job title would not.
+const KEY_OF = {
+  dept: (r) => r.evaluationSummary?.department?.trim() || null,
+  role: (r) => r.evaluationSummary?.subCategory?.trim() || null,
+  job: (r) => r.job?.id ?? null,
+};
+
 export async function homeView({ query, signal, main }) {
   setActive("home");
-  let range = RANGES.some((r) => r.value === query.get("range")) ? query.get("range") : "30";
   const header = C.topbar({ title: "Home" });
 
   mount(
@@ -70,40 +97,97 @@ export async function homeView({ query, signal, main }) {
     return;
   }
 
-  const body = h("div");
-  const rangeSelect = C.select({
-    label: "Period",
-    cls: "range-select",
-    value: range,
-    options: RANGES,
-    onChange: (v) => {
-      range = v;
-      replaceQuery({ range: v === "30" ? "" : v });
-      draw();
-    },
-  });
-  const periodText = h("p", { class: "num" });
+  const state = {
+    range: RANGES.some((r) => r.value === query.get("range")) ? query.get("range") : "30",
+    dept: query.get("dept") ?? "",
+    role: query.get("role") ?? "",
+    job: query.get("job") ?? "",
+    group: GROUPS.some((g) => g.value === query.get("group")) ? query.get("group") : "job",
+    sort: SORTS.some((s) => s.value === query.get("sort")) ? query.get("sort") : "count",
+  };
 
-  mount(
-    main,
-    header,
-    h(
-      "div",
-      { class: "page" },
-      h("div", { class: "intro" }, h("div", null, h("h2", { class: "h1" }, "Overview"), periodText), rangeSelect),
-      body
-    )
-  );
+  const jobTitles = new Map(all.filter((r) => r.job).map((r) => [r.job.id, r.job.title]));
+  const labelFor = (key, value) =>
+    value === NONE ? (key === "job" ? "No job attached" : "Not classified yet") : key === "job" ? jobTitles.get(value) ?? "Unknown job" : value;
+  const matches = (r, key) => !state[key] || (KEY_OF[key](r) ?? NONE) === state[key];
+  const inScope = (r) => FILTER_KEYS.every((k) => matches(r, k));
+  const filtered = () => FILTER_KEYS.some((k) => state[k]);
+
+  function setState(updates) {
+    Object.assign(state, updates);
+    // A role that does not exist in the newly chosen department would leave
+    // every card empty for a reason nobody can see.
+    if ("dept" in updates && state.role && !all.some((r) => matches(r, "dept") && matches(r, "role"))) state.role = "";
+    replaceQuery({
+      range: state.range === "30" ? "" : state.range,
+      dept: state.dept,
+      role: state.role,
+      job: state.job,
+      group: state.group === "job" ? "" : state.group,
+      sort: state.sort === "count" ? "" : state.sort,
+    });
+    draw();
+  }
+
+  const periodText = h("p", { class: "num" });
+  const filtersEl = h("div", { class: "dash-filters", role: "group", "aria-label": "Filter the dashboard" });
+  const body = h("div");
+
+  mount(main, header, h("div", { class: "page" }, h("div", { class: "intro" }, h("div", null, h("h2", { class: "h1" }, "Overview"), periodText)), filtersEl, body));
   draw();
 
+  function drawFilters() {
+    // Each list offers what exists under the other filters, so choosing a
+    // department narrows the roles to that department's.
+    const options = (key) => {
+      const counts = new Map();
+      for (const r of all) {
+        if (!FILTER_KEYS.every((k) => k === key || matches(r, k))) continue;
+        const v = KEY_OF[key](r) ?? NONE;
+        counts.set(v, (counts.get(v) ?? 0) + 1);
+      }
+      if (state[key] && !counts.has(state[key])) counts.set(state[key], 0);
+      return [...counts.entries()]
+        .sort((a, b) => (a[0] === NONE) - (b[0] === NONE) || b[1] - a[1] || labelFor(key, a[0]).localeCompare(labelFor(key, b[0])))
+        .map(([value]) => ({ value, label: labelFor(key, value) }));
+    };
+    mount(
+      filtersEl,
+      C.select({ label: "Period", cls: "dash-filter", value: state.range, options: RANGES, onChange: (v) => setState({ range: v }) }),
+      C.select({ label: "Department", cls: "dash-filter", value: state.dept, options: [{ value: "", label: "All departments" }, ...options("dept")], onChange: (v) => setState({ dept: v }) }),
+      C.select({ label: "Role", cls: "dash-filter", value: state.role, options: [{ value: "", label: "All roles" }, ...options("role")], onChange: (v) => setState({ role: v }) }),
+      C.select({ label: "Job", cls: "dash-filter", value: state.job, options: [{ value: "", label: "All jobs" }, ...options("job")], onChange: (v) => setState({ job: v }) }),
+      filtered() ? C.btn({ label: "Clear filters", size: "sm", variant: "ghost", icon: "x", onClick: () => setState({ dept: "", role: "", job: "" }) }) : null
+    );
+  }
+
   function draw() {
+    drawFilters();
+    const scoped = all.filter(inScope);
     const now = new Date();
-    const since = range === "all" ? null : new Date(now.getTime() - Number(range) * 86400000);
-    const inRange = since ? all.filter((r) => new Date(r.importedAt) >= since) : all;
+    const since = state.range === "all" ? null : new Date(now.getTime() - Number(state.range) * 86400000);
+    const inRange = since ? scoped.filter((r) => new Date(r.importedAt) >= since) : scoped;
     periodText.textContent =
-      range === "all"
+      state.range === "all"
         ? `All ${F.plural(all.length, "call")} since ${F.fmtDate(all[all.length - 1].importedAt)}`
         : `${F.fmtDate(since.toISOString())} – ${F.fmtDate(now.toISOString())}`;
+
+    if (!scoped.length) {
+      mount(
+        body,
+        h(
+          "div",
+          { class: "card" },
+          C.emptyState({
+            icon: "filter",
+            title: "No candidates match these filters",
+            text: "Nobody screened so far fits this combination of department, role and job.",
+            action: C.btn({ label: "Clear filters", onClick: () => setState({ dept: "", role: "", job: "" }) }),
+          })
+        )
+      );
+      return;
+    }
 
     const evaluated = inRange.filter((r) => r.status === "EVALUATED" && r.evaluationSummary);
     const processing = inRange.filter(F.isProcessing).length;
@@ -111,8 +195,12 @@ export async function homeView({ query, signal, main }) {
     const fit = evaluated.filter((r) => r.evaluationSummary.decision === "advance").length;
     const shortlisted = inRange.filter((r) => r.shortlistedAt).length;
     const rejected = inRange.filter((r) => r.rejectedAt).length;
-    const awaiting = all.filter(F.awaitingDecision).length;
-    const attentionAll = all.filter(F.needsAttention);
+    const awaiting = scoped.filter(F.awaitingDecision).length;
+    const attentionAll = scoped.filter(F.needsAttention);
+    const empty = (text) => h("p", { class: "muted", style: { textAlign: "center", padding: "40px 0" } }, text);
+    const gateOf = (r) => r.evaluationSummary?.decision;
+    const cardHead = (title, meta, action) =>
+      h("div", { class: "card-head" }, h("div", null, h("h3", { class: "card-title" }, title), h("div", { class: "card-meta" }, meta)), action ?? null);
 
     const turnarounds = evaluated
       .map((r) => (new Date(r.evaluationSummary.createdAt) - new Date(r.importedAt)) / 60000)
@@ -133,8 +221,8 @@ export async function homeView({ query, signal, main }) {
       "div",
       { class: "kpis" },
       kpi({
-        label: "Calls evaluated",
-        iconName: "mic",
+        label: "Candidates screened",
+        iconName: "users",
         value: evaluated.length,
         sub: [h("span", null, h("b", null, String(processing)), " processing"), h("span", null, h("b", null, String(failed)), " failed")],
         href: "#/candidates",
@@ -162,98 +250,10 @@ export async function homeView({ query, signal, main }) {
       })
     );
 
-    const empty = (text) => h("p", { class: "muted", style: { textAlign: "center", padding: "40px 0" } }, text);
-    const gateOf = (r) => r.evaluationSummary?.decision;
-
-    // ── Needs your attention — a short to-do list, period-independent ──
-    const attentionCard = h(
-      "div",
-      { class: "card" },
-      h(
-        "div",
-        { class: "card-head" },
-        h("div", null, h("h3", { class: "card-title" }, "Needs your attention"), h("div", { class: "card-meta" }, "Failed evaluations and candidates awaiting a decision")),
-        C.btn({ label: "Open list", size: "sm", variant: "ghost", href: "#/candidates?view=attention", icon: "arrowRight", iconAfter: true })
-      ),
-      attentionAll.slice(0, 5).map((r) =>
-        h(
-          "a",
-          { class: "att-item", href: `#/candidates/${r.id}` },
-          h("div", { style: { minWidth: "0" } }, h("div", { class: "cand-name truncate" }, F.displayName(r)), h("div", { class: "cell-sub truncate" }, [r.job?.title ?? "No job", F.fmtRelative(r.importedAt)].join(" · "))),
-          h("div", { class: "row" }, F.decisionOf(r) ? [h("span", { class: "strong num not-phone" }, F.score10(F.scoreOf(r))), C.decisionChip(F.decisionOf(r), { short: true })] : C.statusPill(r))
-        )
-      )
-    );
-
-    // ── Waiting on you — how long reports have sat undecided ──────────
-    // Period-independent, like the list beside it: a Fit who has waited two
-    // weeks matters whatever range is selected, and is the likeliest to have
-    // gone elsewhere.
-    const DAY = 86400000;
-    const waiting = all.filter(F.awaitingDecision);
-    const waitedDays = (r) => (now - new Date(r.evaluationSummary?.createdAt ?? r.importedAt)) / DAY;
-    const AGES = [
-      { label: "Under a day", from: 0, to: 1 },
-      { label: "1–3 days", from: 1, to: 3 },
-      { label: "3–7 days", from: 3, to: 7 },
-      { label: "Over a week", from: 7, to: Infinity },
-    ];
-    const WAIT_SEGMENTS = [
-      { decision: "advance", label: "Fit", tone: "fit" },
-      { decision: "borderline", label: "Consider", tone: "consider" },
-      { decision: "reject", label: "Do not proceed", tone: "reject" },
-      { decision: "insufficient_evidence", label: "Not enough evidence", tone: "muted" },
-    ];
-    const ageRows = AGES.map((a) => {
-      const rows = waiting.filter((r) => waitedDays(r) >= a.from && waitedDays(r) < a.to);
-      return {
-        ...a,
-        total: rows.length,
-        segments: WAIT_SEGMENTS.map((sg) => ({ label: sg.label, tone: sg.tone, value: rows.filter((r) => gateOf(r) === sg.decision).length })),
-      };
-    });
-    const maxAge = Math.max(1, ...ageRows.map((a) => a.total));
-    const staleFits = waiting.filter((r) => gateOf(r) === "advance" && waitedDays(r) >= 3).length;
-    const decideTimes = inRange
-      .filter((r) => r.evaluationSummary && (r.shortlistedAt || r.rejectedAt))
-      .map((r) => (new Date(r.shortlistedAt ?? r.rejectedAt) - new Date(r.evaluationSummary.createdAt)) / 60000)
-      .filter((m) => m >= 0)
-      .sort((a, b) => a - b);
-    const decideMedian = decideTimes.length ? decideTimes[Math.floor(decideTimes.length / 2)] : null;
-    const waitingCard = h(
-      "div",
-      { class: "card" },
-      h("div", { class: "card-head" }, h("div", null, h("h3", { class: "card-title" }, "Waiting on you"), h("div", { class: "card-meta" }, "How long reports have sat without your decision"))),
-      h(
-        "div",
-        { class: "card-pad" },
-        h(
-          "div",
-          { class: "stat-line" },
-          h("span", { class: "stat-big num" }, String(staleFits)),
-          h("span", { class: "muted" }, staleFits === 1 ? "Fit has waited more than 3 days" : "Fits have waited more than 3 days")
-        ),
-        h(
-          "div",
-          { class: "pipe" },
-          ageRows.map((a) =>
-            h(
-              "a",
-              { class: "pipe-row is-compact", href: "#/candidates?view=attention" },
-              h("span", { class: "pipe-label" }, a.label),
-              G.scaledStack(a.segments, maxAge),
-              h("span", { class: "pipe-count" }, h("b", null, String(a.total)))
-            )
-          )
-        ),
-        G.legend(WAIT_SEGMENTS),
-        decideMedian !== null ? h("p", { class: "faint small mt-12" }, `In this period you took a median of ${F.fmtMinutes(decideMedian)} to decide once a report was ready.`) : null
-      )
-    );
-
-    // ── Pipeline by job ───────────────────────────────────────────────
-    // Where everyone screened for a role stands now. A person's decision
-    // outranks the gate's, so a Fit you rejected counts as not progressing.
+    // ── Pipeline — by job, department or role ─────────────────────────
+    // Where everyone screened stands now. A person's decision outranks the
+    // gate's, so a Fit you rejected counts as not progressing. Clicking a row
+    // narrows the whole dashboard to it.
     const STAGES = [
       { key: "next", label: "Next round", tone: "next" },
       { key: "ready", label: "Fit · awaiting you", tone: "fit" },
@@ -267,59 +267,137 @@ export async function homeView({ query, signal, main }) {
       const d = F.decisionOf(r);
       return d === "advance" ? "ready" : d === "borderline" ? "review" : d === "reject" ? "out" : "pending";
     };
-    const jobs = new Map();
+    const groups = new Map();
     for (const r of inRange) {
-      const key = r.job?.id ?? "none";
-      const row = jobs.get(key) ?? { id: r.job?.id ?? null, title: r.job?.title ?? "No job attached", total: 0, asked: 0, answered: 0, next: 0, ready: 0, review: 0, out: 0, pending: 0 };
-      row.total++;
-      row[stageOf(r)]++;
+      const key = KEY_OF[state.group](r) ?? NONE;
+      const g = groups.get(key) ?? { key, name: labelFor(state.group, key), dept: null, total: 0, screened: 0, fit: 0, next: 0, ready: 0, review: 0, out: 0, pending: 0 };
+      g.total++;
+      g[stageOf(r)]++;
       if (F.decisionOf(r)) {
-        row.asked += r.evaluationSummary.technicalAsked ?? 0;
-        row.answered += r.evaluationSummary.technicalAnswered ?? 0;
+        g.screened++;
+        if (gateOf(r) === "advance") g.fit++;
       }
-      jobs.set(key, row);
+      g.dept ??= KEY_OF.dept(r);
+      groups.set(key, g);
     }
-    const jobRows = [...jobs.values()].sort((a, b) => b.ready - a.ready || b.review - a.review || b.total - a.total || a.title.localeCompare(b.title));
-    const shownJobs = jobRows.slice(0, 6);
-    const maxJob = Math.max(1, ...shownJobs.map((j) => j.total));
+    const fitRate = (g) => (g.screened ? g.fit / g.screened : -1);
+    const SORTERS = {
+      count: (a, b) => b.total - a.total || b.next - a.next || a.name.localeCompare(b.name),
+      fit: (a, b) => fitRate(b) - fitRate(a) || b.total - a.total || a.name.localeCompare(b.name),
+      moved: (a, b) => b.next - a.next || b.total - a.total || a.name.localeCompare(b.name),
+    };
+    // "Not classified yet" and "No job attached" are leftovers, not peers, so
+    // they sit at the bottom whatever the order.
+    const groupRows = [...groups.values()].sort((a, b) => (a.key === NONE) - (b.key === NONE) || SORTERS[state.sort](a, b));
+    const shownGroups = groupRows.slice(0, 8);
+    const maxGroup = Math.max(1, ...shownGroups.map((g) => g.total));
+    // The figure on the right is whatever the list is sorted by; the other two
+    // ride in the line under the name.
+    const metric = {
+      count: (g) => [h("b", null, String(g.total)), g.total === 1 ? " candidate" : " candidates"],
+      fit: (g) => [h("b", null, g.screened ? F.pct(g.fit, g.screened) : "—"), " fit"],
+      moved: (g) => [h("b", null, String(g.next)), " moved on"],
+    };
+    const subLine = (g) =>
+      [
+        state.group === "role" && g.dept ? g.dept : null,
+        state.sort !== "count" ? F.plural(g.total, "candidate") : null,
+        state.sort !== "fit" ? `${g.screened ? F.pct(g.fit, g.screened) : "—"} fit` : null,
+        state.sort !== "moved" ? `${g.next} moved on` : null,
+      ]
+        .filter(Boolean)
+        .join(" · ");
+    const groupNoun = { job: "job", dept: "department", role: "role" }[state.group];
     const pipelineCard = h(
       "div",
       { class: "card", style: { marginTop: "16px" } },
-      h(
-        "div",
-        { class: "card-head" },
-        h("div", null, h("h3", { class: "card-title" }, "Pipeline by job"), h("div", { class: "card-meta" }, "Where everyone screened for each role stands now")),
-        C.btn({ label: "All jobs", size: "sm", variant: "ghost", href: "#/jobs", icon: "arrowRight", iconAfter: true })
+      cardHead(
+        "Pipeline",
+        `Where everyone screened stands now, by ${groupNoun}. Click a row to filter the dashboard.`,
+        h(
+          "div",
+          { class: "card-tools" },
+          C.seg({ label: "Group by", value: state.group, options: GROUPS, onChange: (v) => setState({ group: v }) }),
+          C.select({ label: "Sort by", cls: "dash-filter", value: state.sort, options: SORTS, onChange: (v) => setState({ sort: v }) })
+        )
       ),
       h(
         "div",
         { class: "card-pad" },
-        jobRows.length
+        groupRows.length
           ? [
               h(
                 "div",
                 { class: "pipe" },
-                shownJobs.map((j) =>
-                  h(
-                    "a",
-                    { class: "pipe-row", href: j.id ? `#/jobs/${j.id}` : "#/candidates?job=none" },
-                    h(
-                      "div",
-                      { class: "pipe-label" },
-                      h("div", { class: "cell-title truncate", title: j.title }, j.title),
-                      h("div", { class: "cell-sub" }, `${F.plural(j.total, "candidate")} · ${j.asked ? `${F.pct(j.answered, j.asked)} of technical questions answered` : "no technical questions yet"}`)
-                    ),
-                    G.scaledStack(STAGES.map((st) => ({ label: st.label, tone: st.tone, value: j[st.key] })), maxJob),
-                    h("div", { class: "pipe-count" }, j.ready ? [h("b", null, String(j.ready)), " ready"] : h("span", { class: "faint" }, "none ready"))
-                  )
-                )
+                shownGroups.map((g) => {
+                  const active = state[state.group] === g.key;
+                  return h(
+                    "button",
+                    {
+                      class: ["pipe-row", active && "is-active"],
+                      type: "button",
+                      "aria-pressed": String(active),
+                      title: active ? "Show everyone again" : `Show only ${g.name}`,
+                      onClick: () => setState({ [state.group]: active ? "" : g.key }),
+                    },
+                    h("div", { class: "pipe-label" }, h("div", { class: "cell-title truncate" }, g.name), h("div", { class: "cell-sub" }, subLine(g))),
+                    G.scaledStack(STAGES.map((st) => ({ label: st.label, tone: st.tone, value: g[st.key] })), maxGroup),
+                    h("div", { class: "pipe-count" }, metric[state.sort](g))
+                  );
+                })
               ),
               G.legend(STAGES),
-              jobRows.length > shownJobs.length
-                ? h("p", { class: "faint small mt-12" }, `The 6 roles with the most candidates ready are shown; ${F.plural(jobRows.length - shownJobs.length, "more role")} had calls in this period.`)
+              groupRows.length > shownGroups.length
+                ? h("p", { class: "faint small mt-12" }, `Showing the top 8 of ${groupRows.length} ${groupNoun === "department" ? "departments" : groupNoun + "s"}. Narrow with the filters above to see the rest.`)
                 : null,
             ]
           : empty("No calls in this period")
+      )
+    );
+
+    // ── Screening outcomes ────────────────────────────────────────────
+    // The split an executive asks for first: how many were a fit, how many
+    // were not, and what was done about them.
+    const DECISION_PARTS = [
+      { decision: "advance", label: "Fit", tone: "fit", view: "fit" },
+      { decision: "borderline", label: "Consider", tone: "consider", view: "consider" },
+      { decision: "reject", label: "Do not proceed", tone: "reject", view: null },
+      { decision: "insufficient_evidence", label: "Not enough evidence", tone: "neutral", view: null },
+    ].map((d) => ({ ...d, value: evaluated.filter((r) => gateOf(r) === d.decision).length }));
+    const HUMAN_PARTS = [
+      { label: "Moved to next round", tone: "next", value: evaluated.filter((r) => r.shortlistedAt).length },
+      { label: "Rejected", tone: "reject", value: evaluated.filter((r) => r.rejectedAt).length },
+      { label: "Awaiting your decision", tone: "muted", value: evaluated.filter((r) => !r.shortlistedAt && !r.rejectedAt).length },
+    ];
+    const outcomesCard = h(
+      "div",
+      { class: "card" },
+      cardHead("Screening outcomes", "What the AI decided, and what you did about it"),
+      h(
+        "div",
+        { class: "card-pad" },
+        evaluated.length
+          ? [
+              h(
+                "div",
+                { class: "outcome" },
+                G.donut(DECISION_PARTS, { num: String(evaluated.length), sub: "screened" }),
+                h(
+                  "div",
+                  { class: "outcome-legend" },
+                  DECISION_PARTS.map((d) =>
+                    h(
+                      d.view ? "a" : "div",
+                      { class: "outcome-row", href: d.view ? `#/candidates?view=${d.view}` : undefined },
+                      h("span", { class: "outcome-label" }, h("span", { class: ["dot", `bg-${d.tone}`] }), d.label),
+                      h("span", { class: "outcome-num num" }, h("b", null, String(d.value)), ` · ${F.pct(d.value, evaluated.length)}`)
+                    )
+                  )
+                )
+              ),
+              h("div", { class: "outcome-human" }, h("div", { class: "fact-label" }, "What you decided"), G.scaledStack(HUMAN_PARTS, evaluated.length), G.legend(HUMAN_PARTS)),
+            ]
+          : empty("Nothing evaluated in this period")
       )
     );
 
@@ -343,7 +421,7 @@ export async function homeView({ query, signal, main }) {
     const agreeCard = h(
       "div",
       { class: "card" },
-      h("div", { class: "card-head" }, h("div", null, h("h3", { class: "card-title" }, "Your decisions vs the AI"), h("div", { class: "card-meta" }, "What you did with each of the gate's calls"))),
+      cardHead("Your decisions vs the AI", "What you did with each of the gate's calls"),
       h(
         "div",
         { class: "card-pad" },
@@ -388,43 +466,142 @@ export async function homeView({ query, signal, main }) {
       )
     );
 
-    // ── Technical questions per call ──────────────────────────────────
-    // The gate decides on the share of technical answers that landed, so
-    // with one or two questions a single answer is the whole decision.
-    const withQs = evaluated.filter((r) => typeof r.evaluationSummary.technicalAsked === "number");
-    const asked = withQs.reduce((sum, r) => sum + r.evaluationSummary.technicalAsked, 0);
-    const answered = withQs.reduce((sum, r) => sum + (r.evaluationSummary.technicalAnswered ?? 0), 0);
-    const qBuckets = [0, 1, 2, 3, 4, 5].map((n) => {
-      const calls = withQs.filter((r) => (n === 5 ? r.evaluationSummary.technicalAsked >= 5 : r.evaluationSummary.technicalAsked === n)).length;
-      return { label: n === 5 ? "5+" : String(n), value: calls, muted: n < 3, title: `${n === 5 ? "5 or more" : n} technical ${n === 1 ? "question" : "questions"}: ${F.plural(calls, "call")}` };
-    });
-    const thin = qBuckets.slice(0, 3).reduce((sum, b) => sum + b.value, 0);
-    const questionsCard = h(
+    // ── Speed and cost ────────────────────────────────────────────────
+    // What one screened candidate takes, in time and money. Cost is read
+    // from the tracing backend after the page draws, so a slow or missing
+    // Langfuse never holds the dashboard up.
+    const decideTimes = inRange
+      .filter((r) => r.evaluationSummary && (r.shortlistedAt || r.rejectedAt))
+      .map((r) => (new Date(r.shortlistedAt ?? r.rejectedAt) - new Date(r.evaluationSummary.createdAt)) / 60000)
+      .filter((m) => m >= 0)
+      .sort((a, b) => a - b);
+    const decideMedian = decideTimes.length ? decideTimes[Math.floor(decideTimes.length / 2)] : null;
+    const fact = (label, value, sub) => h("div", { class: "fact" }, h("div", { class: "fact-label" }, label), h("div", { class: "fact-value num" }, value), h("div", { class: "fact-sub" }, sub));
+    const costFacts = h("div", { class: "facts" }, fact("Cost per screened call", "…", "AI transcription and scoring"), fact("Cost per candidate moved on", "…", "AI cost behind each one"));
+    const speedCard = h(
       "div",
       { class: "card" },
-      h("div", { class: "card-head" }, h("div", null, h("h3", { class: "card-title" }, "Technical questions per call"), h("div", { class: "card-meta" }, "How much evidence each decision rests on"))),
+      cardHead("Speed and cost", "What a screened candidate takes, in time and money", C.btn({ label: "Costs", size: "sm", variant: "ghost", href: "#/settings/costs", icon: "arrowRight", iconAfter: true })),
       h(
         "div",
         { class: "card-pad" },
-        withQs.length
+        evaluated.length
           ? [
               h(
                 "div",
-                { class: "stat-line" },
-                h("span", { class: "stat-big num" }, asked ? F.pct(answered, asked) : "—"),
-                h("span", { class: "muted" }, asked ? `of ${F.plural(asked, "technical question")} answered adequately or better` : "No technical questions asked yet")
+                { class: "facts" },
+                fact("Report ready", median !== null ? F.fmtMinutes(median) : "—", "median, after upload"),
+                fact("Your decision", decideMedian !== null ? F.fmtMinutes(decideMedian) : "—", decideMedian !== null ? "median, after the report" : "no decisions yet")
               ),
-              G.countColumns(qBuckets),
-              h("div", { class: "faint xsmall", style: { textAlign: "center", marginTop: "6px" } }, "Technical questions asked in the call"),
-              h(
-                "p",
-                { class: "faint small mt-12" },
-                thin ? `${thin} of ${F.plural(withQs.length, "call")} asked fewer than 3 — with that few, one answer decides the outcome.` : "Every call asked at least 3 technical questions."
-              ),
+              costFacts,
             ]
           : empty("Nothing evaluated in this period")
       )
     );
+    if (evaluated.length) {
+      Costs.get(100, { signal })
+        .then((c) => {
+          if (signal.aborted) return;
+          if (!c.configured || c.error) {
+            mount(costFacts, h("p", { class: "faint small", style: { gridColumn: "1 / -1", margin: "0" } }, c.configured ? "Costs could not be read from Langfuse just now." : "Connect Langfuse to see what each call costs."));
+            return;
+          }
+          // Joined by recording, so a re-run's cost lands on the candidate it
+          // was for: the true price of getting that report.
+          const ids = new Set(evaluated.map((r) => r.id));
+          const perCall = new Map();
+          for (const x of c.calls) {
+            if (x.recordingId && ids.has(x.recordingId) && x.cost > 0) perCall.set(x.recordingId, (perCall.get(x.recordingId) ?? 0) + x.cost);
+          }
+          const avg = perCall.size ? [...perCall.values()].reduce((sum, v) => sum + v, 0) / perCall.size : null;
+          mount(
+            costFacts,
+            fact("Cost per screened call", avg !== null ? F.money(avg) : "—", avg !== null ? `across ${F.plural(perCall.size, "priced call")}` : "no priced calls in this period"),
+            fact("Cost per candidate moved on", avg !== null && shortlisted ? F.money((avg * evaluated.length) / shortlisted) : "—", shortlisted ? "AI cost behind each one" : "no one moved on yet")
+          );
+        })
+        .catch((err) => {
+          if (err?.name === "AbortError" || signal.aborted) return;
+          mount(costFacts, h("p", { class: "faint small", style: { gridColumn: "1 / -1", margin: "0" } }, "Costs could not be read just now."));
+        });
+    }
+
+    // ── Waiting on you — how long reports have sat undecided ──────────
+    const DAY = 86400000;
+    const waiting = scoped.filter(F.awaitingDecision);
+    const waitedDays = (r) => (now - new Date(r.evaluationSummary?.createdAt ?? r.importedAt)) / DAY;
+    const AGES = [
+      { label: "Under a day", from: 0, to: 1 },
+      { label: "1–3 days", from: 1, to: 3 },
+      { label: "3–7 days", from: 3, to: 7 },
+      { label: "Over a week", from: 7, to: Infinity },
+    ];
+    const WAIT_SEGMENTS = [
+      { decision: "advance", label: "Fit", tone: "fit" },
+      { decision: "borderline", label: "Consider", tone: "consider" },
+      { decision: "reject", label: "Do not proceed", tone: "reject" },
+      { decision: "insufficient_evidence", label: "Not enough evidence", tone: "muted" },
+    ];
+    const ageRows = AGES.map((a) => {
+      const rows = waiting.filter((r) => waitedDays(r) >= a.from && waitedDays(r) < a.to);
+      return {
+        ...a,
+        total: rows.length,
+        segments: WAIT_SEGMENTS.map((sg) => ({ label: sg.label, tone: sg.tone, value: rows.filter((r) => gateOf(r) === sg.decision).length })),
+      };
+    });
+    const maxAge = Math.max(1, ...ageRows.map((a) => a.total));
+    const staleFits = waiting.filter((r) => gateOf(r) === "advance" && waitedDays(r) >= 3).length;
+    const waitingCard = h(
+      "div",
+      { class: "card" },
+      cardHead("Waiting on you", "How long reports have sat without your decision, from any period"),
+      h(
+        "div",
+        { class: "card-pad" },
+        h(
+          "div",
+          { class: "stat-line" },
+          h("span", { class: "stat-big num" }, String(staleFits)),
+          h("span", { class: "muted" }, staleFits === 1 ? "Fit has waited more than 3 days" : "Fits have waited more than 3 days")
+        ),
+        h(
+          "div",
+          { class: "pipe" },
+          ageRows.map((a) =>
+            h(
+              "a",
+              { class: "pipe-row is-compact", href: "#/candidates?view=attention" },
+              h("span", { class: "pipe-label" }, a.label),
+              G.scaledStack(a.segments, maxAge),
+              h("span", { class: "pipe-count" }, h("b", null, String(a.total)))
+            )
+          )
+        ),
+        G.legend(WAIT_SEGMENTS)
+      )
+    );
+
+    // ── Needs your attention — the to-do list ─────────────────────────
+    const attentionCard = attentionAll.length
+      ? h(
+          "div",
+          { class: "card", style: { marginTop: "16px" } },
+          cardHead(
+            "Needs your attention",
+            "Failed evaluations and candidates awaiting a decision",
+            C.btn({ label: "Open list", size: "sm", variant: "ghost", href: "#/candidates?view=attention", icon: "arrowRight", iconAfter: true })
+          ),
+          attentionAll.slice(0, 5).map((r) =>
+            h(
+              "a",
+              { class: "att-item", href: `#/candidates/${r.id}` },
+              h("div", { style: { minWidth: "0" } }, h("div", { class: "cand-name truncate" }, F.displayName(r)), h("div", { class: "cell-sub truncate" }, [r.job?.title ?? "No job", F.fmtRelative(r.importedAt)].join(" · "))),
+              h("div", { class: "row" }, F.decisionOf(r) ? [h("span", { class: "strong num not-phone" }, F.score10(F.scoreOf(r))), C.decisionChip(F.decisionOf(r), { short: true })] : C.statusPill(r))
+            )
+          )
+        )
+      : null;
 
     // ── Recent calls ──────────────────────────────────────────────────
     const recent = inRange.slice(0, 3);
@@ -460,22 +637,20 @@ export async function homeView({ query, signal, main }) {
     const recentCard = h(
       "div",
       { class: "card", style: { marginTop: "16px" } },
-      h(
-        "div",
-        { class: "card-head" },
-        h("div", null, h("h3", { class: "card-title" }, "Recent calls"), h("div", { class: "card-meta" }, recent.length ? `Latest ${recent.length} in this period` : "")),
-        C.btn({ label: "View all", size: "sm", variant: "ghost", href: "#/candidates", icon: "arrowRight", iconAfter: true })
-      ),
+      cardHead("Recent calls", recent.length ? `Latest ${recent.length} in this period` : "", C.btn({ label: "View all", size: "sm", variant: "ghost", href: "#/candidates", icon: "arrowRight", iconAfter: true })),
       recent.length ? recentTable.el.firstChild : h("p", { class: "muted card-pad" }, "No calls in this period")
     );
 
+    // Outcomes first — what the screening produced, where, how well, how fast
+    // and at what cost — then the to-do list for whoever acts on it.
     mount(
       body,
       serverIsOutdated(all) ? C.outdatedBanner() : null,
       kpis,
-      attentionAll.length ? h("div", { class: "dash-grid" }, attentionCard, waitingCard) : null,
       pipelineCard,
-      h("div", { class: "dash-grid is-even" }, agreeCard, questionsCard),
+      h("div", { class: "dash-grid is-even" }, outcomesCard, agreeCard),
+      h("div", { class: "dash-grid is-even" }, speedCard, waitingCard),
+      attentionCard,
       recentCard
     );
   }
