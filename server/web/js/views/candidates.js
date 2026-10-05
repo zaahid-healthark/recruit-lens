@@ -351,15 +351,10 @@ export async function candidatesView({ query, signal, main }) {
         const decision = F.decisionOf(r);
         return [
           C.td(
-            h(
-              "a",
-              { href: `#/candidates/${r.id}`, style: { color: "inherit" } },
-              h("div", { class: "cand-name truncate" }, F.displayName(r)),
-              r.candidateName ? h("div", { class: "cell-sub truncate not-phone", style: { maxWidth: "320px" } }, r.originalFilename) : null
-            ),
+            h("a", { href: `#/candidates/${r.id}`, style: { color: "inherit" } }, h("div", { class: "cand-name clamp-2", title: F.displayName(r) }, F.displayName(r))),
             "c-name"
           ),
-          C.td(r.job ? h("span", { class: "truncate", style: { display: "block", maxWidth: "260px" } }, r.job.title) : h("span", { class: "faint" }, "No job"), "c-job"),
+          C.td(r.job ? h("div", { class: "clamp-2", title: r.job.title }, r.job.title) : h("span", { class: "faint" }, "No job"), "c-job"),
           C.td(h("span", { class: "num" }, F.fmtDate(r.importedAt)), "tight c-date"),
           C.td(F.fmtDuration(r.durationSeconds), "tight num c-len"),
           C.td(h("span", { class: "score-cell num" }, F.score10(F.scoreOf(r))), "tight num c-score"),

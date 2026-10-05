@@ -136,7 +136,8 @@ export function fmtMinutes(minutes) {
   if (typeof minutes !== "number" || !Number.isFinite(minutes)) return "—";
   if (minutes < 1) return "under a minute";
   if (minutes < 90) return `${Math.round(minutes)} min`;
-  return `${(minutes / 60).toFixed(1)} h`;
+  if (minutes < 48 * 60) return `${(minutes / 60).toFixed(1)} h`;
+  return `${(minutes / 1440).toFixed(1)} days`;
 }
 
 export function fmtBytes(bytes) {

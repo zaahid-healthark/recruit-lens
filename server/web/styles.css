@@ -1479,6 +1479,32 @@ body.has-actionbar .bottombar {
   font-weight: 650;
   font-size: 15px;
 }
+/* Candidate lists always fit their card instead of scrolling sideways. Name
+   and job are the columns that give way: they wrap to two lines, then end in
+   "…". On narrower screens the least-needed columns step out — both are on
+   the report. */
+@media (min-width: 600px) {
+  .tbl.t-candidates td.c-name,
+  .tbl.t-candidates td.c-job {
+    max-width: 0;
+  }
+  .tbl.t-candidates .c-name {
+    width: 45%;
+  }
+  .tbl.t-candidates .c-job {
+    width: 55%;
+  }
+}
+@media (min-width: 600px) and (max-width: 1279px) {
+  .tbl.t-candidates .c-len {
+    display: none;
+  }
+}
+@media (min-width: 600px) and (max-width: 1099px) {
+  .tbl.t-candidates .c-date {
+    display: none;
+  }
+}
 .tbl tr.is-clickable {
   cursor: pointer;
 }
@@ -1982,113 +2008,165 @@ button.strip-row:hover {
   background: transparent;
   border: 1.5px dashed var(--neutral);
 }
-.t-jobs th,
-.t-jobs td {
-  white-space: nowrap;
-}
 
-/* Column chart */
-.cols {
-  display: flex;
-  align-items: flex-end;
-  gap: 3px;
-  height: 148px;
-  padding-top: 8px;
-  border-bottom: 1px solid var(--grid);
-}
-.col {
-  flex: 1 1 0;
-  height: 100%;
-  display: flex;
-  align-items: flex-end;
-  min-width: 0;
-}
-.col-bar {
-  width: 100%;
-  min-height: 2px;
-  border-radius: 3px 3px 0 0;
-  background: var(--bar);
-  opacity: 0.85;
-  transition: height 0.5s cubic-bezier(0.2, 0.7, 0.2, 1), opacity 0.12s;
-}
-.col:hover .col-bar {
-  opacity: 1;
-}
-.col-bar.is-zero {
-  background: var(--track);
-  opacity: 1;
-}
-.col-axis {
-  display: flex;
-  justify-content: space-between;
-  margin-top: 6px;
-  font-size: 11px;
-  color: var(--text-3);
-  font-variant-numeric: tabular-nums;
-}
-
-/* Funnel */
-.funnel {
-  display: grid;
-  gap: 14px;
-}
-.funnel-row {
-  display: grid;
-  grid-template-columns: minmax(120px, 170px) minmax(0, 1fr) 40px 104px;
-  align-items: center;
-  gap: 12px;
-}
-.funnel-label {
-  font-size: 13.5px;
-  color: var(--text-2);
-}
-.funnel-bar {
-  position: relative;
-  height: 26px;
-  border-radius: 6px;
+/* Scaled stacked bar: length is how many, segments are what they are */
+.sstack {
+  height: 14px;
+  border-radius: 4px;
   background: var(--track);
   overflow: hidden;
 }
-.funnel-fill {
-  position: absolute;
-  inset: 0 auto 0 0;
-  border-radius: 6px;
-  background: var(--bar);
-  opacity: 0.88;
-  transition: width 0.5s cubic-bezier(0.2, 0.7, 0.2, 1);
+.sstack-fill {
+  display: flex;
+  gap: 2px;
+  height: 100%;
 }
-.funnel-count {
-  font-weight: 650;
+.sstack-seg {
+  height: 100%;
+  min-width: 4px;
+}
+.sstack-seg.is-neutral {
+  background: var(--neutral);
+  opacity: 0.45;
+}
+.bg-next {
+  background: var(--primary);
+}
+/* No verdict: present in the count, quiet in the picture */
+.bg-muted {
+  background: var(--neutral);
+  opacity: 0.45;
+}
+
+/* Rows of label · bar · figure (pipeline by job, waiting on you) */
+.pipe {
+  display: grid;
+  gap: 4px;
+}
+.pipe-row {
+  display: grid;
+  grid-template-columns: minmax(150px, 34%) minmax(0, 1fr) 84px;
+  align-items: center;
+  gap: 16px;
+  margin: 0 -12px;
+  padding: 10px 12px;
+  border-radius: var(--r);
+  color: inherit;
+  text-decoration: none !important;
+}
+a.pipe-row:hover {
+  background: var(--hover);
+}
+.pipe-row.is-compact {
+  grid-template-columns: 96px minmax(0, 1fr) 40px;
+  padding-block: 7px;
+}
+.pipe-label {
+  min-width: 0;
+  font-size: 13.5px;
+}
+.pipe-count {
   text-align: right;
+  font-size: 13px;
+  color: var(--text-2);
   font-variant-numeric: tabular-nums;
-}
-.funnel-rate {
-  font-size: 12.5px;
-  color: var(--text-3);
   white-space: nowrap;
 }
+.pipe-count b {
+  font-size: 15px;
+  font-weight: 650;
+}
 @media (max-width: 599px) {
-  .funnel-row {
-    grid-template-columns: minmax(0, 1fr) auto auto;
-    grid-template-areas: "label count rate" "bar bar bar";
-    row-gap: 6px;
+  .pipe-row:not(.is-compact) {
+    grid-template-columns: minmax(0, 1fr) auto;
+    grid-template-areas: "label count" "bar bar";
+    gap: 8px 12px;
   }
-  .funnel-label {
+  .pipe-row:not(.is-compact) .pipe-label {
     grid-area: label;
   }
-  .funnel-bar {
+  .pipe-row:not(.is-compact) .sstack {
     grid-area: bar;
-    height: 18px;
   }
-  .funnel-count {
+  .pipe-row:not(.is-compact) .pipe-count {
     grid-area: count;
-  }
-  .funnel-rate {
-    grid-area: rate;
   }
 }
 
-/* Score distribution by band */
+/* A headline figure with its sentence beside it */
+.stat-line {
+  display: flex;
+  align-items: baseline;
+  flex-wrap: wrap;
+  gap: 4px 12px;
+  margin-bottom: 16px;
+}
+.stat-big {
+  font-size: 30px;
+  line-height: 1.1;
+  font-weight: 650;
+  letter-spacing: -0.02em;
+}
+
+/* The AI's decision against yours */
+.agree {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 13.5px;
+}
+.agree th,
+.agree td {
+  padding: 9px 10px;
+  border-bottom: 1px solid var(--border);
+  text-align: left;
+}
+.agree thead th {
+  padding-top: 0;
+  font-size: 12.5px;
+  font-weight: 600;
+  color: var(--text-3);
+}
+.agree tbody tr:last-child > * {
+  border-bottom: 0;
+}
+.agree th:first-child,
+.agree td:first-child {
+  padding-left: 0;
+}
+.agree .num {
+  width: 1%;
+  padding-left: 18px;
+  text-align: right;
+  white-space: nowrap;
+  font-variant-numeric: tabular-nums;
+  font-weight: 650;
+}
+.agree td.is-zero {
+  color: var(--text-3);
+  font-weight: 400;
+}
+.agree td.is-override span {
+  display: inline-block;
+  min-width: 28px;
+  padding: 2px 8px;
+  border-radius: 999px;
+  background: var(--reject-soft);
+  color: var(--reject);
+  text-align: center;
+}
+.agree .vlabel {
+  white-space: normal;
+}
+@media (max-width: 599px) {
+  .agree .num {
+    padding: 9px 0 9px 10px;
+  }
+  .agree .vlabel {
+    font-size: 13px;
+  }
+}
+
+/* Count columns */
 .dist {
   display: flex;
   align-items: flex-end;
@@ -2112,6 +2190,13 @@ button.strip-row:hover {
   max-width: 64px;
   border-radius: 6px 6px 0 0;
   transition: height 0.5s cubic-bezier(0.2, 0.7, 0.2, 1);
+}
+.dist-bar.is-ink {
+  background: var(--bar);
+}
+.dist-bar.is-muted {
+  background: var(--neutral);
+  opacity: 0.45;
 }
 .dist-val {
   font-size: 13px;
@@ -2690,6 +2775,9 @@ a.kpi:hover {
 @media (min-width: 1100px) {
   .dash-grid {
     grid-template-columns: minmax(0, 1.4fr) minmax(0, 1fr);
+  }
+  .dash-grid.is-even {
+    grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
   }
 }
 .att-item {

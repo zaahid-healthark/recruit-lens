@@ -162,134 +162,272 @@ export async function homeView({ query, signal, main }) {
       })
     );
 
-    // Calls over time
-    const span = since ? Number(range) : Math.max(1, Math.ceil((now - new Date(all[all.length - 1].importedAt)) / 86400000));
-    let grain = span <= 31 ? "day" : span <= 120 ? "week" : "month";
-    const chartSlot = h("div");
-    const drawChart = () => mount(chartSlot, G.columnChart(bucket(inRange, grain, since ?? new Date(all[all.length - 1].importedAt), now), { label: "Calls over time" }));
-    const grainSeg = C.seg({
-      label: "Group by",
-      value: grain,
-      options: [
-        { value: "day", label: "Day" },
-        { value: "week", label: "Week" },
-        { value: "month", label: "Month" },
-      ],
-      onChange: (v) => {
-        grain = v;
-        drawChart();
-      },
-    });
-    drawChart();
-    const callsCard = h(
+    const empty = (text) => h("p", { class: "muted", style: { textAlign: "center", padding: "40px 0" } }, text);
+    const gateOf = (r) => r.evaluationSummary?.decision;
+
+    // ── Needs your attention — a short to-do list, period-independent ──
+    const attentionCard = h(
       "div",
       { class: "card" },
-      h("div", { class: "card-head" }, h("div", null, h("h3", { class: "card-title" }, "Calls over time"), h("div", { class: "card-meta" }, F.plural(inRange.length, "call") + " uploaded")), grainSeg),
-      h("div", { class: "card-pad" }, inRange.length ? chartSlot : h("p", { class: "muted", style: { textAlign: "center", padding: "48px 0" } }, "No calls in this period"))
+      h(
+        "div",
+        { class: "card-head" },
+        h("div", null, h("h3", { class: "card-title" }, "Needs your attention"), h("div", { class: "card-meta" }, "Failed evaluations and candidates awaiting a decision")),
+        C.btn({ label: "Open list", size: "sm", variant: "ghost", href: "#/candidates?view=attention", icon: "arrowRight", iconAfter: true })
+      ),
+      attentionAll.slice(0, 5).map((r) =>
+        h(
+          "a",
+          { class: "att-item", href: `#/candidates/${r.id}` },
+          h("div", { style: { minWidth: "0" } }, h("div", { class: "cand-name truncate" }, F.displayName(r)), h("div", { class: "cell-sub truncate" }, [r.job?.title ?? "No job", F.fmtRelative(r.importedAt)].join(" · "))),
+          h("div", { class: "row" }, F.decisionOf(r) ? [h("span", { class: "strong num not-phone" }, F.score10(F.scoreOf(r))), C.decisionChip(F.decisionOf(r), { short: true })] : C.statusPill(r))
+        )
+      )
     );
 
-    // Decision mix
-    const mix = Object.fromEntries(F.DECISION_ORDER.map((d) => [d, 0]));
-    evaluated.forEach((r) => (mix[r.evaluationSummary.decision] = (mix[r.evaluationSummary.decision] ?? 0) + 1));
-    const mixItems = F.DECISION_ORDER.map((d) => ({ tone: F.DECISION[d].tone, label: F.DECISION[d].short, value: mix[d] }));
-    const mixCard = h(
+    // ── Waiting on you — how long reports have sat undecided ──────────
+    // Period-independent, like the list beside it: a Fit who has waited two
+    // weeks matters whatever range is selected, and is the likeliest to have
+    // gone elsewhere.
+    const DAY = 86400000;
+    const waiting = all.filter(F.awaitingDecision);
+    const waitedDays = (r) => (now - new Date(r.evaluationSummary?.createdAt ?? r.importedAt)) / DAY;
+    const AGES = [
+      { label: "Under a day", from: 0, to: 1 },
+      { label: "1–3 days", from: 1, to: 3 },
+      { label: "3–7 days", from: 3, to: 7 },
+      { label: "Over a week", from: 7, to: Infinity },
+    ];
+    const WAIT_SEGMENTS = [
+      { decision: "advance", label: "Fit", tone: "fit" },
+      { decision: "borderline", label: "Consider", tone: "consider" },
+      { decision: "reject", label: "Do not proceed", tone: "reject" },
+      { decision: "insufficient_evidence", label: "Not enough evidence", tone: "muted" },
+    ];
+    const ageRows = AGES.map((a) => {
+      const rows = waiting.filter((r) => waitedDays(r) >= a.from && waitedDays(r) < a.to);
+      return {
+        ...a,
+        total: rows.length,
+        segments: WAIT_SEGMENTS.map((sg) => ({ label: sg.label, tone: sg.tone, value: rows.filter((r) => gateOf(r) === sg.decision).length })),
+      };
+    });
+    const maxAge = Math.max(1, ...ageRows.map((a) => a.total));
+    const staleFits = waiting.filter((r) => gateOf(r) === "advance" && waitedDays(r) >= 3).length;
+    const decideTimes = inRange
+      .filter((r) => r.evaluationSummary && (r.shortlistedAt || r.rejectedAt))
+      .map((r) => (new Date(r.shortlistedAt ?? r.rejectedAt) - new Date(r.evaluationSummary.createdAt)) / 60000)
+      .filter((m) => m >= 0)
+      .sort((a, b) => a - b);
+    const decideMedian = decideTimes.length ? decideTimes[Math.floor(decideTimes.length / 2)] : null;
+    const waitingCard = h(
       "div",
       { class: "card" },
-      h("div", { class: "card-head" }, h("div", null, h("h3", { class: "card-title" }, "Decision mix"), h("div", { class: "card-meta" }, F.plural(evaluated.length, "evaluated call")))),
+      h("div", { class: "card-head" }, h("div", null, h("h3", { class: "card-title" }, "Waiting on you"), h("div", { class: "card-meta" }, "How long reports have sat without your decision"))),
+      h(
+        "div",
+        { class: "card-pad" },
+        h(
+          "div",
+          { class: "stat-line" },
+          h("span", { class: "stat-big num" }, String(staleFits)),
+          h("span", { class: "muted" }, staleFits === 1 ? "Fit has waited more than 3 days" : "Fits have waited more than 3 days")
+        ),
+        h(
+          "div",
+          { class: "pipe" },
+          ageRows.map((a) =>
+            h(
+              "a",
+              { class: "pipe-row is-compact", href: "#/candidates?view=attention" },
+              h("span", { class: "pipe-label" }, a.label),
+              G.scaledStack(a.segments, maxAge),
+              h("span", { class: "pipe-count" }, h("b", null, String(a.total)))
+            )
+          )
+        ),
+        G.legend(WAIT_SEGMENTS),
+        decideMedian !== null ? h("p", { class: "faint small mt-12" }, `In this period you took a median of ${F.fmtMinutes(decideMedian)} to decide once a report was ready.`) : null
+      )
+    );
+
+    // ── Pipeline by job ───────────────────────────────────────────────
+    // Where everyone screened for a role stands now. A person's decision
+    // outranks the gate's, so a Fit you rejected counts as not progressing.
+    const STAGES = [
+      { key: "next", label: "Next round", tone: "next" },
+      { key: "ready", label: "Fit · awaiting you", tone: "fit" },
+      { key: "review", label: "Consider · awaiting you", tone: "consider" },
+      { key: "out", label: "Not progressing", tone: "reject" },
+      { key: "pending", label: "No verdict yet", tone: "muted" },
+    ];
+    const stageOf = (r) => {
+      if (r.shortlistedAt) return "next";
+      if (r.rejectedAt) return "out";
+      const d = F.decisionOf(r);
+      return d === "advance" ? "ready" : d === "borderline" ? "review" : d === "reject" ? "out" : "pending";
+    };
+    const jobs = new Map();
+    for (const r of inRange) {
+      const key = r.job?.id ?? "none";
+      const row = jobs.get(key) ?? { id: r.job?.id ?? null, title: r.job?.title ?? "No job attached", total: 0, asked: 0, answered: 0, next: 0, ready: 0, review: 0, out: 0, pending: 0 };
+      row.total++;
+      row[stageOf(r)]++;
+      if (F.decisionOf(r)) {
+        row.asked += r.evaluationSummary.technicalAsked ?? 0;
+        row.answered += r.evaluationSummary.technicalAnswered ?? 0;
+      }
+      jobs.set(key, row);
+    }
+    const jobRows = [...jobs.values()].sort((a, b) => b.ready - a.ready || b.review - a.review || b.total - a.total || a.title.localeCompare(b.title));
+    const shownJobs = jobRows.slice(0, 6);
+    const maxJob = Math.max(1, ...shownJobs.map((j) => j.total));
+    const pipelineCard = h(
+      "div",
+      { class: "card", style: { marginTop: "16px" } },
+      h(
+        "div",
+        { class: "card-head" },
+        h("div", null, h("h3", { class: "card-title" }, "Pipeline by job"), h("div", { class: "card-meta" }, "Where everyone screened for each role stands now")),
+        C.btn({ label: "All jobs", size: "sm", variant: "ghost", href: "#/jobs", icon: "arrowRight", iconAfter: true })
+      ),
+      h(
+        "div",
+        { class: "card-pad" },
+        jobRows.length
+          ? [
+              h(
+                "div",
+                { class: "pipe" },
+                shownJobs.map((j) =>
+                  h(
+                    "a",
+                    { class: "pipe-row", href: j.id ? `#/jobs/${j.id}` : "#/candidates?job=none" },
+                    h(
+                      "div",
+                      { class: "pipe-label" },
+                      h("div", { class: "cell-title truncate", title: j.title }, j.title),
+                      h("div", { class: "cell-sub" }, `${F.plural(j.total, "candidate")} · ${j.asked ? `${F.pct(j.answered, j.asked)} of technical questions answered` : "no technical questions yet"}`)
+                    ),
+                    G.scaledStack(STAGES.map((st) => ({ label: st.label, tone: st.tone, value: j[st.key] })), maxJob),
+                    h("div", { class: "pipe-count" }, j.ready ? [h("b", null, String(j.ready)), " ready"] : h("span", { class: "faint" }, "none ready"))
+                  )
+                )
+              ),
+              G.legend(STAGES),
+              jobRows.length > shownJobs.length
+                ? h("p", { class: "faint small mt-12" }, `The 6 roles with the most candidates ready are shown; ${F.plural(jobRows.length - shownJobs.length, "more role")} had calls in this period.`)
+                : null,
+            ]
+          : empty("No calls in this period")
+      )
+    );
+
+    // ── Your decisions vs the AI ──────────────────────────────────────
+    // The gate advises and you decide. Setting the two side by side is how
+    // you find out whether its Fit means what yours does.
+    const OUTCOMES = [
+      { key: "next", label: "Moved on" },
+      { key: "rejected", label: "Rejected" },
+      { key: "waiting", label: "Waiting" },
+    ];
+    const outcomeOf = (r) => (r.shortlistedAt ? "next" : r.rejectedAt ? "rejected" : "waiting");
+    const matrix = Object.fromEntries(F.DECISION_ORDER.map((d) => [d, { next: 0, rejected: 0, waiting: 0 }]));
+    for (const r of evaluated) {
+      const cell = matrix[gateOf(r)];
+      if (cell) cell[outcomeOf(r)]++;
+    }
+    const agreed = matrix.advance.next + matrix.reject.rejected;
+    const overrode = matrix.advance.rejected + matrix.reject.next;
+    const isOverride = (d, o) => (d === "advance" && o === "rejected") || (d === "reject" && o === "next");
+    const agreeCard = h(
+      "div",
+      { class: "card" },
+      h("div", { class: "card-head" }, h("div", null, h("h3", { class: "card-title" }, "Your decisions vs the AI"), h("div", { class: "card-meta" }, "What you did with each of the gate's calls"))),
       h(
         "div",
         { class: "card-pad" },
         evaluated.length
           ? [
-              G.stackBar(mixItems, { lg: true }),
-              G.legend(mixItems),
               h(
                 "div",
-                { class: "stack gap-12 mt-24" },
-                mixItems.map((it) =>
-                  h(
-                    "a",
-                    {
-                      class: "row row-between",
-                      href: it.label === "Fit" ? "#/candidates?view=fit" : it.label === "Consider" ? "#/candidates?view=consider" : "#/candidates",
-                      style: { color: "inherit" },
-                    },
-                    h("span", { class: "row" }, h("span", { class: ["dot", it.tone === "neutral" ? "is-neutral" : `bg-${it.tone}`] }), it.label),
-                    h("span", { class: "num muted" }, `${it.value} · ${F.pct(it.value, evaluated.length)}`)
+                { class: "stat-line" },
+                h("span", { class: "stat-big num" }, agreed + overrode ? F.pct(agreed, agreed + overrode) : "—"),
+                h("span", { class: "muted" }, agreed + overrode ? `agreement across ${F.plural(agreed + overrode, "clear-cut decision")}` : "No Fit or Do not proceed candidate decided yet")
+              ),
+              h(
+                "table",
+                { class: "agree" },
+                h("caption", { class: "sr-only" }, "The AI's decision against yours"),
+                h("thead", null, h("tr", null, h("th", { scope: "col" }, "AI said"), OUTCOMES.map((o) => h("th", { scope: "col", class: "num" }, o.label)))),
+                h(
+                  "tbody",
+                  null,
+                  F.DECISION_ORDER.map((d) =>
+                    h(
+                      "tr",
+                      null,
+                      h("th", { scope: "row" }, h("span", { class: ["vlabel", `tone-${F.DECISION[d].tone}`] }, h("span", { class: "dot" }), F.DECISION[d].short)),
+                      OUTCOMES.map((o) => {
+                        const n = matrix[d][o.key];
+                        return h("td", { class: ["num", !n && "is-zero", n && isOverride(d, o.key) && "is-override"] }, h("span", null, String(n)));
+                      })
+                    )
                   )
                 )
               ),
+              h(
+                "p",
+                { class: "faint small mt-12" },
+                overrode
+                  ? `Highlighted: the ${F.plural(overrode, "time")} you overrode a clear call. Clear-cut means the AI said Fit or Do not proceed.`
+                  : "Clear-cut means the AI said Fit or Do not proceed; Consider is yours to call."
+              ),
             ]
-          : h("p", { class: "muted", style: { textAlign: "center", padding: "40px 0" } }, "Nothing evaluated in this period")
+          : empty("Nothing evaluated in this period")
       )
     );
 
-    // By job
-    const jobs = new Map();
-    for (const r of inRange) {
-      const key = r.job?.id ?? "none";
-      const row = jobs.get(key) ?? { id: r.job?.id ?? null, title: r.job?.title ?? "No job attached", calls: 0, advance: 0, borderline: 0, reject: 0, next: 0, scores: [] };
-      row.calls++;
-      const d = F.decisionOf(r);
-      if (d && d in row) row[d]++;
-      if (r.shortlistedAt) row.next++;
-      if (typeof F.scoreOf(r) === "number") row.scores.push(F.scoreOf(r));
-      jobs.set(key, row);
-    }
-    const jobRows = [...jobs.values()].sort((a, b) => b.calls - a.calls || a.title.localeCompare(b.title));
-    let jobPage = 1;
-    const jobPer = 10;
-    const jobSlot = h("div");
-    const drawJobs = () => {
-      const slice = jobRows.slice((jobPage - 1) * jobPer, jobPage * jobPer);
-      const t = C.dataTable({
-        cls: "t-jobs",
-        reflow: false,
-        caption: "By job",
-        columns: [
-          { label: "Job", cls: "c-name" },
-          { label: "Calls", cls: "tight num" },
-          { label: "Fit", cls: "tight num" },
-          { label: "Consider", cls: "tight num" },
-          { label: "Do not proceed", cls: "tight num" },
-          { label: "Next round", cls: "tight num" },
-          { label: "Average", cls: "tight num" },
-        ],
-        rows: slice,
-        onRowClick: (j) => navigate(j.id ? `/jobs/${j.id}` : "/candidates?job=none"),
-        renderRow: (j) => [
-          C.td(h("span", { class: "cell-title" }, j.title), "c-name"),
-          C.td(String(j.calls), "tight num"),
-          C.td(C.countPill(j.advance, "fit"), "tight num"),
-          C.td(C.countPill(j.borderline, "consider"), "tight num"),
-          C.td(C.countPill(j.reject, "reject"), "tight num"),
-          C.td(C.countPill(j.next, "next"), "tight num"),
-          C.td(h("span", { class: "strong num" }, j.scores.length ? F.score10(Math.round(j.scores.reduce((s, v) => s + v, 0) / j.scores.length)) : "—"), "tight num"),
-        ],
-      });
-      mount(
-        jobSlot,
-        t.el.firstChild,
-        jobRows.length > jobPer
-          ? C.pager({ total: jobRows.length, page: jobPage, per: jobPer, perOptions: [10], onChange: ({ page }) => ((jobPage = page), drawJobs()) })
-          : null
-      );
-    };
-    drawJobs();
-    const jobsCard = h(
+    // ── Technical questions per call ──────────────────────────────────
+    // The gate decides on the share of technical answers that landed, so
+    // with one or two questions a single answer is the whole decision.
+    const withQs = evaluated.filter((r) => typeof r.evaluationSummary.technicalAsked === "number");
+    const asked = withQs.reduce((sum, r) => sum + r.evaluationSummary.technicalAsked, 0);
+    const answered = withQs.reduce((sum, r) => sum + (r.evaluationSummary.technicalAnswered ?? 0), 0);
+    const qBuckets = [0, 1, 2, 3, 4, 5].map((n) => {
+      const calls = withQs.filter((r) => (n === 5 ? r.evaluationSummary.technicalAsked >= 5 : r.evaluationSummary.technicalAsked === n)).length;
+      return { label: n === 5 ? "5+" : String(n), value: calls, muted: n < 3, title: `${n === 5 ? "5 or more" : n} technical ${n === 1 ? "question" : "questions"}: ${F.plural(calls, "call")}` };
+    });
+    const thin = qBuckets.slice(0, 3).reduce((sum, b) => sum + b.value, 0);
+    const questionsCard = h(
       "div",
-      { class: "card section", style: { marginTop: "16px" } },
+      { class: "card" },
+      h("div", { class: "card-head" }, h("div", null, h("h3", { class: "card-title" }, "Technical questions per call"), h("div", { class: "card-meta" }, "How much evidence each decision rests on"))),
       h(
         "div",
-        { class: "card-head" },
-        h("div", null, h("h3", { class: "card-title" }, "By job"), h("div", { class: "card-meta" }, `${F.plural(jobRows.filter((j) => j.id).length, "job")} with calls in this period`)),
-        C.btn({ label: "All jobs", size: "sm", variant: "ghost", href: "#/jobs", icon: "arrowRight", iconAfter: true })
-      ),
-      jobRows.length ? h("div", { class: "jobs-table" }, jobSlot) : h("p", { class: "muted card-pad" }, "No calls in this period")
+        { class: "card-pad" },
+        withQs.length
+          ? [
+              h(
+                "div",
+                { class: "stat-line" },
+                h("span", { class: "stat-big num" }, asked ? F.pct(answered, asked) : "—"),
+                h("span", { class: "muted" }, asked ? `of ${F.plural(asked, "technical question")} answered adequately or better` : "No technical questions asked yet")
+              ),
+              G.countColumns(qBuckets),
+              h("div", { class: "faint xsmall", style: { textAlign: "center", marginTop: "6px" } }, "Technical questions asked in the call"),
+              h(
+                "p",
+                { class: "faint small mt-12" },
+                thin ? `${thin} of ${F.plural(withQs.length, "call")} asked fewer than 3 — with that few, one answer decides the outcome.` : "Every call asked at least 3 technical questions."
+              ),
+            ]
+          : empty("Nothing evaluated in this period")
+      )
     );
 
-    // Recent calls
-    const recent = inRange.slice(0, 8);
+    // ── Recent calls ──────────────────────────────────────────────────
+    const recent = inRange.slice(0, 3);
     const recentTable = C.dataTable({
       cls: "t-candidates",
       caption: "Recent calls",
@@ -308,8 +446,8 @@ export async function homeView({ query, signal, main }) {
       renderRow: (r) => {
         const d = F.decisionOf(r);
         return [
-          C.td(h("a", { href: `#/candidates/${r.id}`, class: "cand-name", style: { color: "inherit" } }, F.displayName(r)), "c-name"),
-          C.td(r.job ? r.job.title : h("span", { class: "faint" }, "No job"), "c-job"),
+          C.td(h("a", { href: `#/candidates/${r.id}`, style: { color: "inherit" } }, h("div", { class: "cand-name clamp-2", title: F.displayName(r) }, F.displayName(r))), "c-name"),
+          C.td(r.job ? h("div", { class: "clamp-2", title: r.job.title }, r.job.title) : h("span", { class: "faint" }, "No job"), "c-job"),
           C.td(F.fmtRelative(r.importedAt), "tight c-date"),
           C.td(F.fmtDuration(r.durationSeconds), "tight num c-len"),
           C.td(h("span", { class: "score-cell num" }, F.score10(F.scoreOf(r))), "tight num c-score"),
@@ -331,121 +469,14 @@ export async function homeView({ query, signal, main }) {
       recent.length ? recentTable.el.firstChild : h("p", { class: "muted card-pad" }, "No calls in this period")
     );
 
-    // Needs attention — a short to-do list, period-independent
-    const attentionCard = attentionAll.length
-      ? h(
-          "div",
-          { class: "card", style: { marginTop: "16px" } },
-          h(
-            "div",
-            { class: "card-head" },
-            h("div", null, h("h3", { class: "card-title" }, "Needs your attention"), h("div", { class: "card-meta" }, "Failed evaluations and candidates awaiting a decision")),
-            C.btn({ label: "Open list", size: "sm", variant: "ghost", href: "#/candidates?view=attention", icon: "arrowRight", iconAfter: true })
-          ),
-          attentionAll.slice(0, 5).map((r) =>
-            h(
-              "a",
-              { class: "att-item", href: `#/candidates/${r.id}` },
-              h("div", { style: { minWidth: "0" } }, h("div", { class: "cand-name truncate" }, F.displayName(r)), h("div", { class: "cell-sub truncate" }, [r.job?.title ?? "No job", F.fmtRelative(r.importedAt)].join(" · "))),
-              h("div", { class: "row" }, F.decisionOf(r) ? [h("span", { class: "strong num not-phone" }, F.score10(F.scoreOf(r))), C.decisionChip(F.decisionOf(r), { short: true })] : C.statusPill(r))
-            )
-          )
-        )
-      : null;
-
-    // Funnel — strictly nested, so a pass-through can never exceed 100%
-    const decided = evaluated.filter((r) => r.shortlistedAt || r.rejectedAt);
-    const advanced = evaluated.filter((r) => r.shortlistedAt);
-    const funnelCard = h(
-      "div",
-      { class: "card" },
-      h("div", { class: "card-head" }, h("div", null, h("h3", { class: "card-title" }, "Hiring funnel"), h("div", { class: "card-meta" }, "From upload to the next round"))),
-      h(
-        "div",
-        { class: "card-pad" },
-        inRange.length
-          ? G.funnel([
-              { label: "Calls uploaded", value: inRange.length },
-              { label: "Evaluated", value: evaluated.length },
-              { label: "Decision made", value: decided.length },
-              { label: "Moved to next round", value: advanced.length },
-            ])
-          : h("p", { class: "muted", style: { textAlign: "center", padding: "40px 0" } }, "No calls in this period")
-      )
-    );
-
-    // Score distribution — where scores land against the 6.0 and 7.5 lines
-    const BANDS = [
-      { label: "0–2.9", name: "Do not proceed", tone: "reject", min: 0, max: 29 },
-      { label: "3–5.9", name: "Do not proceed", tone: "reject", min: 30, max: 59 },
-      { label: "6–7.4", name: "Consider", tone: "consider", min: 60, max: 74 },
-      { label: "7.5–8.4", name: "Fit", tone: "fit", min: 75, max: 84 },
-      { label: "8.5–10", name: "Strong fit", tone: "strong", min: 85, max: 100 },
-    ];
-    const scored = evaluated.map((r) => r.evaluationSummary.overallScore).filter((s) => typeof s === "number");
-    const unscored = evaluated.length - scored.length;
-    const distCard = h(
-      "div",
-      { class: "card" },
-      h("div", { class: "card-head" }, h("div", null, h("h3", { class: "card-title" }, "Score distribution"), h("div", { class: "card-meta" }, "Overall scores, out of 10"))),
-      h(
-        "div",
-        { class: "card-pad" },
-        scored.length
-          ? [
-              G.bandColumns(BANDS.map((b) => ({ ...b, value: scored.filter((s) => s >= b.min && s <= b.max).length }))),
-              unscored ? h("p", { class: "faint small mt-12" }, `${F.plural(unscored, "call")} had too little evidence to score.`) : null,
-            ]
-          : h("p", { class: "muted", style: { textAlign: "center", padding: "40px 0" } }, "Nothing scored in this period")
-      )
-    );
-
     mount(
       body,
       serverIsOutdated(all) ? C.outdatedBanner() : null,
       kpis,
-      attentionCard,
-      h("div", { class: "dash-grid" }, callsCard, mixCard),
-      h("div", { class: "dash-grid" }, funnelCard, distCard),
-      jobsCard,
+      attentionAll.length ? h("div", { class: "dash-grid" }, attentionCard, waitingCard) : null,
+      pipelineCard,
+      h("div", { class: "dash-grid is-even" }, agreeCard, questionsCard),
       recentCard
     );
   }
-}
-
-/** Group calls into day / week / month buckets across [from, to]. */
-function bucket(rows, grain, from, to) {
-  const start = new Date(from);
-  start.setHours(0, 0, 0, 0);
-  const keyOf = (d) => {
-    const x = new Date(d);
-    x.setHours(0, 0, 0, 0);
-    if (grain === "week") x.setDate(x.getDate() - ((x.getDay() + 6) % 7));
-    if (grain === "month") x.setDate(1);
-    return x.getTime();
-  };
-  const labelOf = (t) => {
-    const d = new Date(t);
-    if (grain === "month") return d.toLocaleDateString(undefined, { month: "short", year: "2-digit" });
-    return d.toLocaleDateString(undefined, { day: "numeric", month: "short" });
-  };
-  const buckets = new Map();
-  const cursor = new Date(keyOf(start));
-  const end = keyOf(to);
-  let guard = 0;
-  while (cursor.getTime() <= end && guard++ < 400) {
-    buckets.set(cursor.getTime(), 0);
-    if (grain === "day") cursor.setDate(cursor.getDate() + 1);
-    else if (grain === "week") cursor.setDate(cursor.getDate() + 7);
-    else cursor.setMonth(cursor.getMonth() + 1);
-  }
-  for (const r of rows) {
-    const k = keyOf(r.importedAt);
-    if (buckets.has(k)) buckets.set(k, buckets.get(k) + 1);
-  }
-  return [...buckets.entries()].map(([t, value]) => ({
-    label: labelOf(t),
-    value,
-    title: `${grain === "week" ? "Week of " : ""}${labelOf(t)}: ${F.plural(value, "call")}`,
-  }));
 }

@@ -216,51 +216,58 @@ export function legend(items) {
 }
 
 /**
- * A hiring funnel: each stage as wide as its count against the first, with
- * the share that carried on from the stage before. Neutral ink — stages are
- * not verdicts.
+ * A stacked bar drawn to scale against the largest in its set, so one row
+ * shows both how many there are and what they are. The track behind it is the
+ * scale, not a target. segments: [{ label, value, tone }].
  */
-export function funnel(stages) {
-  const first = Math.max(1, stages[0]?.value ?? 0);
+export function scaledStack(segments, max) {
+  const shown = segments.filter((seg) => seg.value > 0);
+  const total = shown.reduce((sum, seg) => sum + seg.value, 0);
   return h(
     "div",
-    { class: "funnel", role: "img", "aria-label": stages.map((st) => `${st.label}: ${st.value}`).join(", ") },
-    stages.map((st, i) => {
-      const prev = i > 0 ? stages[i - 1].value : null;
-      return h(
-        "div",
-        { class: "funnel-row" },
-        h("span", { class: "funnel-label" }, st.label),
-        h("span", { class: "funnel-bar" }, h("span", { class: "funnel-fill", style: { width: `${st.value ? Math.max(2, (st.value / first) * 100) : 0}%` } })),
-        h("span", { class: "funnel-count" }, String(st.value)),
-        h("span", { class: "funnel-rate" }, prev === null ? "" : prev ? `${Math.round((st.value / prev) * 100)}% carried on` : "—")
-      );
-    })
+    { class: "sstack", role: "img", "aria-label": shown.map((seg) => `${seg.label} ${seg.value}`).join(", ") || "None" },
+    total
+      ? h(
+          "div",
+          { class: "sstack-fill", style: { width: `${Math.max(3, (total / Math.max(1, max)) * 100)}%` } },
+          shown.map((seg) =>
+            h("span", {
+              class: ["sstack-seg", seg.tone === "neutral" ? "is-neutral" : `bg-${seg.tone}`],
+              style: { flex: String(seg.value) },
+              title: `${seg.label}: ${seg.value}`,
+            })
+          )
+        )
+      : null
   );
 }
 
-/** Columns per score band, coloured by the decision each band means. */
-export function bandColumns(bands) {
-  const max = Math.max(1, ...bands.map((b) => b.value));
+/**
+ * Columns of counts with their values on top. A column marked `muted` is
+ * drawn lighter: same data, flagged as the part worth questioning.
+ * buckets: [{ label, value, muted, title }].
+ */
+export function countColumns(buckets) {
+  const max = Math.max(1, ...buckets.map((b) => b.value));
   return h(
     "div",
-    { role: "img", "aria-label": bands.map((b) => `${b.label}: ${b.value}`).join(", ") },
+    { role: "img", "aria-label": buckets.map((b) => `${b.label}: ${b.value}`).join(", ") },
     h(
       "div",
       { class: "dist" },
-      bands.map((b) =>
+      buckets.map((b) =>
         h(
           "div",
-          { class: "dist-col", title: `${b.label} · ${b.name}: ${b.value}` },
-          h("span", { class: "dist-val" }, String(b.value)),
-          h("span", { class: `dist-bar bg-${b.tone}`, style: { height: `${b.value ? Math.max(3, (b.value / max) * 100) : 0}%`, opacity: b.value ? "1" : "0" } })
+          { class: "dist-col", title: b.title ?? `${b.label}: ${b.value}` },
+          h("span", { class: ["dist-val", !b.value && "faint"] }, String(b.value)),
+          h("span", { class: ["dist-bar", b.muted ? "is-muted" : "is-ink"], style: { height: `${b.value ? Math.max(3, (b.value / max) * 100) : 0}%` } })
         )
       )
     ),
     h(
       "div",
       { class: "dist-axis", "aria-hidden": "true" },
-      bands.map((b) => h("span", null, h("span", { class: "num" }, b.label), h("br"), h("span", { class: `tone-${b.tone}` }, b.name)))
+      buckets.map((b) => h("span", { class: "num" }, b.label))
     )
   );
 }
@@ -300,32 +307,5 @@ export function scoreSpread(points) {
       )
     ),
     scaleAxis()
-  );
-}
-
-/** Columns for counts over time. buckets: [{ label, value, title }]. */
-export function columnChart(buckets, { height = 148, label } = {}) {
-  const max = Math.max(1, ...buckets.map((b) => b.value));
-  const n = buckets.length;
-  const tickIdx = n <= 1 ? [0] : [0, Math.floor((n - 1) / 2), n - 1];
-  return h(
-    "div",
-    { role: "img", "aria-label": label ?? buckets.map((b) => `${b.label}: ${b.value}`).join(", ") },
-    h(
-      "div",
-      { class: "cols", style: { height: `${height}px` } },
-      buckets.map((b) =>
-        h(
-          "div",
-          { class: "col", title: b.title ?? `${b.label}: ${b.value}` },
-          h("div", { class: ["col-bar", b.value === 0 && "is-zero"], style: { height: `${b.value ? Math.max(4, (b.value / max) * 100) : 2}%` } })
-        )
-      )
-    ),
-    h(
-      "div",
-      { class: "col-axis", "aria-hidden": "true" },
-      tickIdx.map((i) => h("span", null, buckets[i]?.label ?? ""))
-    )
   );
 }
