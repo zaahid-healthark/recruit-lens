@@ -5,8 +5,9 @@
  * Every number comes from the same candidate list the Candidates screen
  * shows, through the same decision the reports carry, so the dashboard can
  * never disagree with the list it summarises. The period and the department,
- * role and job filters narrow every card. The to-do cards ignore the period:
- * a candidate who has waited a fortnight matters whatever range is selected.
+ * role and job filters narrow every card. "Needs your attention" ignores the
+ * period: a candidate who has waited a fortnight matters whatever range is
+ * selected.
  */
 
 import { h, mount } from "../dom.js";
@@ -480,21 +481,23 @@ export async function homeView({ query, signal, main }) {
     const costFacts = h("div", { class: "facts" }, fact("Cost per screened call", "…", "AI transcription and scoring"), fact("Cost per candidate moved on", "…", "AI cost behind each one"));
     const speedCard = h(
       "div",
-      { class: "card" },
+      { class: "card", style: { marginTop: "16px" } },
       cardHead("Speed and cost", "What a screened candidate takes, in time and money", C.btn({ label: "Costs", size: "sm", variant: "ghost", href: "#/settings/costs", icon: "arrowRight", iconAfter: true })),
       h(
         "div",
         { class: "card-pad" },
         evaluated.length
-          ? [
+          ? h(
+              "div",
+              { class: "facts-pair" },
               h(
                 "div",
                 { class: "facts" },
                 fact("Report ready", median !== null ? F.fmtMinutes(median) : "—", "median, after upload"),
                 fact("Your decision", decideMedian !== null ? F.fmtMinutes(decideMedian) : "—", decideMedian !== null ? "median, after the report" : "no decisions yet")
               ),
-              costFacts,
-            ]
+              costFacts
+            )
           : empty("Nothing evaluated in this period")
       )
     );
@@ -526,7 +529,9 @@ export async function homeView({ query, signal, main }) {
         });
     }
 
-    // ── Waiting on you — how long reports have sat undecided ──────────
+    // ── Needs your attention ──────────────────────────────────────────
+    // Everything waiting on a person, in one place: how long reports have
+    // sat undecided, and who, most urgent first.
     const DAY = 86400000;
     const waiting = scoped.filter(F.awaitingDecision);
     const waitedDays = (r) => (now - new Date(r.evaluationSummary?.createdAt ?? r.importedAt)) / DAY;
@@ -552,56 +557,74 @@ export async function homeView({ query, signal, main }) {
     });
     const maxAge = Math.max(1, ...ageRows.map((a) => a.total));
     const staleFits = waiting.filter((r) => gateOf(r) === "advance" && waitedDays(r) >= 3).length;
-    const waitingCard = h(
+    const failedCount = attentionAll.filter((r) => r.status === "FAILED").length;
+    // Fits first — they are the ones another employer can take — then failed
+    // evaluations, which block any decision, then the rest; within each, the
+    // longest wait first.
+    const URGENCY = { advance: 0, failed: 1, borderline: 2, reject: 3, insufficient_evidence: 4 };
+    const urgencyOf = (r) => (r.status === "FAILED" ? URGENCY.failed : URGENCY[gateOf(r)] ?? 5);
+    const todo = [...attentionAll].sort((a, b) => urgencyOf(a) - urgencyOf(b) || waitedDays(b) - waitedDays(a));
+    const waitedText = (r) => {
+      if (r.status === "FAILED") return "evaluation failed";
+      const d = Math.floor(waitedDays(r));
+      return d < 1 ? "waiting under a day" : `waiting ${F.plural(d, "day")}`;
+    };
+    const attentionCard = h(
       "div",
-      { class: "card" },
-      cardHead("Waiting on you", "How long reports have sat without your decision, from any period"),
-      h(
-        "div",
-        { class: "card-pad" },
-        h(
-          "div",
-          { class: "stat-line" },
-          h("span", { class: "stat-big num" }, String(staleFits)),
-          h("span", { class: "muted" }, staleFits === 1 ? "Fit has waited more than 3 days" : "Fits have waited more than 3 days")
-        ),
-        h(
-          "div",
-          { class: "pipe" },
-          ageRows.map((a) =>
+      { class: "card", style: { marginTop: "16px" } },
+      cardHead(
+        "Needs your attention",
+        "Reports awaiting your decision, and evaluations that failed — from any period",
+        attentionAll.length ? C.btn({ label: "Open list", size: "sm", variant: "ghost", href: "#/candidates?view=attention", icon: "arrowRight", iconAfter: true }) : null
+      ),
+      attentionAll.length
+        ? h(
+            "div",
+            { class: "attn" },
             h(
-              "a",
-              { class: "pipe-row is-compact", href: "#/candidates?view=attention" },
-              h("span", { class: "pipe-label" }, a.label),
-              G.scaledStack(a.segments, maxAge),
-              h("span", { class: "pipe-count" }, h("b", null, String(a.total)))
+              "div",
+              { class: "card-pad" },
+              h(
+                "div",
+                { class: "stat-line" },
+                h("span", { class: "stat-big num" }, String(staleFits)),
+                h("span", { class: "muted" }, staleFits === 1 ? "Fit has waited more than 3 days" : "Fits have waited more than 3 days")
+              ),
+              h(
+                "div",
+                { class: "pipe" },
+                ageRows.map((a) =>
+                  h(
+                    "a",
+                    { class: "pipe-row is-compact", href: "#/candidates?view=attention" },
+                    h("span", { class: "pipe-label" }, a.label),
+                    G.scaledStack(a.segments, maxAge),
+                    h("span", { class: "pipe-count" }, h("b", null, String(a.total)))
+                  )
+                )
+              ),
+              G.legend(WAIT_SEGMENTS)
+            ),
+            h(
+              "div",
+              { class: "attn-list" },
+              h(
+                "div",
+                { class: "attn-list-head" },
+                `${F.plural(waiting.length, "candidate")} awaiting your decision${failedCount ? ` · ${failedCount} failed` : ""} — most urgent first`
+              ),
+              todo.slice(0, 5).map((r) =>
+                h(
+                  "a",
+                  { class: "att-item", href: `#/candidates/${r.id}` },
+                  h("div", { style: { minWidth: "0" } }, h("div", { class: "cand-name truncate" }, F.displayName(r)), h("div", { class: "cell-sub truncate" }, [r.job?.title ?? "No job", waitedText(r)].join(" · "))),
+                  h("div", { class: "row" }, F.decisionOf(r) ? [h("span", { class: "strong num not-phone" }, F.score10(F.scoreOf(r))), C.decisionChip(F.decisionOf(r), { short: true })] : C.statusPill(r))
+                )
+              )
             )
           )
-        ),
-        G.legend(WAIT_SEGMENTS)
-      )
+        : h("p", { class: "muted card-pad", style: { margin: "0" } }, "Nothing needs your attention: every evaluated candidate has your decision.")
     );
-
-    // ── Needs your attention — the to-do list ─────────────────────────
-    const attentionCard = attentionAll.length
-      ? h(
-          "div",
-          { class: "card", style: { marginTop: "16px" } },
-          cardHead(
-            "Needs your attention",
-            "Failed evaluations and candidates awaiting a decision",
-            C.btn({ label: "Open list", size: "sm", variant: "ghost", href: "#/candidates?view=attention", icon: "arrowRight", iconAfter: true })
-          ),
-          attentionAll.slice(0, 5).map((r) =>
-            h(
-              "a",
-              { class: "att-item", href: `#/candidates/${r.id}` },
-              h("div", { style: { minWidth: "0" } }, h("div", { class: "cand-name truncate" }, F.displayName(r)), h("div", { class: "cell-sub truncate" }, [r.job?.title ?? "No job", F.fmtRelative(r.importedAt)].join(" · "))),
-              h("div", { class: "row" }, F.decisionOf(r) ? [h("span", { class: "strong num not-phone" }, F.score10(F.scoreOf(r))), C.decisionChip(F.decisionOf(r), { short: true })] : C.statusPill(r))
-            )
-          )
-        )
-      : null;
 
     // ── Recent calls ──────────────────────────────────────────────────
     const recent = inRange.slice(0, 3);
@@ -649,7 +672,7 @@ export async function homeView({ query, signal, main }) {
       kpis,
       pipelineCard,
       h("div", { class: "dash-grid is-even" }, outcomesCard, agreeCard),
-      h("div", { class: "dash-grid is-even" }, speedCard, waitingCard),
+      speedCard,
       attentionCard,
       recentCard
     );
