@@ -7,7 +7,7 @@
  * rubric cannot separate these, it certainly cannot separate real calls.
  *
  * Calibrated to what this report DECIDES: whether a 15-20 minute screening
- * call earns a video interview. Not whether to hire. A candidate who knows the
+ * call earns the next round. Not whether to hire. A candidate who knows the
  * basics and explains them briefly passes — the bar is not "impressive", and a
  * call this short cannot show depth either way.
  *
@@ -166,7 +166,7 @@ Candidate: Thirty days, and I'm very excited about this opportunity.`,
     trap:
       "The reported failure. A real 15-minute screen: every technical answer is correct but " +
       "short, with no war stories and no trade-off essays. Marking this down for lacking depth " +
-      "rejects a candidate the video round would have confirmed.",
+      "rejects a candidate the next round would have confirmed.",
     jd: DATA_ENGINEER_JD,
     transcript: `Recruiter: Thanks for making time. Can you give me a quick sense of what you do day to day?
 Candidate: Sure. I'm a data engineer, about five years now. I build and maintain the pipelines that load our warehouse. Mostly Airflow, Python and SQL, and we're on Snowflake.

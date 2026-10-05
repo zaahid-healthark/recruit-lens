@@ -115,7 +115,7 @@ function decisionActions(main, rec, signal, { phone } = {}) {
   }
   if (rec.shortlistedAt) {
     return [
-      h("span", { class: "pill pill-lg is-next" }, icon("video"), "Moved to the video screen"),
+      h("span", { class: "pill pill-lg is-next" }, icon("arrowUpRight"), "Moved to the next round"),
       C.btn({
         label: "Undo",
         variant: "ghost",
@@ -141,11 +141,11 @@ function decisionActions(main, rec, signal, { phone } = {}) {
         patch(main, rec, signal, { rejected: true }, { message: `${F.displayName(rec)} rejected`, undo: { rejected: false }, tone: undefined }),
     }),
     C.btn({
-      label: "Move to video screen",
-      icon: "video",
+      label: "Move to next round",
+      icon: "arrowUpRight",
       variant: "primary",
       onClick: () =>
-        patch(main, rec, signal, { shortlisted: true }, { message: "Moved to the video screen", undo: { shortlisted: false } }),
+        patch(main, rec, signal, { shortlisted: true }, { message: "Moved to the next round", undo: { shortlisted: false } }),
     }),
   ];
 }
@@ -294,7 +294,7 @@ function reasonFor(sum) {
       }
       return `${a} of ${n} technical answers landed; some of the basics wobbled.`;
     }
-    return `Answered ${a} of ${n} technical questions adequately — below the bar for a video screen.`;
+    return `Answered ${a} of ${n} technical questions adequately — below the bar for the next round.`;
   }
   return `No technical questions were asked, so this is decided on the call overall (${F.score10(overallScore)}).`;
 }

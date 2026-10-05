@@ -88,7 +88,7 @@ const [SDE, CDM, BI] = jobs;
 const CATEGORY_NAMES = ["Communication Skills", "Technical Knowledge", "Problem Solving", "Cultural Fit", "Confidence & Clarity"];
 const CATEGORY_TEXT: Record<string, { good: string; weak: string; next: string }> = {
   "Communication Skills": { good: "Understood throughout; answers went somewhere.", weak: "Hard to follow; answers circled without landing.", next: "Ask for a two-minute walkthrough of one project." },
-  "Technical Knowledge": { good: "Correct on the technical questions asked.", weak: "Basics the role needs every day were wrong or missing.", next: "Probe depth on one topic in the video round." },
+  "Technical Knowledge": { good: "Correct on the technical questions asked.", weak: "Basics the role needs every day were wrong or missing.", next: "Probe depth on one topic in the next round." },
   "Problem Solving": { good: "Reasoned through the scenario in sensible steps.", weak: "Jumped to an answer without working through the problem.", next: "Give a short failure scenario to reason through." },
   "Cultural Fit": { good: "Described collaborating well under pressure.", weak: "Little sign of working with a team.", next: "Ask how they handle a disagreement." },
   "Confidence & Clarity": { good: "Steady and direct, without hedging.", weak: "Hesitant on things they claimed to know.", next: "No action." },
@@ -251,7 +251,7 @@ export const rows: FixtureRow[] = [];
       categories: [68, 78, 75, null, 70], questions, technical: 78, behavioural: 78,
       qaSummary: "Broadly correct on every technical question; general rather than deep.",
       strengths: ["Correct on every technical question asked", "Knows the standard pattern for historical data", "A sound recovery sequence for failed loads"],
-      gaps: ["Answers stayed general — probe depth in the video round", "Python, dbt and CI/CD untested"],
+      gaps: ["Answers stayed general — probe depth in the next round", "Python, dbt and CI/CD untested"],
       jd: { fit: 72, summary: "Meets the three requirements the call probed; three were never raised.", reqs: [["Warehouse sizing and scaling", "met", "Explained up versus out correctly."], ["Historical data handling", "met", "Described Type 2 dimensions with dates and a current flag."], ["Failure recovery without duplicate loads", "met", "Checkpoint restart plus reconciliation."], ["Workflow orchestration", "partial", "Mentioned retries, not scheduling or dependencies."], ["Python and PySpark", "not_discussed", "Never came up."], ["dbt", "not_discussed", "Never came up."], ["CI/CD for data pipelines", "not_discussed", "Never came up."]] },
       recommendation: "Hire — answered all three technical questions correctly", createdAt: new Date(imported.getTime() + 6 * 60_000),
     }),

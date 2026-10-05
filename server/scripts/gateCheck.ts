@@ -1,7 +1,7 @@
 /**
  * Checks the screening gate against the candidates it exists to sort.
  *
- * This gate decides whether someone gets a video interview after a 15-20
+ * This gate decides whether someone gets to the next round after a 15-20
  * minute call, and both ways of getting it wrong are expensive: a weak
  * candidate waved through wastes a round, a good one rejected is lost with no
  * way to notice. Neither shows up as an error, so they are asserted here.
@@ -65,7 +65,7 @@ const CASES: Case[] = [
   },
   {
     name: "answered well, cannot be understood",
-    why: "Communication gates from below: the next round is a video call. It pauses, never rejects.",
+    why: "Communication gates from below: the next round is an interview. It pauses, never rejects.",
     gate: { decidingScore: 80, technicalScore: 80, technicalAsked: 4, technicalAnswered: 4, communicationScore: 25 },
     expect: "borderline",
   },

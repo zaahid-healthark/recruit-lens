@@ -84,7 +84,7 @@ export function statusPill(r) {
     return h("span", { class: "pill is-processing" }, spinner(), STATUS[r.status]);
   }
   if (r.status === "FAILED") return h("span", { class: "pill is-failed" }, icon("alertCircle"), "Failed");
-  if (r.shortlistedAt) return h("span", { class: "pill is-next" }, icon("video"), "Next round");
+  if (r.shortlistedAt) return h("span", { class: "pill is-next" }, icon("arrowUpRight"), "Next round");
   if (r.rejectedAt) return h("span", { class: "pill" }, icon("xCircle"), "Rejected");
   return h("span", { class: "faint small" }, "Awaiting decision");
 }

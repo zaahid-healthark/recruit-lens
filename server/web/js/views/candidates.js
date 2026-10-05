@@ -25,9 +25,9 @@ const VIEWS = [
 const EMPTY = {
   all: { icon: "inbox", title: "No calls yet", text: "Upload a screening call and its report appears here." },
   attention: { icon: "checkCircle", title: "Nothing needs your attention", text: "Every evaluated candidate has a decision, and nothing has failed." },
-  fit: { icon: "target", title: "No fits yet", text: "Candidates the gate sends to the video screen appear here." },
+  fit: { icon: "target", title: "No fits yet", text: "Candidates the gate sends to the next round appear here." },
   consider: { icon: "help", title: "Nothing to consider", text: "Candidates on the line between fit and not appear here." },
-  next: { icon: "video", title: "No one in the next round yet", text: "Move a candidate to the video screen from their report." },
+  next: { icon: "arrowUpRight", title: "No one in the next round yet", text: "Move a candidate to the next round from their report." },
   rejected: { icon: "xCircle", title: "No rejections", text: "Candidates you reject stay here, out of your way." },
   trash: { icon: "trash", title: "Trash is empty", text: "Candidates you move to the trash can be restored from here." },
 };

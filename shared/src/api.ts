@@ -243,7 +243,7 @@ export interface DashboardStatsDto {
  * questioned in a way that generated prose does not.
  */
 export const CANDIDATE_DECISIONS = [
-  /** Worth a video interview: handled the technical questions they were asked. */
+  /** Worth the next round: handled the technical questions they were asked. */
   "advance",
   /** Some of the basics landed and some did not — genuinely on the line. */
   "borderline",

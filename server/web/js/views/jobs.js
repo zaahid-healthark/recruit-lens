@@ -318,7 +318,7 @@ function rankingTab(ranking, jobId) {
       ? h(
           "div",
           { class: "card card-pad", style: { marginBottom: "16px" } },
-          h("div", { class: "row row-between", style: { marginBottom: "4px" } }, h("h3", { class: "card-title" }, "Score spread"), h("span", { class: "card-meta" }, `${cleared} of ${ranking.ranked.length} fit for the video screen`)),
+          h("div", { class: "row row-between", style: { marginBottom: "4px" } }, h("h3", { class: "card-title" }, "Score spread"), h("span", { class: "card-meta" }, `${cleared} of ${ranking.ranked.length} fit for the next round`)),
           G.scoreSpread(spreadPoints)
         )
       : null;

@@ -27,7 +27,7 @@ export function band(score: number): CandidateDecision {
 const SEVERITY: CandidateDecision[] = ["reject", "borderline", "advance", "insufficient_evidence"];
 
 /**
- * Where a candidate sits on the gate to a video interview.
+ * Where a candidate sits on the gate to the next round.
  *
  * The gate asks one thing: could they handle the technical questions the
  * recruiter actually asked? So those answers decide it, and two views of the
@@ -42,7 +42,7 @@ const SEVERITY: CandidateDecision[] = ["reject", "borderline", "advance", "insuf
  * a short screening call is not evidence about requirements nobody raised.
  *
  * The asymmetry is deliberate too. A wrongly advanced candidate costs one
- * video call, which will catch them; a wrongly rejected one is lost for good.
+ * next-round interview, which will catch them; a wrongly rejected one is lost for good.
  * Where the two readings disagree, the more generous governs — except when the
  * candidate failed most of what was asked, which is exactly what this gate
  * exists to catch and no score is allowed to override.
@@ -76,7 +76,7 @@ export function decisionFor(g: GateEvidence): CandidateDecision {
     decision = band(g.decidingScore);
   }
 
-  // Communication gates from BELOW only. The next round is a video call the
+  // Communication gates from BELOW only. The next round is an interview the
   // candidate has to hold up in, so being genuinely hard to follow is worth
   // pausing on — but it can never sink someone who answered correctly, and an
   // accent or awkward phrasing is not what this measures.

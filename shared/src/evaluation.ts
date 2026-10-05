@@ -26,7 +26,7 @@ export const TECHNICAL_CATEGORY: MatrixCategoryName = "Technical Knowledge";
  * This is a SCREENING GATE, not a hiring decision: the call merges what used
  * to be two rounds — the recruiter's own questions and the basic technical
  * questions an engineer asked in a second call — and the report decides only
- * whether to spend a video interview on this person. So the deciding question
+ * whether to move this person to the next round. So the deciding question
  * is the narrow one the recruiter actually tested: could the candidate answer
  * the technical questions they were asked?
  */
@@ -36,10 +36,10 @@ export const PRIMARY_CATEGORY: MatrixCategoryName = TECHNICAL_CATEGORY;
  * Communication gates from BELOW, rather than outranking everything else.
  *
  * Clear English still matters — these candidates explain their work to
- * clients, and the next round is a video call they have to hold up in. But it
+ * clients, and the next round is an interview they have to hold up in. But it
  * is a floor, not the primary signal: an accent or an awkward phrase is not a
  * reason to reject someone who answered the questions correctly. Only being
- * genuinely unable to be understood is, because a video screen cannot fix it.
+ * genuinely unable to be understood is, because the next round cannot fix it.
  * It is about being UNDERSTOOD, never about sounding native; see the prompt.
  */
 export const COMMUNICATION_CATEGORY: MatrixCategoryName = "Communication Skills";
@@ -98,7 +98,7 @@ export const MIN_SCORED_CATEGORIES_FOR_OVERALL = 3;
  * that does not tell a recruiter what to do is decoration, and 5.5 meaning
  * "advance" was exactly that. Now:
  *
- *   7.5 - 10   fit — send them to the video screen
+ *   7.5 - 10   fit — send them to the next round
  *   6.0 - 7.4  consider — a judgement call for a human
  *   below 6.0  do not proceed
  *
@@ -109,7 +109,7 @@ export const MIN_SCORED_CATEGORIES_FOR_OVERALL = 3;
  * a candidate whose every answer had just been accepted.
  */
 export const DECISION_THRESHOLDS = {
-  /** At or above this, the candidate is a fit for the video screen. */
+  /** At or above this, the candidate is a fit for the next round. */
   advance: 75,
   /** At or above this, worth a human deciding. Below it, do not proceed. */
   borderline: 60,
@@ -153,7 +153,7 @@ export const SCORE_BANDS: ScoreBand[] = [
     max: 84,
     label: "7.5-8.4",
     descriptor:
-      "FIT — send to the video screen. Correct, sensible answers to the questions asked. " +
+      "FIT — send to the next round. Correct, sensible answers to the questions asked. " +
       "A short, general, correct answer belongs HERE; one minute per answer cannot show depth",
   },
   {

@@ -61,7 +61,7 @@ export async function homeView({ query, signal, main }) {
           C.emptyState({
             icon: "mic",
             title: "Evaluate your first call",
-            text: "Record the screening call on your phone, upload it here, and RecruitLens scores every answer and decides whether the candidate goes to a video screen.",
+            text: "Record the screening call on your phone, upload it here, and RecruitLens scores every answer and decides whether the candidate goes to the next round.",
             action: C.btn({ label: "Evaluate a call", icon: "plus", variant: "primary", href: "#/evaluate" }),
           })
         )
@@ -140,7 +140,7 @@ export async function homeView({ query, signal, main }) {
         href: "#/candidates",
       }),
       kpi({
-        label: "Fit for video screen",
+        label: "Fit for next round",
         iconName: "target",
         value: fit,
         sub: [h("span", null, "Fit rate ", h("b", null, F.pct(fit, evaluated.length)))],
@@ -148,7 +148,7 @@ export async function homeView({ query, signal, main }) {
       }),
       kpi({
         label: "Moved to next round",
-        iconName: "video",
+        iconName: "arrowUpRight",
         value: shortlisted,
         sub: [h("span", null, h("b", null, String(rejected)), " rejected")],
         href: "#/candidates?view=next",
@@ -359,7 +359,7 @@ export async function homeView({ query, signal, main }) {
     const funnelCard = h(
       "div",
       { class: "card" },
-      h("div", { class: "card-head" }, h("div", null, h("h3", { class: "card-title" }, "Hiring funnel"), h("div", { class: "card-meta" }, "From upload to the video screen"))),
+      h("div", { class: "card-head" }, h("div", null, h("h3", { class: "card-title" }, "Hiring funnel"), h("div", { class: "card-meta" }, "From upload to the next round"))),
       h(
         "div",
         { class: "card-pad" },

@@ -32,7 +32,7 @@ export const BAND_LABEL = {
 
 /** The gate's decision — the one verdict the UI shows. */
 export const DECISION = {
-  advance: { label: "Fit · video screen", short: "Fit", tone: "fit" },
+  advance: { label: "Fit · next round", short: "Fit", tone: "fit" },
   borderline: { label: "Consider", short: "Consider", tone: "consider" },
   reject: { label: "Do not proceed", short: "Do not proceed", tone: "reject" },
   insufficient_evidence: { label: "Not enough evidence", short: "Not enough evidence", tone: "neutral" },
