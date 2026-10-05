@@ -200,6 +200,16 @@ export const Presets = {
 export const Costs = { get: (limit, opts) => api(`/costs${qs({ limit })}`, opts) };
 export const Taxonomy = { get: (opts) => api("/taxonomy", opts) };
 
+/**
+ * True when the page is newer than the server answering it: evaluated rows
+ * arrive without the gate's decision, which the API has returned since this
+ * UI shipped. Static files update the moment code is pulled, the API only on
+ * restart — so this is what a pulled-but-not-restarted server looks like.
+ */
+export function serverIsOutdated(rows) {
+  return rows.some((r) => r.status === "EVALUATED" && r.evaluationSummary && !("decision" in r.evaluationSummary));
+}
+
 // ── A short-lived cache of the candidate list ────────────────────────
 // Home, Candidates, Jobs and the nav badges all read the same list; one fetch
 // serves them for a few seconds, and any change invalidates it.

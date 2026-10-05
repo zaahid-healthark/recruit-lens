@@ -56,9 +56,11 @@
 
   --sidebar-w: 248px;
   --rail-w: 84px;
-  --bottombar-h: 64px;
+  --bottombar-h: 68px;
+  /* At least 8 px under anything pinned to the bottom, even where the device
+     reports no safe area — gesture bars sit there on most phones. */
+  --bottom-pad: max(8px, env(safe-area-inset-bottom, 0px));
   --topbar-h: 60px;
-  --safe-b: env(safe-area-inset-bottom, 0px);
   --safe-t: env(safe-area-inset-top, 0px);
 
   --font: ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial,
@@ -117,6 +119,13 @@ html {
 }
 body {
   margin: 0;
+  /* A guard, not the fix: one over-wide element used to widen the whole
+     layout on phones and push the fixed bars off-screen. clip, unlike
+     hidden, creates no scroll container, so sticky headers keep working. */
+  overflow-x: clip;
+  /* File names and IDs are single long tokens; let them break rather than
+     widen the page. */
+  overflow-wrap: break-word;
   background: var(--bg);
   color: var(--text);
   font: 14px/1.5 var(--font);
@@ -322,10 +331,10 @@ button {
 }
 .main {
   min-height: 100vh;
-  padding-bottom: calc(var(--bottombar-h) + var(--safe-b) + 24px);
+  padding-bottom: calc(var(--bottombar-h) + var(--bottom-pad) + 24px);
 }
 body.has-actionbar .main {
-  padding-bottom: calc(76px + var(--safe-b) + 24px);
+  padding-bottom: calc(76px + var(--bottom-pad) + 24px);
 }
 .page {
   max-width: 1200px;
@@ -383,7 +392,20 @@ body.has-actionbar .main {
   background: var(--surface);
   border-right: 1px solid var(--border);
   overflow-y: auto;
+  /* Never sideways: focusing a link while the drawer slides in would
+     otherwise scroll its contents half off the panel. */
+  overflow-x: hidden;
+  overscroll-behavior: contain;
+  scrollbar-width: none;
   z-index: 40;
+}
+.sidebar::-webkit-scrollbar {
+  display: none;
+}
+/* A flex column squeezes its children when it runs out of height — which is
+   what thinned the Evaluate button on short or zoomed screens. */
+.sidebar > * {
+  flex-shrink: 0;
 }
 /* Logo on top, product name beneath — side by side they overflow 248 px. */
 .sidebar-brand {
@@ -466,10 +488,80 @@ body.has-actionbar .main {
 .sidebar-foot {
   margin-top: auto;
   padding-top: 12px;
-  display: flex;
-  flex-direction: column;
-  gap: 2px;
   border-top: 1px solid var(--border);
+}
+/* A nav link with a control beside it: Candidates + its toggle, Settings +
+   the theme switch. */
+.nav-row {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+}
+.nav-row > .nav-item {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+.nav-toggle {
+  display: grid;
+  place-items: center;
+  width: 34px;
+  height: 34px;
+  flex: none;
+  border: 0;
+  border-radius: var(--r-sm);
+  background: transparent;
+  color: var(--text-3);
+}
+.nav-toggle:hover {
+  background: var(--hover);
+  color: var(--text);
+}
+.nav-toggle svg {
+  width: 18px;
+  height: 18px;
+  transition: transform 0.16s;
+}
+.nav-toggle[aria-expanded="true"] svg {
+  transform: rotate(180deg);
+}
+
+/* Below 1024 px the same sidebar becomes a slide-out drawer. It stops short
+   of the screen edge so there is always room to tap outside and close it —
+   there is deliberately no close button. */
+.scrim {
+  display: none;
+}
+@media (max-width: 1023px) {
+  .sidebar {
+    display: flex;
+    width: min(84vw, 320px);
+    visibility: hidden;
+    transform: translateX(-104%);
+    transition: transform 0.24s cubic-bezier(0.2, 0.8, 0.2, 1), visibility 0s linear 0.24s;
+    padding-top: calc(22px + var(--safe-t));
+    padding-bottom: calc(16px + var(--bottom-pad));
+    z-index: 70;
+  }
+  body.drawer-open .sidebar {
+    visibility: visible;
+    transform: none;
+    box-shadow: var(--shadow-pop);
+    transition: transform 0.24s cubic-bezier(0.2, 0.8, 0.2, 1);
+  }
+  .scrim {
+    display: block;
+    position: fixed;
+    inset: 0;
+    z-index: 65;
+    background: rgba(10, 12, 15, 0.42);
+    opacity: 0;
+    pointer-events: none;
+    transition: opacity 0.2s;
+  }
+  body.drawer-open .scrim {
+    opacity: 1;
+    pointer-events: auto;
+  }
 }
 
 /* Rail — tablet */
@@ -531,8 +623,8 @@ body.has-actionbar .main {
 .bottombar {
   position: fixed;
   inset: auto 0 0 0;
-  height: calc(var(--bottombar-h) + var(--safe-b));
-  padding-bottom: var(--safe-b);
+  height: calc(var(--bottombar-h) + var(--bottom-pad));
+  padding-bottom: var(--bottom-pad);
   display: flex;
   background: var(--surface);
   border-top: 1px solid var(--border);
@@ -552,8 +644,11 @@ body.has-actionbar .main {
   text-decoration: none !important;
 }
 .tab svg {
-  width: 22px;
-  height: 22px;
+  width: 24px;
+  height: 24px;
+}
+.tab-label {
+  font-size: 11.5px;
 }
 .tab.is-active {
   color: var(--primary-ink);
@@ -561,8 +656,8 @@ body.has-actionbar .main {
 .tab.is-primary .tab-icon {
   display: grid;
   place-items: center;
-  width: 48px;
-  height: 32px;
+  width: 52px;
+  height: 34px;
   border-radius: 10px;
   background: var(--primary);
   color: var(--on-primary);
@@ -590,6 +685,12 @@ body.has-actionbar .bottombar {
   }
   .sidebar {
     display: flex;
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .sidebar,
+  body.drawer-open .sidebar {
+    transition: none;
   }
 }
 
@@ -665,6 +766,17 @@ body.has-actionbar .bottombar {
   }
 }
 
+/* Top-level pages carry their title in the intro from 600 px up, so the bar
+   would only repeat it; on phones the bar is the title, with the menu. */
+@media (min-width: 600px) {
+  .topbar.is-root {
+    display: none;
+  }
+}
+.drawer-btn {
+  margin-left: 0;
+}
+
 /* Page intro — the large heading under the top bar on list pages */
 .intro {
   display: flex;
@@ -686,7 +798,7 @@ body.has-actionbar .bottombar {
   z-index: 40;
   display: flex;
   gap: 8px;
-  padding: 12px 16px calc(12px + var(--safe-b));
+  padding: 12px 16px calc(12px + var(--bottom-pad));
   background: var(--surface);
   border-top: 1px solid var(--border);
 }
@@ -1078,7 +1190,8 @@ body.has-actionbar .bottombar {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  gap: 12px;
+  flex-wrap: wrap;
+  gap: 8px 12px;
   padding: 16px 20px;
   border-bottom: 1px solid var(--border);
 }
@@ -1086,10 +1199,13 @@ body.has-actionbar .bottombar {
   font-size: 15px;
   font-weight: 650;
 }
+.card-head > :first-child {
+  flex: 1 1 auto;
+  min-width: 0;
+}
 .card-meta {
   font-size: 13px;
   color: var(--text-3);
-  white-space: nowrap;
 }
 @media (max-width: 599px) {
   .card-pad {
@@ -1106,7 +1222,8 @@ body.has-actionbar .bottombar {
   display: flex;
   align-items: baseline;
   justify-content: space-between;
-  gap: 12px;
+  flex-wrap: wrap;
+  gap: 4px 12px;
   margin-bottom: 12px;
 }
 .section-title {
@@ -1117,7 +1234,6 @@ body.has-actionbar .bottombar {
 .section-meta {
   font-size: 13px;
   color: var(--text-3);
-  white-space: nowrap;
 }
 
 /* Notes: a quiet line with an icon. Never a coloured box or a stripe. */
@@ -2263,7 +2379,7 @@ button.strip-row:hover {
 .tile-meta {
   font-size: 12.5px;
   color: var(--text-3);
-  white-space: nowrap;
+  text-align: right;
 }
 .tile-empty {
   flex: 1;
@@ -2531,8 +2647,11 @@ button.tline:hover {
 .kpi {
   display: flex;
   flex-direction: column;
+  align-items: center;
+  justify-content: center;
   gap: 6px;
-  padding: 16px 18px;
+  padding: 20px 16px;
+  text-align: center;
   color: inherit;
   text-decoration: none !important;
   transition: border-color 0.12s, background-color 0.12s;
@@ -2544,6 +2663,7 @@ a.kpi:hover {
 .kpi-label {
   display: flex;
   align-items: center;
+  justify-content: center;
   gap: 8px;
   font-size: 13px;
   font-weight: 600;
@@ -2560,10 +2680,6 @@ a.kpi:hover {
   font-weight: 650;
   letter-spacing: -0.02em;
   font-variant-numeric: tabular-nums;
-}
-.kpi-foot {
-  font-size: 12.5px;
-  color: var(--text-3);
 }
 .dash-grid {
   display: grid;
@@ -2754,7 +2870,7 @@ a.kpi:hover {
 .job-card {
   display: flex;
   flex-direction: column;
-  gap: 12px;
+  gap: 6px;
   padding: 18px 20px;
   color: inherit;
   text-decoration: none !important;
@@ -2763,6 +2879,13 @@ a.kpi:hover {
 .job-card:hover {
   border-color: var(--border-strong);
   background: var(--surface-2);
+}
+.job-card .job-chevron {
+  width: 18px;
+  height: 18px;
+  flex: none;
+  margin-top: 2px;
+  color: var(--text-3);
 }
 .job-card-stats {
   display: flex;
@@ -2988,7 +3111,7 @@ a.kpi:hover {
     max-width: none;
     border-radius: 16px 16px 0 0;
     max-height: 88vh;
-    padding-bottom: var(--safe-b);
+    padding-bottom: var(--bottom-pad);
     animation: rise 0.2s cubic-bezier(0.2, 0.8, 0.2, 1);
   }
   .overlay.is-sheet .dialog::before {
@@ -3052,7 +3175,7 @@ a.kpi:hover {
   position: fixed;
   z-index: 120;
   left: 50%;
-  bottom: calc(var(--bottombar-h) + var(--safe-b) + 12px);
+  bottom: calc(var(--bottombar-h) + var(--bottom-pad) + 12px);
   transform: translateX(-50%);
   display: flex;
   flex-direction: column;
@@ -3061,7 +3184,7 @@ a.kpi:hover {
   pointer-events: none;
 }
 body.has-actionbar .toasts {
-  bottom: calc(76px + var(--safe-b) + 12px);
+  bottom: calc(76px + var(--bottom-pad) + 12px);
 }
 @media (min-width: 600px) {
   .toasts,
@@ -3301,6 +3424,7 @@ body.has-actionbar .toasts {
 /* KPI sub-metrics and compact toggles in card headers */
 .kpi-sub {
   display: flex;
+  justify-content: center;
   flex-wrap: wrap;
   gap: 4px 14px;
   margin-top: 2px;

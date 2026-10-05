@@ -1,12 +1,14 @@
 /**
  * The app shell: one navigation definition, three containers.
  *
- *   phone  (< 600 px)   bottom bar, Evaluate in the centre
+ *   phone  (< 600 px)   bottom bar, Evaluate in the centre, plus a slide-out menu
  *   tablet (600–1023)   navigation rail
- *   laptop (>= 1024)    grouped sidebar with the candidate views listed
+ *   laptop (>= 1024)    grouped sidebar
  *
  * The destinations are the same in all three, so moving between devices never
- * moves where anything lives — only the container changes.
+ * moves where anything lives — only the container changes. Below 1024 px the
+ * laptop sidebar becomes the slide-out menu, so there is one menu to keep
+ * right, not two.
  */
 
 import { h } from "./dom.js";
@@ -32,6 +34,22 @@ const PRIMARY = [
   { id: "settings", label: "Settings", href: "#/settings", icon: "settings" },
 ];
 
+const SUB_OPEN_KEY = "recruitlens.nav.candidatesOpen";
+const readSubOpen = () => {
+  try {
+    return localStorage.getItem(SUB_OPEN_KEY) === "1";
+  } catch {
+    return false;
+  }
+};
+const writeSubOpen = (open) => {
+  try {
+    localStorage.setItem(SUB_OPEN_KEY, open ? "1" : "0");
+  } catch {
+    /* private browsing */
+  }
+};
+
 let els = null;
 
 export function mountShell(root) {
@@ -42,48 +60,68 @@ export function mountShell(root) {
   const badges = {};
   const badge = (id) => (badges[id] = h("span", { class: "nav-badge", hidden: true }));
 
-  const navLink = (id, label, href, iconName) =>
-    h("a", { class: "nav-item", href, dataset: { nav: id } }, icon(iconName), h("span", null, label));
+  const navLink = (id, label, href, iconName, extra) =>
+    h("a", { class: "nav-item", href, dataset: { nav: id } }, icon(iconName), h("span", { class: "grow" }, label), extra ?? null);
 
-  const themeBtn = h(
-    "button",
-    { class: "nav-item", type: "button", onClick: cycleTheme, dataset: { nav: "theme" } },
-    icon("sun"),
-    h("span", { class: "theme-label" }, "Theme")
+  // Candidates: a link to All, with its views folded away until asked for.
+  let subOpen = readSubOpen();
+  const candidatesBadge = badge("candidates");
+  const sub = h(
+    "div",
+    { class: "nav-sub", id: "nav-candidate-views", hidden: !subOpen },
+    CANDIDATE_VIEWS.map((v) =>
+      h(
+        "a",
+        { class: "nav-subitem", href: v.id === "all" ? "#/candidates" : `#/candidates?view=${v.id}`, dataset: { sub: v.id } },
+        h("span", { class: "grow" }, v.label),
+        v.badge ? badge(v.id) : null
+      )
+    )
   );
+  const subToggle = h(
+    "button",
+    {
+      class: "nav-toggle",
+      type: "button",
+      "aria-controls": "nav-candidate-views",
+      "aria-expanded": String(subOpen),
+      "aria-label": subOpen ? "Hide candidate views" : "Show candidate views",
+      onClick: () => {
+        subOpen = !subOpen;
+        writeSubOpen(subOpen);
+        sub.hidden = !subOpen;
+        subToggle.setAttribute("aria-expanded", String(subOpen));
+        subToggle.setAttribute("aria-label", subOpen ? "Hide candidate views" : "Show candidate views");
+        updateBadges(lastList);
+      },
+    },
+    icon("chevronDown")
+  );
+
+  const themeBtn = h("button", { class: "nav-toggle", type: "button", onClick: cycleTheme });
 
   const sidebar = h(
     "aside",
-    { class: "sidebar", "aria-label": "Main" },
+    { class: "sidebar", id: "sidebar", "aria-label": "Main" },
     h(
       "a",
       { class: "sidebar-brand", href: "#/", "aria-label": "RecruitLens home" },
       h("span", { class: "brand-logo", role: "img", "aria-label": "Healthark" }),
-      h("span", { class: "brand-sep", "aria-hidden": "true" }),
       h("span", { class: "brand-name" }, "RecruitLens")
     ),
     btn({ label: "Evaluate a call", icon: "plus", variant: "primary", href: "#/evaluate", block: true, cls: "sidebar-cta" }),
     h("div", { class: "nav-group-label" }, "Screening"),
     navLink("home", "Home", "#/", "home"),
-    navLink("candidates", "Candidates", "#/candidates", "users"),
-    h(
-      "div",
-      { class: "nav-sub" },
-      CANDIDATE_VIEWS.map((v) =>
-        h(
-          "a",
-          { class: "nav-subitem", href: v.id === "all" ? "#/candidates" : `#/candidates?view=${v.id}`, dataset: { sub: v.id } },
-          h("span", { class: "grow" }, v.label),
-          v.badge ? badge(v.id) : null
-        )
-      )
-    ),
+    h("div", { class: "nav-row" }, navLink("candidates", "Candidates", "#/candidates", "users", candidatesBadge), subToggle),
+    sub,
     navLink("jobs", "Jobs", "#/jobs", "briefcase"),
     h("div", { class: "nav-group-label" }, "Workspace"),
     navLink("instructions", "Saved instructions", "#/settings/instructions", "sliders"),
     navLink("costs", "Usage and costs", "#/settings/costs", "coins"),
-    h("div", { class: "sidebar-foot" }, navLink("settings", "Settings", "#/settings", "settings"), themeBtn)
+    h("div", { class: "sidebar-foot" }, h("div", { class: "nav-row" }, navLink("settings", "Settings", "#/settings", "settings"), themeBtn))
   );
+
+  const scrim = h("div", { class: "scrim", "aria-hidden": "true", onClick: closeDrawer });
 
   const rail = h(
     "nav",
@@ -111,22 +149,65 @@ export function mountShell(root) {
     )
   );
 
-  const app = h("div", { class: "app" }, sidebar, rail, main, bottombar, toasts);
+  const app = h("div", { class: "app" }, sidebar, scrim, rail, main, bottombar, toasts);
   root.replaceChildren(app);
   els = { main, sidebar, rail, bottombar, badges, themeBtn };
   syncThemeButton();
+
+  // Any link inside the menu closes it, so the page underneath is what shows.
+  sidebar.addEventListener("click", (e) => {
+    if (e.target.closest("a")) closeDrawer();
+  });
 
   onRecordings(updateBadges);
   getRecordings().catch(() => {});
   return { main };
 }
 
+// ── Slide-out menu (phones) ──────────────────────────────────────────
+let lastFocus = null;
+let lastList = [];
+
+function openDrawer() {
+  if (!els || document.body.classList.contains("drawer-open")) return;
+  lastFocus = document.activeElement;
+  document.body.classList.add("drawer-open");
+  document.body.style.overflow = "hidden";
+  els.sidebar.setAttribute("role", "dialog");
+  els.sidebar.setAttribute("aria-modal", "true");
+  els.sidebar.scrollLeft = 0;
+  requestAnimationFrame(() => els.sidebar.querySelector(".nav-item.is-active, .nav-item")?.focus({ preventScroll: true }));
+}
+
+export function closeDrawer() {
+  if (!els || !document.body.classList.contains("drawer-open")) return;
+  document.body.classList.remove("drawer-open");
+  document.body.style.overflow = "";
+  els.sidebar.removeAttribute("role");
+  els.sidebar.removeAttribute("aria-modal");
+  lastFocus?.focus?.({ preventScroll: true });
+}
+
+window.addEventListener("rl:drawer", openDrawer);
+document.addEventListener("keydown", (e) => {
+  if (e.key === "Escape") closeDrawer();
+});
+// Growing past the drawer breakpoint while it is open would strand the scrim.
+window.matchMedia("(min-width: 1024px)").addEventListener?.("change", (e) => {
+  if (e.matches) closeDrawer();
+});
+
 function updateBadges(list) {
   if (!els) return;
+  lastList = list;
   const live = list.filter((r) => !r.trashedAt);
+  const attention = live.filter(needsAttention).length;
   const counts = {
-    attention: live.filter(needsAttention).length,
+    attention,
     next: live.filter((r) => r.shortlistedAt).length,
+    // With the views folded away, the count that matters most rides on the
+    // Candidates row instead of disappearing.
+    candidates: els.sidebar.querySelector("#nav-candidate-views")?.hidden ? attention : 0,
   };
   for (const [id, el] of Object.entries(els.badges)) {
     const n = counts[id] ?? 0;
@@ -179,5 +260,7 @@ export function syncThemeButton() {
   const pref = getThemePref();
   const name = pref === "dark" ? "moon" : pref === "system" ? "monitor" : "sun";
   const label = pref === "dark" ? "Dark theme" : pref === "system" ? "System theme" : "Light theme";
-  els.themeBtn.replaceChildren(icon(name), h("span", { class: "theme-label" }, label));
+  els.themeBtn.replaceChildren(icon(name));
+  els.themeBtn.setAttribute("aria-label", `${label} — click to change`);
+  els.themeBtn.title = label;
 }

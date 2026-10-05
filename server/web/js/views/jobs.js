@@ -6,7 +6,7 @@
 
 import { h, mount } from "../dom.js";
 import { icon } from "../icons.js";
-import { Jobs, Recordings, Taxonomy, getRecordings, invalidateRecordings } from "../api.js";
+import { Jobs, Recordings, Taxonomy, invalidateRecordings } from "../api.js";
 import { navigate, replaceQuery } from "../router.js";
 import { setActive } from "../shell.js";
 import * as C from "../components.js";
@@ -23,9 +23,8 @@ export async function jobsView({ query, signal, main }) {
   mount(main, header, h("div", { class: "page" }, h("div", { class: "job-grid" }, [0, 1, 2].map(() => h("div", { class: "card job-card" }, C.skelLine("60%", 16), C.skelLine("40%"), C.skelBlock(60))))));
 
   let jobs;
-  let recs = [];
   try {
-    [jobs, recs] = await Promise.all([Jobs.list(true, { signal }), getRecordings({ signal }).catch(() => [])]);
+    jobs = await Jobs.list(true, { signal });
   } catch (err) {
     if (err?.name === "AbortError") return;
     mount(main, header, h("div", { class: "page" }, C.errorState(err)));
@@ -98,37 +97,14 @@ export async function jobsView({ query, signal, main }) {
       h(
         "div",
         { class: "job-grid" },
-        list.map((j) => {
-          const mine = recs.filter((r) => r.job?.id === j.id);
-          const count = (d) => mine.filter((r) => F.decisionOf(r) === d).length;
-          return h(
+        list.map((j) =>
+          h(
             "a",
             { class: "card job-card", href: `#/jobs/${j.id}` },
-            h(
-              "div",
-              { class: "stack gap-4" },
-              h("h3", { class: "h3 clamp-2" }, j.title),
-              h("div", { class: "faint small truncate" }, [j.department, j.subCategory].filter(Boolean).join(" › ") || "Not classified", " · added ", F.fmtDate(j.createdAt))
-            ),
-            h(
-              "div",
-              { class: "row row-wrap gap-4" },
-              C.countPill(count("advance"), "fit"),
-              h("span", { class: "faint xsmall", style: { marginRight: "8px" } }, "Fit"),
-              C.countPill(count("borderline"), "consider"),
-              h("span", { class: "faint xsmall", style: { marginRight: "8px" } }, "Consider"),
-              C.countPill(count("reject"), "reject"),
-              h("span", { class: "faint xsmall" }, "Do not proceed")
-            ),
-            h(
-              "div",
-              { class: "job-card-stats" },
-              h("div", null, h("div", { class: "stat-label" }, "Candidates"), h("div", { class: "stat-value" }, String(j.recordingCount))),
-              h("div", null, h("div", { class: "stat-label" }, "Average"), h("div", { class: "stat-value" }, F.score10(j.averageOverallScore))),
-              h("div", null, h("div", { class: "stat-label" }, "Next round"), h("div", { class: "stat-value" }, String(mine.filter((r) => r.shortlistedAt).length)))
-            )
-          );
-        })
+            h("div", { class: "row row-between gap-12", style: { alignItems: "flex-start" } }, h("h3", { class: "h3 clamp-2" }, j.title), icon("chevronRight", "job-chevron")),
+            h("div", { class: "faint small" }, `${F.plural(j.recordingCount, "candidate")} · added ${F.fmtDate(j.createdAt)}`)
+          )
+        )
       )
     );
   }

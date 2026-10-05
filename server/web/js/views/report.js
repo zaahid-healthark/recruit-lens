@@ -566,6 +566,7 @@ function drawReport(main, rec, signal) {
   const page = h(
     "div",
     { class: "page report" },
+    !("decision" in sum) ? C.outdatedBanner() : null,
     rec.trashedAt
       ? C.banner({ icon: "trash", text: "This candidate is in the trash. Restore them to use the report in rankings and lists.", actions: [] })
       : null,
@@ -649,7 +650,7 @@ function recordingCard(rec, signal) {
   mount(
     playerSlot,
     loadBtn,
-    h("span", { class: "faint small grow" }, `${F.fmtDuration(rec.durationSeconds)} · ${rec.originalFilename}`)
+    h("span", { class: "faint small grow truncate", title: rec.originalFilename }, `${F.fmtDuration(rec.durationSeconds)} · ${rec.originalFilename}`)
   );
 
   async function ensureAudio() {

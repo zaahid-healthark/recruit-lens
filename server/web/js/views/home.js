@@ -9,7 +9,7 @@
 
 import { h, mount } from "../dom.js";
 import { icon } from "../icons.js";
-import { getRecordings } from "../api.js";
+import { getRecordings, serverIsOutdated } from "../api.js";
 import { navigate, replaceQuery } from "../router.js";
 import { setActive } from "../shell.js";
 import * as C from "../components.js";
@@ -120,14 +120,13 @@ export async function homeView({ query, signal, main }) {
       .sort((a, b) => a - b);
     const median = turnarounds.length ? turnarounds[Math.floor(turnarounds.length / 2)] : null;
 
-    const kpi = ({ label, iconName, value, caption, sub, href }) =>
+    const kpi = ({ label, iconName, value, sub, href }) =>
       h(
         href ? "a" : "div",
         { class: "card kpi", href },
         h("span", { class: "kpi-label" }, icon(iconName), label),
         h("span", { class: "kpi-value" }, String(value)),
-        sub ? h("span", { class: "kpi-sub" }, sub) : null,
-        h("span", { class: "kpi-foot" }, caption)
+        sub ? h("span", { class: "kpi-sub" }, sub) : null
       );
 
     const kpis = h(
@@ -138,7 +137,6 @@ export async function homeView({ query, signal, main }) {
         iconName: "mic",
         value: evaluated.length,
         sub: [h("span", null, h("b", null, String(processing)), " processing"), h("span", null, h("b", null, String(failed)), " failed")],
-        caption: "Uploaded and scored in this period",
         href: "#/candidates",
       }),
       kpi({
@@ -146,7 +144,6 @@ export async function homeView({ query, signal, main }) {
         iconName: "target",
         value: fit,
         sub: [h("span", null, "Fit rate ", h("b", null, F.pct(fit, evaluated.length)))],
-        caption: "Cleared the gate on their technical answers",
         href: "#/candidates?view=fit",
       }),
       kpi({
@@ -154,7 +151,6 @@ export async function homeView({ query, signal, main }) {
         iconName: "video",
         value: shortlisted,
         sub: [h("span", null, h("b", null, String(rejected)), " rejected")],
-        caption: "Your decisions on calls in this period",
         href: "#/candidates?view=next",
       }),
       kpi({
@@ -162,7 +158,6 @@ export async function homeView({ query, signal, main }) {
         iconName: "hourglass",
         value: awaiting,
         sub: median !== null ? [h("span", null, "Reports in ", h("b", null, F.fmtMinutes(median)), " median")] : null,
-        caption: "Evaluated, not yet advanced or rejected",
         href: "#/candidates?view=attention",
       })
     );
@@ -407,6 +402,7 @@ export async function homeView({ query, signal, main }) {
 
     mount(
       body,
+      serverIsOutdated(all) ? C.outdatedBanner() : null,
       kpis,
       attentionCard,
       h("div", { class: "dash-grid" }, callsCard, mixCard),

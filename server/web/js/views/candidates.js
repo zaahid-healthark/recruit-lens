@@ -6,7 +6,7 @@
 
 import { h, mount } from "../dom.js";
 import { icon } from "../icons.js";
-import { Recordings, getRecordings } from "../api.js";
+import { Recordings, getRecordings, serverIsOutdated } from "../api.js";
 import { navigate, replaceQuery } from "../router.js";
 import { setActive } from "../shell.js";
 import * as C from "../components.js";
@@ -143,6 +143,7 @@ export async function candidatesView({ query, signal, main }) {
         h("div", null, h("h2", { class: "h1" }, "Candidates"), h("p", null, "Every screened call, with the gate's decision and yours.")),
         C.btn({ label: "Evaluate a call", icon: "plus", variant: "primary", href: "#/evaluate" })
       ),
+      serverIsOutdated(live) ? C.outdatedBanner() : null,
       viewsEl,
       toolbar,
       chipsEl,

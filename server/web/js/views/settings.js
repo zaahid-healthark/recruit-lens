@@ -240,8 +240,8 @@ export async function costsView({ signal, main }) {
   const kpis = h(
     "div",
     { class: "kpis", style: { gridTemplateColumns: "repeat(auto-fit, minmax(180px, 1fr))" } },
-    h("div", { class: "card kpi" }, h("span", { class: "kpi-label" }, icon("coins"), "Total"), h("span", { class: "kpi-value" }, F.money(c.totalCost)), h("span", { class: "kpi-foot" }, `Last ${F.plural(c.calls.length, "evaluation")}`)),
-    h("div", { class: "card kpi" }, h("span", { class: "kpi-label" }, icon("barChart"), "Average per call"), h("span", { class: "kpi-value" }, c.averageCost === null ? "—" : F.money(c.averageCost)), h("span", { class: "kpi-foot" }, "Transcription and scoring together"))
+    h("div", { class: "card kpi" }, h("span", { class: "kpi-label" }, icon("coins"), "Total"), h("span", { class: "kpi-value" }, F.money(c.totalCost)), h("span", { class: "kpi-sub" }, `last ${F.plural(c.calls.length, "evaluation")}`)),
+    h("div", { class: "card kpi" }, h("span", { class: "kpi-label" }, icon("barChart"), "Average per call"), h("span", { class: "kpi-value" }, c.averageCost === null ? "—" : F.money(c.averageCost)))
   );
 
   const max = Math.max(...c.byStage.map((s) => s.cost), 0.0001);

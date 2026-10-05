@@ -5,7 +5,7 @@
 import { h, mount } from "./dom.js";
 import { clearKey, getKey, setUnauthorizedHandler } from "./api.js";
 import { navigate, onBeforeRoute, refresh, route, setNotFound, start } from "./router.js";
-import { mainEl, mountShell, setActionBar } from "./shell.js";
+import { closeDrawer, mainEl, mountShell, setActionBar } from "./shell.js";
 import { applyTheme } from "./theme.js";
 import * as C from "./components.js";
 import { renderGate } from "./views/key.js";
@@ -47,6 +47,7 @@ function registerRoutes() {
     )
   );
   onBeforeRoute(() => {
+    closeDrawer();
     setActionBar(null);
     document.querySelectorAll(".menu").forEach((m) => m.remove());
     window.scrollTo(0, 0);

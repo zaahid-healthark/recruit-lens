@@ -97,10 +97,16 @@ export function countPill(n, tone) {
 /** The sticky top bar: back arrow, breadcrumbs (laptop) / title (phone), actions. */
 export function topbar({ title, crumbs, back, actions = [] }) {
   document.title = title ? `${title} · RecruitLens` : "RecruitLens";
+  // A top-level page: on phones this bar is its title and opens the menu;
+  // from 600 px up the page's own heading takes over and the bar is hidden.
+  const root = !back && !crumbs?.length;
   return h(
     "header",
-    { class: "topbar" },
+    { class: ["topbar", root && "is-root"] },
     back ? iconBtn({ icon: "arrowLeft", label: "Back", href: back }) : null,
+    root
+      ? iconBtn({ icon: "menu", label: "Open menu", cls: "drawer-btn", onClick: () => window.dispatchEvent(new CustomEvent("rl:drawer")) })
+      : null,
     crumbs?.length
       ? h(
           "nav",
@@ -113,7 +119,7 @@ export function topbar({ title, crumbs, back, actions = [] }) {
           ])
         )
       : null,
-    h("h1", { class: ["topbar-title", !back && "has-pad"] }, title),
+    h("h1", { class: ["topbar-title", !back && !root && "has-pad"] }, title),
     h("div", { class: "topbar-actions" }, actions)
   );
 }
@@ -164,6 +170,15 @@ export function banner({ icon: iconName = "info", tone, text, actions = [] }) {
     h("div", { class: "grow" }, text),
     h("div", { class: "row" }, actions)
   );
+}
+
+/** Shown when the page is newer than the server — decisions would be missing. */
+export function outdatedBanner() {
+  return banner({
+    icon: "alertTriangle",
+    tone: "reject",
+    text: "The server is running an older version than this page, so decisions can't be shown. Restart the server after updating it.",
+  });
 }
 
 export function note(iconName, ...content) {
