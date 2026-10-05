@@ -6,7 +6,7 @@
 
 import { h, mount } from "../dom.js";
 import { icon } from "../icons.js";
-import { Jobs, Recordings, Taxonomy, invalidateRecordings } from "../api.js";
+import { Jobs, Recordings, Taxonomy, getRecordings, invalidateRecordings } from "../api.js";
 import { navigate, replaceQuery } from "../router.js";
 import { setActive } from "../shell.js";
 import * as C from "../components.js";
@@ -16,15 +16,34 @@ import * as F from "../format.js";
 const MIN_JD = 40;
 
 // ── List ─────────────────────────────────────────────────────────────
+const JOB_SORTS = [
+  { value: "active", label: "Recently active" },
+  { value: "candidates", label: "Most candidates" },
+  { value: "newest", label: "Newest" },
+  { value: "name", label: "A–Z" },
+];
+/** The group for a job nobody has classified, and no candidate has either. */
+const UNCLASSIFIED = "none";
+
 export async function jobsView({ query, signal, main }) {
   setActive("jobs");
-  let showArchived = query.get("archived") === "1";
+  const state = {
+    archived: query.get("archived") === "1",
+    dept: query.get("dept") ?? "",
+    q: query.get("q") ?? "",
+    sort: JOB_SORTS.some((s) => s.value === query.get("sort")) ? query.get("sort") : "active",
+  };
   const header = C.topbar({ title: "Jobs", actions: [C.btn({ label: "New job", icon: "plus", variant: "primary", size: "sm", href: "#/jobs/new", cls: "phone-only" })] });
-  mount(main, header, h("div", { class: "page" }, h("div", { class: "job-grid" }, [0, 1, 2].map(() => h("div", { class: "card job-card" }, C.skelLine("60%", 16), C.skelLine("40%"), C.skelBlock(60))))));
+  mount(
+    main,
+    header,
+    h("div", { class: "page" }, h("div", { class: "card job-group" }, [0, 1, 2, 3].map(() => h("div", { class: "job-row" }, h("div", { class: "stack gap-8" }, C.skelLine("55%", 16), C.skelLine("30%"))))))
+  );
 
   let jobs;
+  let recs = [];
   try {
-    jobs = await Jobs.list(true, { signal });
+    [jobs, recs] = await Promise.all([Jobs.list(true, { signal }), getRecordings({ signal }).catch(() => [])]);
   } catch (err) {
     if (err?.name === "AbortError") return;
     mount(main, header, h("div", { class: "page" }, C.errorState(err)));
@@ -32,8 +51,55 @@ export async function jobsView({ query, signal, main }) {
   }
   if (signal.aborted) return;
 
-  const grid = h("div");
+  // What each job is, and when it last saw a call. A job saved without a
+  // department takes the one its candidates were classified under, so older
+  // jobs still land in the right group.
+  const activity = new Map();
+  for (const r of recs) {
+    if (!r.job) continue;
+    const a = activity.get(r.job.id) ?? { last: null, depts: new Map(), roles: new Map() };
+    const at = new Date(r.importedAt);
+    if (!a.last || at > a.last) a.last = at;
+    const s = r.evaluationSummary;
+    if (s?.department) a.depts.set(s.department, (a.depts.get(s.department) ?? 0) + 1);
+    if (s?.subCategory) a.roles.set(s.subCategory, (a.roles.get(s.subCategory) ?? 0) + 1);
+    activity.set(r.job.id, a);
+  }
+  const mostCommon = (counts) => [...(counts?.entries() ?? [])].sort((x, y) => y[1] - x[1])[0]?.[0] ?? null;
+  const items = jobs.map((job) => {
+    const a = activity.get(job.id);
+    return { job, dept: job.department || mostCommon(a?.depts), role: job.subCategory || mostCommon(a?.roles), last: a?.last ?? null };
+  });
+  const deptKey = (it) => it.dept ?? UNCLASSIFIED;
+  const deptLabel = (key) => (key === UNCLASSIFIED ? "Not classified" : key);
+  const pool = () => items.filter((it) => it.job.archived === state.archived);
+  // Departments with the most jobs first; the unclassified pile always last.
+  const byWeight = (counts) => (a, b) => (a === UNCLASSIFIED) - (b === UNCLASSIFIED) || counts.get(b) - counts.get(a) || a.localeCompare(b);
+
+  const sync = () =>
+    replaceQuery({ archived: state.archived ? "1" : "", dept: state.dept, q: state.q.trim(), sort: state.sort === "active" ? "" : state.sort });
+  const redraw = () => {
+    sync();
+    drawTabs();
+    drawList();
+  };
+
   const archivedCount = jobs.filter((j) => j.archived).length;
+  const tabsEl = h("div", { class: "views", role: "tablist", "aria-label": "Departments" });
+  const searchInput = h("input", {
+    class: "input",
+    type: "search",
+    placeholder: "Search jobs",
+    "aria-label": "Search jobs",
+    value: state.q,
+    onInput: (e) => {
+      state.q = e.target.value;
+      sync();
+      drawList();
+    },
+  });
+  const listEl = h("div");
+
   mount(
     main,
     header,
@@ -50,36 +116,69 @@ export async function jobsView({ query, signal, main }) {
           archivedCount
             ? C.seg({
                 label: "Show",
-                value: showArchived ? "archived" : "active",
+                value: state.archived ? "archived" : "active",
                 options: [
                   { value: "active", label: "Active" },
                   { value: "archived", label: `Archived (${archivedCount})` },
                 ],
                 onChange: (v) => {
-                  showArchived = v === "archived";
-                  replaceQuery({ archived: showArchived ? "1" : "" });
-                  draw();
+                  state.archived = v === "archived";
+                  state.dept = "";
+                  redraw();
                 },
               })
             : null,
           C.btn({ label: "New job", icon: "plus", variant: "primary", href: "#/jobs/new", cls: "not-phone" })
         )
       ),
-      grid
+      tabsEl,
+      h(
+        "div",
+        { class: "jobs-toolbar" },
+        h("div", { class: "input-wrap grow" }, icon("search"), searchInput),
+        C.select({ label: "Sort jobs", cls: "jobs-sort", value: state.sort, options: JOB_SORTS, onChange: (v) => ((state.sort = v), redraw()) })
+      ),
+      listEl
     )
   );
-  draw();
+  drawTabs();
+  drawList();
 
-  function draw() {
-    const list = jobs.filter((j) => j.archived === showArchived);
-    if (!list.length) {
+  function drawTabs() {
+    const counts = new Map();
+    for (const it of pool()) counts.set(deptKey(it), (counts.get(deptKey(it)) ?? 0) + 1);
+    if (state.dept && !counts.has(state.dept)) state.dept = "";
+    const keys = [...counts.keys()].sort(byWeight(counts));
+    const tab = (key, label, n) =>
+      h(
+        "button",
+        {
+          class: ["view-tab", state.dept === key && "is-active"],
+          type: "button",
+          role: "tab",
+          "aria-selected": String(state.dept === key),
+          onClick: () => {
+            state.dept = key;
+            redraw();
+          },
+        },
+        label,
+        h("span", { class: "view-count" }, String(n))
+      );
+    mount(tabsEl, tab("", "All", pool().length), keys.map((k) => tab(k, deptLabel(k), counts.get(k))));
+    // With one department the tabs would only repeat the group heading.
+    tabsEl.hidden = keys.length < 2;
+  }
+
+  function drawList() {
+    if (!pool().length) {
       mount(
-        grid,
+        listEl,
         h(
           "div",
           { class: "card" },
           C.emptyState(
-            showArchived
+            state.archived
               ? { icon: "archive", title: "No archived jobs", text: "Jobs you archive are kept here with their candidates." }
               : {
                   icon: "briefcase",
@@ -92,20 +191,73 @@ export async function jobsView({ query, signal, main }) {
       );
       return;
     }
+
+    const q = state.q.trim().toLowerCase();
+    const shown = pool().filter(
+      (it) =>
+        (!state.dept || deptKey(it) === state.dept) &&
+        (!q || [it.job.title, it.role, it.dept].some((v) => v && v.toLowerCase().includes(q)))
+    );
+    if (!shown.length) {
+      mount(
+        listEl,
+        h(
+          "div",
+          { class: "card" },
+          C.emptyState({
+            icon: "search",
+            title: "No jobs match",
+            text: "Try another search, or look in every department.",
+            action: C.btn({
+              label: "Clear search",
+              onClick: () => {
+                state.q = "";
+                state.dept = "";
+                searchInput.value = "";
+                redraw();
+              },
+            }),
+          })
+        )
+      );
+      return;
+    }
+
+    const recency = (it) => (it.last ?? new Date(it.job.createdAt)).getTime();
+    const SORTERS = {
+      active: (a, b) => recency(b) - recency(a),
+      candidates: (a, b) => b.job.recordingCount - a.job.recordingCount || recency(b) - recency(a),
+      newest: (a, b) => new Date(b.job.createdAt) - new Date(a.job.createdAt),
+      name: (a, b) => a.job.title.localeCompare(b.job.title),
+    };
+    const groups = new Map();
+    for (const it of shown) {
+      if (!groups.has(deptKey(it))) groups.set(deptKey(it), []);
+      groups.get(deptKey(it)).push(it);
+    }
+    const sizes = new Map([...groups].map(([k, v]) => [k, v.length]));
     mount(
-      grid,
-      h(
-        "div",
-        { class: "job-grid" },
-        list.map((j) =>
-          h(
-            "a",
-            { class: "card job-card", href: `#/jobs/${j.id}` },
-            h("div", { class: "row row-between gap-12", style: { alignItems: "flex-start" } }, h("h3", { class: "h3 clamp-2" }, j.title), icon("chevronRight", "job-chevron")),
-            h("div", { class: "faint small" }, `${F.plural(j.recordingCount, "candidate")} · added ${F.fmtDate(j.createdAt)}`)
-          )
+      listEl,
+      [...groups.keys()].sort(byWeight(sizes)).map((key) =>
+        h(
+          "section",
+          { class: "card job-group", "aria-label": deptLabel(key) },
+          h("div", { class: "job-group-head" }, h("h3", null, deptLabel(key)), h("span", null, F.plural(groups.get(key).length, "job"))),
+          groups.get(key).sort(SORTERS[state.sort]).map(jobRow)
         )
       )
+    );
+  }
+
+  function jobRow(it) {
+    const n = it.job.recordingCount;
+    const when = it.last ? `last call ${F.fmtRelative(it.last.toISOString())}` : `added ${F.fmtDate(it.job.createdAt)}`;
+    return h(
+      "a",
+      { class: "job-row", href: `#/jobs/${it.job.id}` },
+      h("div", { class: "job-row-main" }, h("div", { class: "job-row-title" }, it.job.title), h("div", { class: "job-row-meta" }, [it.role, when].filter(Boolean).join(" · "))),
+      h("div", { class: "job-row-count" }, h("b", null, String(n)), n === 1 ? " candidate" : " candidates"),
+      icon("chevronRight", "job-chevron")
     );
   }
 }
