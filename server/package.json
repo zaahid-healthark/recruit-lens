@@ -21,7 +21,8 @@
     "prompt:check": "tsx scripts/promptCheck.ts",
     "ui:preview": "tsx scripts/uiPreview.ts",
     "seed:demo": "tsx scripts/seedDemo.ts",
-    "demo:audio": "tsx scripts/demo/makeAudio.ts"
+    "demo:audio": "tsx scripts/demo/makeAudio.ts",
+    "trash": "tsx scripts/trashCandidates.ts"
   },
   "prisma": {
     "seed": "tsx prisma/seed.ts"
